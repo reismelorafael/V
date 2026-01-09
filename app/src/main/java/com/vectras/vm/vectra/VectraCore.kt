@@ -109,7 +109,7 @@ class VectraMempool(private val chunkSize: Int, poolSize: Int) {
     }
 
     fun borrow(size: Int = chunkSize): ByteArray {
-        return if (size == chunkSize && pool.isNotEmpty()) {
+        return if (size <= chunkSize && pool.isNotEmpty()) {
             pool.removeFirst()
         } else {
             ByteArray(size)
@@ -171,7 +171,7 @@ object VectraCore {
     fun rho(noise: ByteArray): Int {
         val entropy = CRC32C.update(state.entropyHint, noise)
         state.entropyHint = entropy
-        state.stageCounters[2]++
+        state.stageCounters[1]++
         return entropy
     }
 
@@ -180,7 +180,7 @@ object VectraCore {
      */
     fun deltaBranchless(a: Int, b: Int, mask: Int): Int {
         val res = (a and mask.inv()) or (b and mask)
-        state.stageCounters[3]++
+        state.stageCounters[2]++
         return res
     }
 
@@ -189,7 +189,7 @@ object VectraCore {
      */
     fun sigmaCombine(a: Int, b: Int): Int {
         val mix = a xor ((b shl 1) or (b ushr 31))
-        state.stageCounters[4]++
+        state.stageCounters[3]++
         return mix
     }
 
@@ -197,7 +197,7 @@ object VectraCore {
      * OMEGA stage: finalize digest from crc and entropy hints.
      */
     fun omegaFinalize(): Int {
-        state.stageCounters[5]++
+        state.stageCounters[4]++
         return state.crc32c xor state.entropyHint
     }
 }
