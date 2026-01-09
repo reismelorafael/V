@@ -20,6 +20,7 @@ data class VectraState(
         if (index !in 0 until 1024) return
         val word = index ushr 6
         val mask = 1L shl (index and 63)
+        // branchless toggle using full-bit masks
         val branchless = if (enabled) -1L else 0L
         bitset[word] = (bitset[word] and mask.inv()) or (branchless and mask)
     }
@@ -141,14 +142,17 @@ object VectraCore {
         System.arraycopy(header, 0, scratch, 0, header.size)
         val parity = Parity.stripe(header, scratch)
         val crcAgain = CRC32C.update(0, scratch)
-        val ok = crcAgain == state.crc32c && parity.isNotEmpty()
+        scratch[0] = scratch[0].inv()
+        val crcMutated = CRC32C.update(0, scratch)
+        val detectsChange = crcMutated != state.crc32c
+        val ok = crcAgain == state.crc32c && parity.isNotEmpty() && detectsChange
         state.setFlag(0, ok)
         mempool.release(scratch)
-        Log.d(TAG, "selftest_ok=$ok parity_len=${parity.size}")
+        Log.d(TAG, "selftest_ok=$ok parity_len=${parity.size} crc_mutated=$crcMutated")
     }
 
     /**
-     * PSI stage: fold payload into CRC and advance stage counter.
+     * PSI stage: fold payload into CRC and advance stage counter (deterministic ingest).
      */
     fun psi(payload: ByteArray): Int {
         val crc = CRC32C.update(state.crc32c, payload)
@@ -158,7 +162,7 @@ object VectraCore {
     }
 
     /**
-     * RHO stage: treat noise as data to update entropy hint.
+     * RHO stage: treat noise as data to update entropy hint (no discard of leak/variance).
      */
     fun rho(noise: ByteArray): Int {
         val entropy = CRC32C.update(state.entropyHint, noise)
@@ -170,14 +174,14 @@ object VectraCore {
     /**
      * DELTA stage: branchless select between two ints using a mask.
      */
-    fun deltaBranchless(mask: Int, a: Int, b: Int): Int {
+    fun deltaBranchless(a: Int, b: Int, mask: Int): Int {
         val res = (a and mask) or (b and mask.inv())
         state.stageCounters[3]++
         return res
     }
 
     /**
-     * SIGMA stage: combine two ints with xor and rotate mix.
+     * SIGMA stage: combine two ints with xor and rotate mix (linear pass).
      */
     fun sigmaCombine(a: Int, b: Int): Int {
         val mix = a xor ((b shl 1) or (b ushr 31))
