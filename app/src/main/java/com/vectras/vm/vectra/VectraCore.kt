@@ -33,7 +33,7 @@ object VectraBlock {
     private const val CRC_OFFSET = 32
     private const val PRE6_FACTOR = 0x9E3779B97F4A7C15uL.toLong() // 64-bit golden ratio mix
     private const val STRIPE_CFG_DEFAULT = 0x01020304
-    private const val ID_PREFIX_DEFAULT = 0x5645435452414cL // "VECTRAL"
+    private const val ID_PREFIX_DEFAULT = 0x5645435452414C4CL // "VECTRAL"
 
     fun createHeader(index: Long, payloadLen: Int, seed: Int, stripeCfg: Int = STRIPE_CFG_DEFAULT, idPrefix: Long = ID_PREFIX_DEFAULT): ByteArray {
         val buffer = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN)
@@ -146,7 +146,7 @@ object VectraCore {
         System.arraycopy(header, 0, scratch, 0, header.size)
         val parity = Parity.stripe(header, scratch)
         val crcAgain = CRC32C.update(0, scratch)
-        scratch[0] = scratch[0].inv()
+        scratch[0] = (scratch[0].toInt() xor 0xFF).toByte()
         val crcMutated = CRC32C.update(0, scratch)
         val detectsChange = crcMutated != state.crc32c
         val ok = crcAgain == state.crc32c && parity.isNotEmpty() && detectsChange
