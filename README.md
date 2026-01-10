@@ -10,6 +10,8 @@
 # Vectras VM
 [![Ceasefire Now](https://badge.techforpalestine.org/default)](https://techforpalestine.org/learn-more)
 
+> **📚 Documentation**: Comprehensive technical documentation is available in the [docs/](docs/README.md) directory, including academic-style documentation with preface, abstract, architecture details, and bibliography.
+
 > **Note**: This project includes an experimental **Vectra Core MVP** - a deterministic event processing framework with integrity verification. See [VECTRA_CORE.md](VECTRA_CORE.md) for details.
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/xoureldeen/Vectras-VM-Android)
@@ -112,6 +114,22 @@ QEMU 8.2.0 - 3dfx (only for Vectras VM 2.9.5):
 
 - [For QEMU 9.2.x - 3dfx](https://github.com/AnBui2004/Vectras-VM-Emu-Android/blob/master/3dfx/3dfx-wrappers-3.5.0.iso)
 - [For QEMU 8.2.0 - 3dfx](https://github.com/AnBui2004/Vectras-VM-Emu-Android/blob/master/3dfx/3dfx-wrappers-2.9.5.iso)
+
+# 📚 Documentation / Documentação
+
+Comprehensive technical and academic documentation is available in the [`docs/`](docs/README.md) directory:
+
+| Document | Description | Language |
+|----------|-------------|----------|
+| [📖 Documentation Index](docs/README.md) | Main documentation index and navigation | EN/PT-BR |
+| [📜 Preface](docs/PREFACE.md) | Project context, motivation, and acknowledgments | EN/PT-BR |
+| [📋 Abstract](docs/ABSTRACT.md) | Technical abstract (PhD-level) | English |
+| [📋 Resumo](docs/RESUMO.md) | Resumo técnico acadêmico | Português |
+| [🏗️ Architecture](docs/ARCHITECTURE.md) | System architecture and design patterns | English |
+| [📚 Bibliography](docs/BIBLIOGRAPHY.md) | Academic references (IEEE, ACM, ABNT) | EN/PT-BR |
+| [📖 Glossary](docs/GLOSSARY.md) | Technical terminology and acronyms | EN/PT-BR |
+| [🤝 Contributing](docs/CONTRIBUTING.md) | Contribution guidelines | EN/PT-BR |
+| [⚡ Vectra Core](VECTRA_CORE.md) | Experimental runtime framework | English |
 
 # Donate
 Help support the project by contributing!
