@@ -799,7 +799,8 @@
     <string name="lang_delete_success">Language pack deleted</string>
     <string name="lang_delete_confirm">Delete this language pack?</string>
     <string name="lang_selected">Language selected: %s</string>
-    <string name="lang_restart_required">Restart the app to apply the new language</string>
+    <string name="lang_restart_required">Restart Required</string>
+    <string name="lang_restart_message">The app needs to be restarted to apply the new language settings.</string>
     <string name="lang_downloading">Downloading…</string>
     <string name="lang_download_not_available">Download not available. Please download the language pack first.</string>
     <string name="lang_total_size">Total downloaded: %s</string>

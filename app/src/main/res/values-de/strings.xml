@@ -126,7 +126,8 @@
     <string name="lang_delete_success">Sprachpaket gelöscht</string>
     <string name="lang_delete_confirm">Dieses Sprachpaket löschen?</string>
     <string name="lang_selected">Ausgewählte Sprache: %s</string>
-    <string name="lang_restart_required">Starten Sie die App neu, um die neue Sprache anzuwenden</string>
+    <string name="lang_restart_required">Neustart Erforderlich</string>
+    <string name="lang_restart_message">Die App muss neu gestartet werden, um die neuen Spracheinstellungen anzuwenden.</string>
     <string name="lang_downloading">Herunterladen...</string>
     <string name="lang_download_not_available">Download nicht verfügbar. Bitte laden Sie zuerst das Sprachpaket herunter.</string>
     <string name="lang_total_size">Insgesamt heruntergeladen: %s</string>

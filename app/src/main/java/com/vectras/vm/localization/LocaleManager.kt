@@ -46,7 +46,11 @@ class LocaleManager private constructor(private val context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    private val httpClient = OkHttpClient()
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
     private val gson = Gson()
 
     /**
@@ -159,7 +163,7 @@ class LocaleManager private constructor(private val context: Context) {
             onProgress?.invoke(100)
             true
         } catch (e: IOException) {
-            e.printStackTrace()
+            android.util.Log.e("LocaleManager", "Failed to download language module: $languageCode", e)
             false
         }
     }

@@ -126,7 +126,8 @@
     <string name="lang_delete_success">Pacote de idioma excluído</string>
     <string name="lang_delete_confirm">Excluir este pacote de idioma?</string>
     <string name="lang_selected">Idioma selecionado: %s</string>
-    <string name="lang_restart_required">Reinicie o app para aplicar o novo idioma</string>
+    <string name="lang_restart_required">Reinício Necessário</string>
+    <string name="lang_restart_message">O app precisa ser reiniciado para aplicar as novas configurações de idioma.</string>
     <string name="lang_downloading">Baixando...</string>
     <string name="lang_download_not_available">Download indisponível. Por favor, baixe o pacote de idioma primeiro.</string>
     <string name="lang_total_size">Total baixado: %s</string>

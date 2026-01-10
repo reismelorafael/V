@@ -167,7 +167,7 @@ class LanguageModulesActivity : AppCompatActivity() {
     private fun showRestartDialog() {
         AlertDialog.Builder(this)
             .setTitle(R.string.lang_restart_required)
-            .setMessage(R.string.lang_restart_required)
+            .setMessage(R.string.lang_restart_message)
             .setPositiveButton(R.string.ok) { _, _ ->
                 MainActivity.isNeedRecreate = true
                 recreate()

@@ -126,7 +126,8 @@
     <string name="lang_delete_success">Pack de langue supprimé</string>
     <string name="lang_delete_confirm">Supprimer ce pack de langue ?</string>
     <string name="lang_selected">Langue sélectionnée : %s</string>
-    <string name="lang_restart_required">Redémarrez l\'application pour appliquer la nouvelle langue</string>
+    <string name="lang_restart_required">Redémarrage Requis</string>
+    <string name="lang_restart_message">L\'application doit être redémarrée pour appliquer les nouveaux paramètres de langue.</string>
     <string name="lang_downloading">Téléchargement...</string>
     <string name="lang_download_not_available">Téléchargement non disponible. Veuillez d\'abord télécharger le pack de langue.</string>
     <string name="lang_total_size">Total téléchargé : %s</string>
