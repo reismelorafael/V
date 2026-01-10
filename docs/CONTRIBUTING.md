@@ -572,7 +572,6 @@ By contributing to Vectras VM, you agree that:
 | [README.md](../README.md) | Project overview |
 | [LICENSE](../LICENSE) | GNU GPL v2.0 license |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture |
-| [CODING_STANDARDS.md](CODING_STANDARDS.md) | Detailed coding guidelines |
 | [GLOSSARY.md](GLOSSARY.md) | Technical terminology |
 
 ---

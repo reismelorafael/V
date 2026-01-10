@@ -22,7 +22,7 @@ Máquina Virtual, QEMU, Android, Arquitetura ARM, Emulação de Sistemas, Virtua
 
 ## Resumo
 
-Este documento apresenta o **Vectras VM**, uma aplicação de máquina virtual de código aberto desenvolvida para o sistema operacional móvel Android. O projeto utiliza o framework Quick Emulator (QEMU) para possibilitar a emulação completa de sistemas de diversos sistemas operacionais—incluindo Microsoft Windows, distribuições GNU/Linux, Apple macOS e Android—em dispositivos móveis equipados com processadores ARM e x86 modernos.
+Este documento apresenta o **Vectras VM**, uma aplicação de máquina virtual de código aberto desenvolvida para o sistema operacional móvel Android. O projeto utiliza o framework Quick Emulator (QEMU) para possibilitar a emulação completa de diversos sistemas operacionais—incluindo Microsoft Windows, distribuições GNU/Linux, Apple macOS e Android—em dispositivos móveis equipados com processadores ARM e x86 modernos.
 
 ### Contextualização
 
