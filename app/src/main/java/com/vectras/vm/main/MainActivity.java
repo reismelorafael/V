@@ -610,15 +610,121 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
 
     private void showLogsDialog() {
         BottomSheetDialog bottomSheetDialog = new BottomSheetDialog(this);
-        BottomsheetdialogLoggerBinding bottomsheetdialogLoggerBinding = BottomsheetdialogLoggerBinding.inflate(getLayoutInflater());
-        bottomSheetDialog.setContentView(bottomsheetdialogLoggerBinding.getRoot());
+        BottomsheetdialogLoggerBinding binding = BottomsheetdialogLoggerBinding.inflate(getLayoutInflater());
+        bottomSheetDialog.setContentView(binding.getRoot());
         bottomSheetDialog.show();
 
         LinearLayoutManager layoutManager = new LinearLayoutManager(getApp());
         LogsAdapter mLogAdapter = new LogsAdapter(layoutManager, getApp());
-        bottomsheetdialogLoggerBinding.recyclerLog.setAdapter(mLogAdapter);
-        bottomsheetdialogLoggerBinding.recyclerLog.setLayoutManager(layoutManager);
+        binding.recyclerLogs.setAdapter(mLogAdapter);
+        binding.recyclerLogs.setLayoutManager(layoutManager);
         mLogAdapter.scrollToLastPosition();
+
+        // Setup filter spinner
+        String[] filterOptions = {"All", "Info", "Warning", "Error", "Debug"};
+        android.widget.ArrayAdapter<String> filterAdapter = new android.widget.ArrayAdapter<>(
+            this, android.R.layout.simple_spinner_item, filterOptions);
+        filterAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        binding.spinnerFilter.setAdapter(filterAdapter);
+        
+        final int[] currentLogLevel = {VectrasStatus.LogLevel.DEBUG.getInt()};
+        binding.spinnerFilter.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                switch (position) {
+                    case 0: // All
+                        currentLogLevel[0] = VectrasStatus.LogLevel.DEBUG.getInt();
+                        break;
+                    case 1: // Info
+                        currentLogLevel[0] = VectrasStatus.LogLevel.INFO.getInt();
+                        break;
+                    case 2: // Warning
+                        currentLogLevel[0] = VectrasStatus.LogLevel.WARNING.getInt();
+                        break;
+                    case 3: // Error
+                        currentLogLevel[0] = VectrasStatus.LogLevel.ERROR.getInt();
+                        break;
+                    case 4: // Debug
+                        currentLogLevel[0] = VectrasStatus.LogLevel.DEBUG.getInt();
+                        break;
+                }
+                mLogAdapter.setLogLevel(currentLogLevel[0]);
+                mLogAdapter.notifyDataSetChanged();
+            }
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+        });
+
+        // Update log count
+        updateLogCount(binding, mLogAdapter.getItemCount());
+        
+        // Export button
+        binding.btnExport.setOnClickListener(v -> {
+            try {
+                com.vectras.vm.logger.LogItem[] logs = VectrasStatus.getlogbuffer();
+                if (logs.length == 0) {
+                    android.widget.Toast.makeText(this, R.string.there_are_no_logs, android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                String timestamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
+                    .format(new java.util.Date());
+                java.io.File exportDir = new java.io.File(getCacheDir(), "logs");
+                if (!exportDir.exists()) exportDir.mkdirs();
+                java.io.File exportFile = new java.io.File(exportDir, "vectras_logs_" + timestamp + ".txt");
+                try (java.io.FileWriter writer = new java.io.FileWriter(exportFile)) {
+                    writer.write("Vectras VM Log Export\n");
+                    writer.write("Generated: " + new java.util.Date().toString() + "\n");
+                    writer.write("Total entries: " + logs.length + "\n");
+                    writer.write("========================================\n\n");
+                    for (com.vectras.vm.logger.LogItem log : logs) {
+                        writer.write(log.getString(this) + "\n");
+                    }
+                }
+                android.content.Intent shareIntent = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                shareIntent.setType("text/plain");
+                shareIntent.putExtra(android.content.Intent.EXTRA_STREAM, 
+                    androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".provider", exportFile));
+                shareIntent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(android.content.Intent.createChooser(shareIntent, "Export logs"));
+            } catch (Exception e) {
+                Log.e(TAG, "Export logs failed", e);
+                android.widget.Toast.makeText(this, "Export failed: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+            }
+        });
+        
+        // Copy button
+        binding.btnCopy.setOnClickListener(v -> {
+            com.vectras.vm.logger.LogItem[] logs = VectrasStatus.getlogbuffer();
+            if (logs.length == 0) {
+                android.widget.Toast.makeText(this, R.string.there_are_no_logs, android.widget.Toast.LENGTH_SHORT).show();
+                return;
+            }
+            StringBuilder sb = new StringBuilder();
+            for (com.vectras.vm.logger.LogItem log : logs) {
+                sb.append(log.getString(this)).append("\n");
+            }
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+            android.content.ClipData clip = android.content.ClipData.newPlainText("Vectras Logs", sb.toString());
+            clipboard.setPrimaryClip(clip);
+            android.widget.Toast.makeText(this, R.string.copied, android.widget.Toast.LENGTH_SHORT).show();
+        });
+        
+        // Clear button
+        binding.btnClear.setOnClickListener(v -> {
+            new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.delete_all)
+                .setMessage(R.string.clear_logs_confirmation)
+                .setPositiveButton(R.string.ok, (dialog, which) -> {
+                    VectrasStatus.clearLog();
+                    mLogAdapter.notifyDataSetChanged();
+                    updateLogCount(binding, mLogAdapter.getItemCount());
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+        });
+        
+        // Scroll to bottom button
+        binding.btnScrollBottom.setOnClickListener(v -> mLogAdapter.scrollToLastPosition());
 
         AtomicBoolean isStop = new AtomicBoolean(false);
 
@@ -642,6 +748,7 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
                             String logLine2 = bufferedReader2.readLine();
                             VectrasStatus.logError("<font color='red'>[E] " + logLine + "</font>");
                             VectrasStatus.logError("<font color='#FFC107'>[W] " + logLine2 + "</font>");
+                            runOnUiThread(() -> updateLogCount(binding, mLogAdapter.getItemCount()));
                         }
                     } catch (IOException e) {
                         Log.e(TAG, "Log: ", e);
@@ -659,5 +766,9 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
             isStop.set(true);
             handlerUpdateLog.removeCallbacks(updateLogTask);
         });
+    }
+    
+    private void updateLogCount(BottomsheetdialogLoggerBinding binding, int count) {
+        binding.tvLogCount.setText(String.format(java.util.Locale.getDefault(), "%d logs", count));
     }
 }

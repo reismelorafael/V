@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_height="match_parent"
     android:layout_width="match_parent">
 
@@ -18,16 +19,70 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"/>
 
-<!--        <TextView-->
-<!--            android:id="@+id/title"-->
-<!--            android:layout_width="wrap_content"-->
-<!--            android:layout_height="wrap_content"-->
-<!--            android:layout_marginBottom="8dp"-->
-<!--            android:text="@string/logs"-->
-<!--            style="@style/MaterialAlertDialog.Material3.Title.Text"/>-->
+        <!-- Filter and action buttons row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:id="@+id/tv_log_count"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="0 logs"
+                android:textStyle="bold"
+                android:textSize="14sp"/>
+
+            <Spinner
+                android:id="@+id/spinner_filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:minWidth="100dp"/>
+
+            <ImageButton
+                android:id="@+id/btn_export"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/save_24px"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/export"
+                android:padding="8dp"/>
+
+            <ImageButton
+                android:id="@+id/btn_copy"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/content_copy_24px"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/copy"
+                android:padding="8dp"/>
+
+            <ImageButton
+                android:id="@+id/btn_clear"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/delete_24px"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/delete_all"
+                android:padding="8dp"/>
+
+            <ImageButton
+                android:id="@+id/btn_scroll_bottom"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/arrow_downward_24px"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/arrow_down"
+                android:padding="8dp"/>
+
+        </LinearLayout>
 
         <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recyclerLog"
+            android:id="@+id/recycler_logs"
             android:gravity="start"
             android:layout_width="fill_parent"
             android:layout_height="match_parent"

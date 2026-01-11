@@ -355,6 +355,18 @@ public class LogsAdapter extends RecyclerView.Adapter<LogsAdapter.logViewHolder>
 	public void setLogLevel(int level) {
 		mLogLevel = level;
 	}
+	
+	/**
+	 * Sets the logs directly from an external list.
+	 * Used by LogsFragment for filtered views.
+	 * 
+	 * @param logs the list of log items to display
+	 */
+	public void setLogs(java.util.List<LogItem> logs) {
+		currentLevelEntries.clear();
+		currentLevelEntries.addAll(logs);
+		notifyDataSetChanged();
+	}
 
 
 	/**

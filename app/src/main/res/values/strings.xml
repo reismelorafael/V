@@ -828,4 +828,7 @@
     <string name="progress_creating_disk">Creating disk image…</string>
     <string name="progress_please_wait">Please wait, this may take a few minutes.</string>
     <string name="progress_estimated_time">Estimated time: %s</string>
+
+    <!-- ========================== LOGS DIALOG STRINGS ========================== -->
+    <string name="clear_logs_confirmation">Are you sure you want to clear all logs?</string>
 </resources>
