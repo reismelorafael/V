@@ -30,12 +30,10 @@ public abstract class AbstractScaling {
 				{
 					if ( id == R.id.itemFitToScreen)
 						scalings[i]=new FitToScreenScaling();
-					else if ( id == R.id.itemOneToOne) 
-					
+					else if ( id == R.id.itemOneToOne)
 						scalings[i]=new OneToOneScaling();
-					else if  ( id == R.id.itemOneToOne) 
+					else if ( id == R.id.itemZoomable)
 						scalings[i]=new ZoomScaling();
-					
 				}
 				return scalings[i];
 			}
