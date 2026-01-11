@@ -7,6 +7,32 @@
 </p>
 </div>
 
+---
+
+## ⚠️ Attribution Notice / Aviso de Atribuição
+
+### English
+
+> **This repository is a fork of the original [Vectras VM](https://github.com/xoureldeen/Vectras-VM-Android) project.**
+>
+> **Original Author / Creator**: [xoureldeen](https://github.com/xoureldeen)
+>
+> This fork is maintained by [rafaelmeloreisnovo](https://github.com/rafaelmeloreisnovo) and includes modifications and enhancements to the original work. All credit for the original concept, design, and foundational code belongs to **xoureldeen**.
+>
+> In accordance with the GNU General Public License v2.0 and ethical principles of open-source development, we acknowledge and honor the original author's contributions. Any derivative work must maintain this attribution.
+
+### Português (PT-BR)
+
+> **Este repositório é um fork do projeto original [Vectras VM](https://github.com/xoureldeen/Vectras-VM-Android).**
+>
+> **Autor / Criador Original**: [xoureldeen](https://github.com/xoureldeen)
+>
+> Este fork é mantido por [rafaelmeloreisnovo](https://github.com/rafaelmeloreisnovo) e inclui modificações e melhorias ao trabalho original. Todo o crédito pelo conceito original, design e código fundamental pertence a **xoureldeen**.
+>
+> De acordo com a GNU General Public License v2.0 e os princípios éticos do desenvolvimento de código aberto, reconhecemos e honramos as contribuições do autor original. Qualquer trabalho derivado deve manter esta atribuição.
+
+---
+
 # Vectras VM
 [![Ceasefire Now](https://badge.techforpalestine.org/default)](https://techforpalestine.org/learn-more)
 
@@ -315,7 +341,16 @@ Help support the project by contributing!
 [![Buy Me a Coffee at ko-fi.com][ico-ko-fi]][link-ko-fi]
 [![Support me on Patreon](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dendel%26type%3Dpatrons&style=flat)](https://patreon.com/VectrasTeam)
 
-# Thanks to
+# Thanks to / Agradecimentos
+
+## 🏆 Original Author / Autor Original
+
+**[xoureldeen](https://github.com/xoureldeen)** - Original creator and developer of Vectras VM. This project exists because of his vision, hard work, and dedication to open-source software. We are deeply grateful for his foundational contributions.
+
+**[xoureldeen](https://github.com/xoureldeen)** - Criador e desenvolvedor original do Vectras VM. Este projeto existe graças à sua visão, trabalho árduo e dedicação ao software de código aberto. Somos profundamente gratos por suas contribuições fundamentais.
+
+## Libraries and Projects / Bibliotecas e Projetos
+
 - [3DFX QEMU PATCH](https://github.com/kjliew/qemu-3dfx)
 - [Alpine Linux](https://www.alpinelinux.org/)
 - [Glide](https://github.com/bumptech/glide)

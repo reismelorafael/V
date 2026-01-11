@@ -68,6 +68,7 @@ The theoretical foundations draw from diverse fields including:
 
 This project would not have been possible without the contributions of the open-source community and the foundational work of many individuals and organizations:
 
+- **xoureldeen (Original Creator)**: For creating and developing the original Vectras VM project. His vision, dedication, and hard work laid the foundation for this entire project. We honor and recognize his fundamental contributions to making desktop-grade virtualization accessible on Android devices.
 - **QEMU Project**: For creating the foundational emulation framework
 - **Termux Project**: For pioneering terminal emulation on Android
 - **Alpine Linux**: For the lightweight distribution supporting the bootstrap environment
@@ -75,7 +76,7 @@ This project would not have been possible without the contributions of the open-
 - **Firebase Team**: For cloud infrastructure services
 - **Android Open Source Project**: For the mobile platform foundation
 
-Special recognition goes to the original Vectras VM maintainers and the community of contributors who have shaped the project through their code contributions, bug reports, and feature suggestions.
+Special recognition goes to **xoureldeen**, the original Vectras VM creator, and the community of contributors who have shaped the project through their code contributions, bug reports, and feature suggestions.
 
 ### Document Organization
 
@@ -153,6 +154,7 @@ Os fundamentos teóricos derivam de diversos campos incluindo:
 
 Este projeto não seria possível sem as contribuições da comunidade de código aberto e o trabalho fundamental de muitos indivíduos e organizações:
 
+- **xoureldeen (Criador Original)**: Por criar e desenvolver o projeto original Vectras VM. Sua visão, dedicação e trabalho árduo estabeleceram a fundação de todo este projeto. Honramos e reconhecemos suas contribuições fundamentais para tornar a virtualização de nível desktop acessível em dispositivos Android.
 - **Projeto QEMU**: Por criar o framework fundamental de emulação
 - **Projeto Termux**: Por ser pioneiro na emulação de terminal no Android
 - **Alpine Linux**: Pela distribuição leve suportando o ambiente de bootstrap
@@ -160,7 +162,7 @@ Este projeto não seria possível sem as contribuições da comunidade de códig
 - **Equipe Firebase**: Por serviços de infraestrutura em nuvem
 - **Android Open Source Project**: Pela fundação da plataforma móvel
 
-Reconhecimento especial vai para os mantenedores originais do Vectras VM e a comunidade de contribuidores que moldaram o projeto através de suas contribuições de código, relatórios de bugs e sugestões de funcionalidades.
+Reconhecimento especial vai para **xoureldeen**, o criador original do Vectras VM, e a comunidade de contribuidores que moldaram o projeto através de suas contribuições de código, relatórios de bugs e sugestões de funcionalidades.
 
 ### Organização do Documento
 
