@@ -44,6 +44,7 @@ import com.vectras.vm.VMCreatorActivity;
 import com.vectras.vm.Minitools;
 import com.vectras.vm.R;
 import com.vectras.vm.WebViewActivity;
+import com.vectras.vm.benchmark.BenchmarkActivity;
 import com.vectras.vm.databinding.ActivityMainBinding;
 import com.vectras.vm.databinding.ActivityMainContentBinding;
 import com.vectras.vm.main.softwarestore.SoftwareStoreFragment;
@@ -456,6 +457,10 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
             } else if (id == R.id.mini_tools) {
                 Intent intent = new Intent();
                 intent.setClass(this, Minitools.class);
+                startActivity(intent);
+            } else if (id == R.id.navigation_item_benchmark) {
+                Intent intent = new Intent();
+                intent.setClass(this, BenchmarkActivity.class);
                 startActivity(intent);
             } else if (id == R.id.navigation_qemu_doc) {
                 Intent intent = new Intent();

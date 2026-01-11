@@ -14,6 +14,8 @@
 
 > **Note**: This project includes an experimental **Vectra Core MVP** - a deterministic event processing framework with integrity verification. See [VECTRA_CORE.md](VECTRA_CORE.md) for details.
 
+> **🚀 Performance Module**: Low-level bitwise and mathematical optimizations are available in `com.vectras.vm.core.BitwiseMath` - featuring vector operations, fast trigonometry, entropy calculations, and spectral analysis using direct bit manipulation.
+
 ---
 
 ## 🎯 What Makes Vectras VM Different / O que diferencia o Vectras VM
@@ -108,6 +110,55 @@ String report = VectraBenchmark.formatReport(results);
 - **Non-Intrusive**: No impact on user experience during benchmarks
 - **Deterministic**: Reproducible results across runs
 - **AnTuTu-Compatible**: Scoring methodology inspired by AnTuTu v10.x
+
+---
+
+## 🧮 Low-Level Math Module / Módulo Matemático Low-Level
+
+The `BitwiseMath` class provides optimized mathematical operations using bitwise manipulation for maximum performance:
+
+### Features / Funcionalidades
+
+| Category | Operations | Description |
+|----------|-----------|-------------|
+| **Vector 2D/3D** | pack/unpack, dot, magnitude | Packed integer vectors using bitwise ops |
+| **Matrix 4x4** | transpose, determinant, trace | Efficient matrix transformations |
+| **Trigonometry** | sine, cosine, atan2 | Fast approximations using lookup tables |
+| **Entropy/Harmony** | entropy, syntropy, harmony | Information-theoretic calculations |
+| **Spectral** | frequency bin, low-pass filter, resonance | Signal processing helpers |
+| **Utilities** | branchless min/max/abs, Morton codes, bit rotation | Branchless operations for performance |
+
+### Usage / Uso
+
+```java
+import com.vectras.vm.core.BitwiseMath;
+
+// Vector operations
+int vec2d = BitwiseMath.packVec2(100, 200);
+int dotProduct = BitwiseMath.dotVec2(vec2d, vec2d);
+
+// Fast trigonometry (fixed-point)
+int sinVal = BitwiseMath.fastSineFixed(BitwiseMath.FIXED_PI / 4);
+int cosVal = BitwiseMath.fastCosineFixed(BitwiseMath.FIXED_PI / 4);
+
+// Entropy calculations
+int harmony = BitwiseMath.computeHarmony(value1, value2);
+int syntropy = BitwiseMath.computeSyntropy(data, 0, data.length);
+
+// Branchless operations
+int min = BitwiseMath.branchlessMin(a, b);
+int abs = BitwiseMath.branchlessAbs(x);
+
+// Morton codes for spatial indexing
+int morton = BitwiseMath.interleave16(x, y);
+```
+
+### Design Goals / Objetivos de Design
+
+- **Zero allocations**: No heap allocations in hot paths
+- **Branchless**: Minimize branch mispredictions
+- **SIMD-friendly**: Operations that can be vectorized
+- **Fixed-point**: Integer arithmetic for deterministic results
 
 ---
 

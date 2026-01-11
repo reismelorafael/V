@@ -2,6 +2,34 @@
 <resources>
     <string name="app_name">Vectras VM</string>
 
+    <!--======================BENCHMARK STRINGS====================-->
+    <string name="benchmark">Benchmark</string>
+    <string name="total_score">Total Score</string>
+    <string name="tap_run_benchmark">Tap \"Run Benchmark\" to start</string>
+    <string name="category_scores">Category Scores</string>
+    <string name="cpu_single">CPU (Single-threaded)</string>
+    <string name="cpu_multi">CPU (Multi-threaded)</string>
+    <string name="bench_storage">Storage</string>
+    <string name="bench_integrity">Integrity</string>
+    <string name="bench_emulation">Emulation</string>
+    <string name="running_benchmark">Running benchmark…</string>
+    <string name="actions">Actions</string>
+    <string name="run_benchmark">Run Benchmark</string>
+    <string name="run_benchmark_desc">Run 79 metrics across 6 categories</string>
+    <string name="view_detailed_results">View Detailed Results</string>
+    <string name="view_detailed_results_desc">See all 79 metric results</string>
+    <string name="export_results">Export Results</string>
+    <string name="export_results_desc">Save results to file</string>
+    <string name="share_results">Share Results</string>
+    <string name="share_results_desc">Share benchmark report</string>
+    <string name="about_benchmark">About Benchmark</string>
+    <string name="benchmark_info">Vectras Benchmark measures device performance across 79 metrics inspired by AnTuTu methodology. Results are deterministic and reproducible. Categories include: CPU operations (single/multi-threaded), Memory bandwidth/latency, Storage I/O, Data integrity (CRC32C, parity), and Emulation-specific tests.</string>
+    <string name="benchmark_complete">Benchmark complete!</string>
+    <string name="pts">pts</string>
+    <string name="detailed_results">Detailed Results</string>
+    <string name="results_exported">Results exported to: %s</string>
+    <string name="export_failed">Export failed</string>
+
     <!--======================VECTRAS STRINGS====================-->
     <string name="qemu_version" translatable="false">Stable</string>
     <!-- logger -->

@@ -12,6 +12,10 @@
         android:icon="@drawable/overview_24px"
         android:title="@string/view_logs" />
     <item
+        android:id="@+id/navigation_item_benchmark"
+        android:icon="@drawable/show_chart_24px"
+        android:title="@string/benchmark"/>
+    <item
         android:id="@+id/navigation_item_settings"
         android:icon="@drawable/settings_24px"
         android:title="@string/settings"/>
