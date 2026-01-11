@@ -32,7 +32,7 @@ import java.util.concurrent.Executors;
 public class AboutActivity extends AppCompatActivity implements View.OnClickListener{
     ExecutorService executor = Executors.newSingleThreadExecutor();
     Button btn_osl, btn_clog;
-    ImageButton btn_discord, btn_youtube, btn_github, btn_telegram, btn_instagram, btn_facebook;
+    ImageButton btn_discord, btn_youtube, btn_github, btn_instagram, btn_facebook;
 
     String appInfo;
 
@@ -50,7 +50,6 @@ public class AboutActivity extends AppCompatActivity implements View.OnClickList
         getSupportActionBar().setDisplayShowHomeEnabled(true);
         toolbar.setTitle(getResources().getString(R.string.about));
         //btn
-        btn_telegram = findViewById(R.id.btn_telegram);
         btn_youtube = findViewById(R.id.btn_youtube);
         btn_github = findViewById(R.id.btn_github);
         btn_instagram = findViewById(R.id.btn_instagram);
@@ -59,7 +58,6 @@ public class AboutActivity extends AppCompatActivity implements View.OnClickList
         btn_osl = findViewById(R.id.btn_osl);
         btn_clog = findViewById(R.id.btn_changelog);
         //onclicklistener
-        btn_telegram.setOnClickListener(this);
         btn_github.setOnClickListener(this);
         btn_youtube.setOnClickListener(this);
         btn_instagram.setOnClickListener(this);
@@ -109,7 +107,6 @@ public class AboutActivity extends AppCompatActivity implements View.OnClickList
         }
         return super.onOptionsItemSelected(item);
     }
-    public static final int TG = R.id.btn_telegram;
     public static final int YT = R.id.btn_youtube;
     public static final int GT = R.id.btn_github;
     public static final int IG = R.id.btn_instagram;
@@ -120,12 +117,7 @@ public class AboutActivity extends AppCompatActivity implements View.OnClickList
     @Override
     public void onClick(View v) {
         int id = v.getId();
-            if (id == TG) {
-                String tg = "https://t.me/vectras_os";
-                Intent f = new Intent(Intent.ACTION_VIEW);
-                f.setData(Uri.parse(tg));
-                startActivity(f);
-            } else if (id == YT) {
+            if (id == YT) {
                 String tw = "https://youtube.com/@xoureldeen";
                 Intent w = new Intent(Intent.ACTION_VIEW);
                 w.setData(Uri.parse(tw));

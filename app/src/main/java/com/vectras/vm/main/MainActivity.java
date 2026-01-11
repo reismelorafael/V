@@ -292,7 +292,6 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
         checkMissingLibraries(this);
 
         setupDrawer();
-        DialogUtils.joinTelegram(this);
         NotificationUtils.clearAll(this);
 
         if (MainSettingsManager.getPromptUpdateVersion(this))

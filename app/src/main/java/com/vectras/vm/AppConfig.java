@@ -113,8 +113,6 @@ public class AppConfig {
 
     public static String temporaryLastedTerminalOutput = "";
 
-    public static String telegramLink = "https://t.me/vectras_os";
-
     public static String patreonLink = "https://www.patreon.com/VectrasTeam";
 
 }

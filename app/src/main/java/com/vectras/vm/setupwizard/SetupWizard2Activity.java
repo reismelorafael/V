@@ -5,7 +5,6 @@ import static android.content.Intent.ACTION_VIEW;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
@@ -24,7 +23,6 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.preference.PreferenceManager;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -108,7 +106,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (currentStep > STEP_JOIN_COMMUNITY) {
+                if (currentStep > STEP_PATERON) {
                     uiControllerFinalSteps(currentStep - 1);
                 } else if (!isExecutingCommand) {
                     setEnabled(false);
@@ -195,7 +193,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
             } else if (isLibProotError) {
                 Intent intent = new Intent();
                 intent.setAction(ACTION_VIEW);
-                intent.setData(Uri.parse(AppConfig.telegramLink));
+                intent.setData(Uri.parse(AppConfig.community));
                 startActivity(intent);
             } else if (SetupFeatureCore.isInstalledSystemFiles(this)) {
                 getDataForStandardSetup();
@@ -208,16 +206,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
         bindingFinalSteps.tvLater.setOnClickListener(v -> uiControllerFinalSteps(currentStep + 1));
 
         bindingFinalSteps.btnContinue.setOnClickListener(v -> {
-            if (currentStep == STEP_JOIN_COMMUNITY) {
-                uiControllerFinalSteps(currentStep + 1);
-                Intent intent = new Intent(ACTION_VIEW, Uri.parse(AppConfig.telegramLink));
-                startActivity(intent);
-                //Don't show join Telegram dialog again
-                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-                SharedPreferences.Editor edit = prefs.edit();
-                edit.putBoolean("tgDialog", true);
-                edit.apply();
-            } else if (currentStep == STEP_PATERON) {
+            if (currentStep == STEP_PATERON) {
                 uiControllerFinalSteps(currentStep + 1);
                 Intent intent = new Intent(ACTION_VIEW, Uri.parse(AppConfig.patreonLink));
                 startActivity(intent);
@@ -306,7 +295,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 binding.tvErrorTitle.setText(getString(R.string.something_went_wrong));
                 binding.tvErrorSubtitle.setText(getString(R.string.the_setup_could_not_be_completed_and_below_is_the_log));
             }
-        } else if (step == STEP_JOIN_COMMUNITY) {
+        } else if (step == STEP_PATERON) {
             bindingFinalSteps.main.setVisibility(View.VISIBLE);
         }
 
@@ -361,17 +350,12 @@ public class SetupWizard2Activity extends AppCompatActivity {
     private void uiControllerFinalSteps(int step) {
         TransitionManager.beginDelayedTransition(bindingFinalSteps.mainContent);
 
-        bindingFinalSteps.linearcommunity.setVisibility(View.GONE);
         bindingFinalSteps.lineardonate.setVisibility(View.GONE);
         bindingFinalSteps.linearwelcomehome.setVisibility(View.GONE);
 
         TransitionManager.beginDelayedTransition(bindingFinalSteps.mainContent);
 
-        if (step == STEP_JOIN_COMMUNITY) {
-            bindingFinalSteps.linearcommunity.setVisibility(View.VISIBLE);
-            bindingFinalSteps.tvLater.setVisibility(View.VISIBLE);
-            bindingFinalSteps.btnContinue.setText(getString(R.string.join));
-        } else if (step == STEP_PATERON) {
+        if (step == STEP_PATERON) {
             bindingFinalSteps.lineardonate.setVisibility(View.VISIBLE);
             bindingFinalSteps.tvLater.setVisibility(View.VISIBLE);
             bindingFinalSteps.btnContinue.setText(getString(R.string.join));
@@ -650,9 +634,11 @@ public class SetupWizard2Activity extends AppCompatActivity {
             isExecutingCommand = false;
             MainSettingsManager.setStandardSetupVersion(this, AppConfig.standardSetupVersion);
             MainSettingsManager.setsetUpWithManualSetupBefore(this, isCustomSetupMode);
-            uiController(STEP_JOIN_COMMUNITY);
+            uiController(STEP_PATERON);
             if (isSystemUpdateMode) {
                 uiControllerFinalSteps(STEP_FINISH);
+            } else {
+                uiControllerFinalSteps(STEP_PATERON);
             }
         } else if (newLog.contains("libproot.so --help") || newLog.contains("/bin/sh: can't fork:")) {
             isLibProotError = true;

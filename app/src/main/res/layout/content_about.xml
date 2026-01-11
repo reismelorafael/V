@@ -156,17 +156,6 @@
                         app:tint="?attr/colorControlNormal" />
 
                     <ImageButton
-                        android:id="@+id/btn_telegram"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:layout_margin="8dp"
-                        android:padding="8dp"
-                        android:textAlignment="textStart"
-                        android:src="@drawable/ic_telegram"
-                        app:tint="?attr/colorControlNormal"/>
-
-                    <ImageButton
                         android:id="@+id/btn_youtube"
                         style="@style/Widget.Material3.Button.TextButton"
                         android:layout_width="48dp"
