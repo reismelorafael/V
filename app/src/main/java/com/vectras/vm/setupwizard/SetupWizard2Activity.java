@@ -71,7 +71,6 @@ public class SetupWizard2Activity extends AppCompatActivity {
     final int STEP_SETUP_OPTIONS = 4;
     final int STEP_INSTALLING_PACKAGES = 5;
     final int STEP_ERROR = 6;
-    final int STEP_JOIN_COMMUNITY = 7;
     final int STEP_PATERON = 8;
     final int STEP_FINISH = 9;
     final int STEP_SYSTEM_UPDATE = -1;
