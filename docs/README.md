@@ -26,6 +26,23 @@
 
 ## Índice Geral / General Index
 
+### 🎯 Audience-Specific Navigation / Navegação por Audiência
+
+**New! Choose documentation tailored to your role:**
+
+| Audience | Document | Description |
+|----------|----------|-------------|
+| 💼 **Investors & VCs** | [HIGH_LEVEL_INVESTORS.md](navigation/HIGH_LEVEL_INVESTORS.md) | Market opportunity, competitive analysis, financial projections, ROI |
+| 🔬 **Scientists & Researchers** | [SCIENTISTS_RESEARCH.md](navigation/SCIENTISTS_RESEARCH.md) | Theoretical foundations, performance analysis, experimental methodology |
+| 🎓 **Universities** | [UNIVERSITIES_ACADEMIC.md](navigation/UNIVERSITIES_ACADEMIC.md) | Curriculum integration, lab exercises, research projects, assessment rubrics |
+| 🏢 **Enterprises** | [ENTERPRISE_COMPANIES.md](navigation/ENTERPRISE_COMPANIES.md) | Use cases, security, deployment options, pricing, professional services |
+| 📊 **Benchmarking** | [BENCHMARK_COMPARISONS.md](navigation/BENCHMARK_COMPARISONS.md) | Ultra-detailed 79-metric analysis, performance comparisons |
+| 🔧 **Operations** | [PERFORMANCE_OPERATIONS.md](navigation/PERFORMANCE_OPERATIONS.md) | Daily operations, optimization strategies, troubleshooting |
+
+**📍 [Navigation Index](navigation/INDEX.md)** - Complete guide to all audience-specific documentation
+
+---
+
 ### Documentação Introdutória / Introductory Documentation
 
 | Document | Language | Description |
@@ -110,6 +127,16 @@ Vectras-VM-Android/
 ---
 
 ## Como Navegar / How to Navigate
+
+### 🎯 Choose Your Path / Escolha Seu Caminho
+
+**Start with [Audience-Specific Navigation](navigation/INDEX.md)** to find documentation tailored to your role:
+- 💼 Investors & VCs → [HIGH_LEVEL_INVESTORS.md](navigation/HIGH_LEVEL_INVESTORS.md)
+- 🔬 Scientists & Researchers → [SCIENTISTS_RESEARCH.md](navigation/SCIENTISTS_RESEARCH.md)
+- 🎓 Universities & Education → [UNIVERSITIES_ACADEMIC.md](navigation/UNIVERSITIES_ACADEMIC.md)
+- 🏢 Enterprises & Companies → [ENTERPRISE_COMPANIES.md](navigation/ENTERPRISE_COMPANIES.md)
+- 📊 Performance Analysis → [BENCHMARK_COMPARISONS.md](navigation/BENCHMARK_COMPARISONS.md)
+- 🔧 Operations & Optimization → [PERFORMANCE_OPERATIONS.md](navigation/PERFORMANCE_OPERATIONS.md)
 
 ### Para Desenvolvedores / For Developers
 
