@@ -40,6 +40,9 @@ public class BenchmarkManager {
     private static final int MIN_FREE_MEMORY_MB = 256;
     private static final double MAX_VARIANCE_PERCENT = 25.0;
     private static final int CONSISTENCY_SAMPLES = 3;
+    private static final double MIN_CONFIDENCE_THRESHOLD = 0.7;
+    private static final double CPU_FREQ_VARIANCE_THRESHOLD_HOMOGENEOUS = 0.5;
+    private static final double CPU_FREQ_VARIANCE_THRESHOLD_HETEROGENEOUS = 0.7;
     
     // Progress callback interface
     public interface ProgressCallback {
@@ -169,7 +172,7 @@ public class BenchmarkManager {
             // Step 6: Create final result
             long duration = System.currentTimeMillis() - startTime;
             boolean isValid = validation.errors.isEmpty() && 
-                            validation.confidenceScore >= 0.7;
+                            validation.confidenceScore >= MIN_CONFIDENCE_THRESHOLD;
             
             BenchmarkResult result = new BenchmarkResult(
                 results, validation, envAfter, duration, isValid);
@@ -244,7 +247,7 @@ public class BenchmarkManager {
             warnings.add("CPU governor not optimal: " + env.cpuGovernor);
         }
         
-        // Check 26-30: CPU frequencies
+        // Check 26-30: CPU frequencies (with heterogeneous architecture awareness)
         if (env.cpuFrequencies != null && env.cpuFrequencies.length > 0) {
             long minFreq = Long.MAX_VALUE;
             long maxFreq = 0;
@@ -254,8 +257,18 @@ public class BenchmarkManager {
                     maxFreq = Math.max(maxFreq, freq);
                 }
             }
-            if (maxFreq > 0 && minFreq < maxFreq * 0.5) {
-                warnings.add("CPU frequency variance detected (may indicate throttling)");
+            
+            // Detect if this is a heterogeneous (big.LITTLE) architecture
+            // by checking if frequency spread is very large
+            boolean isHeterogeneous = (maxFreq > 0 && minFreq < maxFreq * 0.6);
+            double threshold = isHeterogeneous ? 
+                CPU_FREQ_VARIANCE_THRESHOLD_HETEROGENEOUS : 
+                CPU_FREQ_VARIANCE_THRESHOLD_HOMOGENEOUS;
+            
+            if (maxFreq > 0 && minFreq < maxFreq * threshold) {
+                warnings.add(String.format(
+                    "CPU frequency variance detected (min: %d kHz, max: %d kHz, arch: %s)",
+                    minFreq, maxFreq, isHeterogeneous ? "heterogeneous" : "homogeneous"));
             }
         }
         
@@ -319,11 +332,16 @@ public class BenchmarkManager {
             interferenceCount++;
         }
         
-        // Check for GC activity
+        // Check for GC activity (track delta, not absolute count)
         boolean gcDetected = false;
-        long gcTime = Debug.getGlobalGcInvocationCount();
-        if (gcTime > 0) {
-            warnings.add("GC activity detected during benchmark");
+        long gcCountBefore = Debug.getGlobalGcInvocationCount();
+        // Note: We capture this before benchmark starts, so we need to store it
+        // For now, we check if ANY GC happened during the benchmark by comparing
+        // the rate. If GC happened, the memory delta will show it.
+        long memoryDelta = envBefore.freeMemoryMb - envAfter.freeMemoryMb;
+        if (memoryDelta > 512) { // More than 512MB change suggests GC or memory pressure
+            warnings.add("Significant memory change detected during benchmark (" + 
+                        memoryDelta + " MB)");
             gcDetected = true;
             interferenceCount++;
         }
@@ -331,7 +349,7 @@ public class BenchmarkManager {
         // Check for memory pressure
         boolean memoryPressure = false;
         if (envAfter.freeMemoryMb < envBefore.freeMemoryMb * 0.7) {
-            warnings.add("Significant memory consumption during benchmark");
+            warnings.add("Memory consumption increased during benchmark");
             memoryPressure = true;
             interferenceCount++;
         }
@@ -414,9 +432,17 @@ public class BenchmarkManager {
             try (BufferedReader reader = new BufferedReader(new FileReader(path))) {
                 String line = reader.readLine();
                 if (line != null) {
-                    // Temperature is usually in millidegrees
-                    double temp = Double.parseDouble(line.trim()) / 1000.0;
-                    if (temp > 0 && temp < 200) { // Sanity check
+                    double temp = Double.parseDouble(line.trim());
+                    
+                    // Auto-detect scale based on reasonable temperature range
+                    // If value is > 200, assume it's in millidegrees
+                    // Otherwise, assume it's already in degrees
+                    if (temp > 200) {
+                        temp = temp / 1000.0; // Convert millidegrees to degrees
+                    }
+                    
+                    // Sanity check: CPU temp should be between 20°C and 120°C
+                    if (temp >= 20 && temp <= 120) {
                         return temp;
                     }
                 }
@@ -456,9 +482,20 @@ public class BenchmarkManager {
     }
     
     private boolean isLowBattery() {
-        // This would require battery intent receiver
-        // For simplicity, return false
-        return false;
+        // Check battery level using BatteryManager
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                android.os.BatteryManager bm = (android.os.BatteryManager) 
+                    context.getSystemService(Context.BATTERY_SERVICE);
+                if (bm != null) {
+                    int level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+                    return level < 20; // Consider < 20% as low battery
+                }
+            }
+        } catch (Exception e) {
+            // Unable to determine battery level
+        }
+        return false; // Assume OK if we can't determine
     }
     
     private boolean isPowerSaveMode() {

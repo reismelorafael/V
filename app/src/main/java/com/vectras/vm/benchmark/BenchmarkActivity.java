@@ -196,8 +196,11 @@ public class BenchmarkActivity extends AppCompatActivity {
                                 layoutProgress.setVisibility(View.GONE);
                                 btnRunBenchmark.setEnabled(true);
                                 tvScoreStatus.setText(getString(R.string.benchmark_failed));
+                                // Null-safe error message
+                                String errorMsg = (error != null && !error.isEmpty()) ? 
+                                    error : "Unknown error occurred";
                                 Toast.makeText(BenchmarkActivity.this, 
-                                    "Error: " + error, Toast.LENGTH_LONG).show();
+                                    "Error: " + errorMsg, Toast.LENGTH_LONG).show();
                             });
                         }
                     });
@@ -207,7 +210,10 @@ public class BenchmarkActivity extends AppCompatActivity {
                     layoutProgress.setVisibility(View.GONE);
                     btnRunBenchmark.setEnabled(true);
                     tvScoreStatus.setText(getString(R.string.benchmark_failed));
-                    Toast.makeText(this, "Benchmark failed: " + e.getMessage(), 
+                    // Null-safe error message
+                    String errorMsg = (e.getMessage() != null && !e.getMessage().isEmpty()) ? 
+                        e.getMessage() : "Unknown error: " + e.getClass().getSimpleName();
+                    Toast.makeText(this, "Benchmark failed: " + errorMsg, 
                         Toast.LENGTH_LONG).show();
                 });
             }
