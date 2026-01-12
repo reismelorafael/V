@@ -251,24 +251,34 @@ public class BenchmarkManager {
         if (env.cpuFrequencies != null && env.cpuFrequencies.length > 0) {
             long minFreq = Long.MAX_VALUE;
             long maxFreq = 0;
+            int activeCount = 0;
+            
             for (long freq : env.cpuFrequencies) {
                 if (freq > 0) {
                     minFreq = Math.min(minFreq, freq);
                     maxFreq = Math.max(maxFreq, freq);
+                    activeCount++;
                 }
             }
             
-            // Detect if this is a heterogeneous (big.LITTLE) architecture
-            // by checking if frequency spread is very large
-            boolean isHeterogeneous = (maxFreq > 0 && minFreq < maxFreq * 0.6);
-            double threshold = isHeterogeneous ? 
-                CPU_FREQ_VARIANCE_THRESHOLD_HETEROGENEOUS : 
-                CPU_FREQ_VARIANCE_THRESHOLD_HOMOGENEOUS;
-            
-            if (maxFreq > 0 && minFreq < maxFreq * threshold) {
-                warnings.add(String.format(
-                    "CPU frequency variance detected (min: %d kHz, max: %d kHz, arch: %s)",
-                    minFreq, maxFreq, isHeterogeneous ? "heterogeneous" : "homogeneous"));
+            if (activeCount > 0 && maxFreq > 0) {
+                // Detect if this is a heterogeneous (big.LITTLE) architecture
+                // by checking if frequency spread is very large
+                boolean isHeterogeneous = (minFreq < maxFreq * 0.6);
+                double threshold = isHeterogeneous ? 
+                    CPU_FREQ_VARIANCE_THRESHOLD_HETEROGENEOUS : 
+                    CPU_FREQ_VARIANCE_THRESHOLD_HOMOGENEOUS;
+                
+                // Calculate actual frequency variance across all active cores
+                double freqVariance = 1.0 - ((double)minFreq / (double)maxFreq);
+                
+                // Warn if variance exceeds threshold
+                if (freqVariance > (1.0 - threshold)) {
+                    warnings.add(String.format(java.util.Locale.US,
+                        "High CPU frequency variance detected (%.1f%%, min: %d kHz, max: %d kHz, arch: %s)",
+                        freqVariance * 100, minFreq, maxFreq, 
+                        isHeterogeneous ? "heterogeneous" : "homogeneous"));
+                }
             }
         }
         
@@ -332,12 +342,8 @@ public class BenchmarkManager {
             interferenceCount++;
         }
         
-        // Check for GC activity (track delta, not absolute count)
+        // Check for GC activity (track memory delta as proxy for GC)
         boolean gcDetected = false;
-        long gcCountBefore = Debug.getGlobalGcInvocationCount();
-        // Note: We capture this before benchmark starts, so we need to store it
-        // For now, we check if ANY GC happened during the benchmark by comparing
-        // the rate. If GC happened, the memory delta will show it.
         long memoryDelta = envBefore.freeMemoryMb - envAfter.freeMemoryMb;
         if (memoryDelta > 512) { // More than 512MB change suggests GC or memory pressure
             warnings.add("Significant memory change detected during benchmark (" + 
