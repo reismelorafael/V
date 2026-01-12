@@ -37,6 +37,8 @@
 [![Ceasefire Now](https://badge.techforpalestine.org/default)](https://techforpalestine.org/learn-more)
 
 > **📚 Documentation**: Comprehensive technical documentation is available in the [docs/](docs/README.md) directory, including academic-style documentation with preface, abstract, architecture details, and bibliography.
+>
+> **🎯 Navigation**: Find documentation tailored to your needs - [Audience-Specific Navigation](docs/navigation/INDEX.md) provides guides for investors, scientists, universities, enterprises, and detailed benchmark comparisons.
 
 > **Note**: This project includes an experimental **Vectra Core MVP** - a deterministic event processing framework with integrity verification. See [VECTRA_CORE.md](VECTRA_CORE.md) for details.
 
