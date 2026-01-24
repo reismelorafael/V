@@ -47,6 +47,14 @@ public class BenchmarkManager {
     private static final double MAX_TIMER_JITTER_PERCENT = 500.0;
     private static final double MAX_STABILITY_VARIANCE_PERCENT = 30.0;
     private static final boolean ENABLE_STABILITY_PROBE = false;
+    private static final long TIMER_DIAGNOSTIC_CACHE_MS = 5 * 60 * 1000L;
+    private static final long TIMER_DRIFT_TARGET_NS = 20_000_000L;
+    private static final int TIMER_JITTER_SAMPLES = 64;
+    private static final Object TIMER_DIAGNOSTIC_LOCK = new Object();
+    private static final long[] TIMER_JITTER_DELTAS = new long[TIMER_JITTER_SAMPLES];
+    private static volatile long lastTimerDiagnosticUptimeMs = -1;
+    private static volatile double cachedTimeSourceDriftPercent = 0.0;
+    private static volatile double cachedTimerJitterPercent = 0.0;
     
     // Progress callback interface
     public interface ProgressCallback {
@@ -729,12 +737,39 @@ public class BenchmarkManager {
     }
 
     private double measureTimeSourceDriftPercent() {
+        updateTimerDiagnosticsIfNeeded(false);
+        return cachedTimeSourceDriftPercent;
+    }
+
+    private double measureTimerJitterPercent() {
+        updateTimerDiagnosticsIfNeeded(false);
+        return cachedTimerJitterPercent;
+    }
+
+    private void updateTimerDiagnosticsIfNeeded(boolean force) {
+        long nowUptimeMs = android.os.SystemClock.elapsedRealtime();
+        if (!force && lastTimerDiagnosticUptimeMs >= 0
+            && (nowUptimeMs - lastTimerDiagnosticUptimeMs) < TIMER_DIAGNOSTIC_CACHE_MS) {
+            return;
+        }
+        synchronized (TIMER_DIAGNOSTIC_LOCK) {
+            nowUptimeMs = android.os.SystemClock.elapsedRealtime();
+            if (!force && lastTimerDiagnosticUptimeMs >= 0
+                && (nowUptimeMs - lastTimerDiagnosticUptimeMs) < TIMER_DIAGNOSTIC_CACHE_MS) {
+                return;
+            }
+            cachedTimeSourceDriftPercent = computeTimeSourceDriftPercent();
+            cachedTimerJitterPercent = computeTimerJitterPercent();
+            lastTimerDiagnosticUptimeMs = nowUptimeMs;
+        }
+    }
+
+    private double computeTimeSourceDriftPercent() {
         long startNano = System.nanoTime();
         long startElapsed = android.os.SystemClock.elapsedRealtimeNanos();
-        try {
-            Thread.sleep(20);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        long target = startNano + TIMER_DRIFT_TARGET_NS;
+        while (System.nanoTime() < target) {
+            // Busy wait to avoid scheduler-induced sleep jitter.
         }
         long endNano = System.nanoTime();
         long endElapsed = android.os.SystemClock.elapsedRealtimeNanos();
@@ -748,14 +783,14 @@ public class BenchmarkManager {
         return (diff / avg) * 100.0;
     }
 
-    private double measureTimerJitterPercent() {
-        int samples = 200;
+    private double computeTimerJitterPercent() {
         long prev = System.nanoTime();
         long maxDelta = 0;
         long sumDelta = 0;
-        for (int i = 0; i < samples; i++) {
+        for (int i = 0; i < TIMER_JITTER_SAMPLES; i++) {
             long now = System.nanoTime();
             long delta = now - prev;
+            TIMER_JITTER_DELTAS[i] = delta;
             if (delta > maxDelta) {
                 maxDelta = delta;
             }
@@ -765,7 +800,7 @@ public class BenchmarkManager {
         if (sumDelta == 0) {
             return 0.0;
         }
-        double avg = sumDelta / (double) samples;
+        double avg = sumDelta / (double) TIMER_JITTER_SAMPLES;
         return (maxDelta / avg) * 100.0;
     }
 
