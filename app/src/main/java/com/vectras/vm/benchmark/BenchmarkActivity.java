@@ -350,6 +350,16 @@ public class BenchmarkActivity extends AppCompatActivity {
                         fullReport.append(String.format("Free Memory: %d MB\n", env.freeMemoryMb));
                         fullReport.append(String.format("Running Processes: %d\n", env.runningProcesses));
                         fullReport.append(String.format("CPU Governor: %s\n", env.cpuGovernor));
+                        fullReport.append(String.format("CPU Info Model: %s\n", env.cpuInfoModel));
+                        fullReport.append(String.format("CPU Info Hardware: %s\n", env.cpuInfoHardware));
+                        fullReport.append(String.format("Primary ABI: %s\n", env.cpuAbi));
+                        fullReport.append(String.format("Build Fingerprint: %s\n", env.buildFingerprint));
+                        fullReport.append(String.format("Build Hardware: %s\n", env.buildHardware));
+                        fullReport.append(String.format("Build Product: %s\n", env.buildProduct));
+                        fullReport.append(String.format(java.util.Locale.US,
+                            "Timer Drift: %.1f%%\n", env.timeSourceDriftPercent));
+                        fullReport.append(String.format(java.util.Locale.US,
+                            "Timer Jitter: %.1f%%\n", env.timerJitterPercent));
                         fullReport.append(String.format("Benchmark Duration: %d ms\n", lastBenchmarkResult.durationMs));
                         fullReport.append("\n\n");
                     }

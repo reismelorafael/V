@@ -86,7 +86,10 @@ public class BenchmarkManagerTest {
     public void environmentSnapshot_capturesBasicData() {
         BenchmarkManager.EnvironmentSnapshot env = new BenchmarkManager.EnvironmentSnapshot(
             System.currentTimeMillis(), 45.0, 2048, 50, false, false, false,
-            "schedutil", new long[]{1800000, 1800000, 1800000, 1800000}
+            "schedutil", new long[]{1800000, 1800000, 1800000, 1800000},
+            "ARM Cortex", "Qualcomm", "arm64-v8a",
+            "fingerprint", "hardware", "product",
+            1.5, 10.0
         );
         
         assertNotNull(env);
@@ -112,7 +115,10 @@ public class BenchmarkManagerTest {
         
         BenchmarkManager.EnvironmentSnapshot env = new BenchmarkManager.EnvironmentSnapshot(
             System.currentTimeMillis(), 40.0, 3072, 45, false, false, false,
-            "performance", new long[]{2000000, 2000000}
+            "performance", new long[]{2000000, 2000000},
+            "ARM Cortex", "Qualcomm", "arm64-v8a",
+            "fingerprint", "hardware", "product",
+            2.0, 12.0
         );
         
         BenchmarkManager.BenchmarkResult result = new BenchmarkManager.BenchmarkResult(
@@ -233,7 +239,10 @@ public class BenchmarkManagerTest {
         
         BenchmarkManager.EnvironmentSnapshot env = new BenchmarkManager.EnvironmentSnapshot(
             System.currentTimeMillis(), 50.0, 2048, 40, false, false, false,
-            "interactive", freqs
+            "interactive", freqs,
+            "ARM Cortex", "Qualcomm", "arm64-v8a",
+            "fingerprint", "hardware", "product",
+            1.0, 8.0
         );
         
         assertEquals(8, env.cpuFrequencies.length);
@@ -257,7 +266,10 @@ public class BenchmarkManagerTest {
         
         BenchmarkManager.EnvironmentSnapshot env = new BenchmarkManager.EnvironmentSnapshot(
             System.currentTimeMillis(), 40.0, 2048, 50, false, false, false,
-            "powersave", new long[]{800000, 800000}
+            "powersave", new long[]{800000, 800000},
+            "ARM Cortex", "Qualcomm", "arm64-v8a",
+            "fingerprint", "hardware", "product",
+            2.5, 15.0
         );
         
         BenchmarkManager.BenchmarkResult result = new BenchmarkManager.BenchmarkResult(
