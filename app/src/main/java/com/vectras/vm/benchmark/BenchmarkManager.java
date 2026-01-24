@@ -346,9 +346,31 @@ public class BenchmarkManager {
         }
 
         // Check 31-35: Device fingerprint consistency (emulator/hardware spoofing)
-        boolean emulatorLikely = isLikelyEmulator(env);
-        if (emulatorLikely) {
+        if (isLikelyEmulator(env)) {
             warnings.add("Potential emulator or spoofed fingerprint detected");
+        }
+
+        if (isAbiCpuMismatch(env.cpuAbi, env.cpuInfoModel, env.cpuInfoHardware)) {
+            warnings.add("CPU/ABI mismatch detected (possible hardware spoofing)");
+        }
+
+        if (env.timeSourceDriftPercent > MAX_TIME_DRIFT_PERCENT) {
+            warnings.add(String.format(java.util.Locale.US,
+                "Timer drift detected: %.1f%% difference between clocks",
+                env.timeSourceDriftPercent));
+        }
+
+        if (env.timerJitterPercent > MAX_TIMER_JITTER_PERCENT) {
+            warnings.add(String.format(java.util.Locale.US,
+                "High timer jitter detected: %.1f%%",
+                env.timerJitterPercent));
+        }
+
+        double stabilityVariance = measureCpuStabilityVariance();
+        if (stabilityVariance > MAX_STABILITY_VARIANCE_PERCENT) {
+            warnings.add(String.format(java.util.Locale.US,
+                "CPU stability variance high: %.1f%% (possible throttling or background load)",
+                stabilityVariance));
         }
         
         boolean abiMismatch = isAbiCpuMismatch(env.cpuAbi, env.cpuInfoModel, env.cpuInfoHardware);
