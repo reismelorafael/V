@@ -55,6 +55,34 @@ public class BenchmarkManager {
     private static volatile long lastTimerDiagnosticUptimeMs = -1;
     private static volatile double cachedTimeSourceDriftPercent = 0.0;
     private static volatile double cachedTimerJitterPercent = 0.0;
+
+    private static final int DIAGNOSTIC_INDEX_TIMER_DRIFT = 0;
+    private static final int DIAGNOSTIC_INDEX_TIMER_JITTER = 1;
+    private static final int DIAGNOSTIC_INDEX_CPU_STABILITY = 2;
+    private static final int DIAGNOSTIC_INDEX_EMULATOR_SIGNALS = 3;
+    private static final int DIAGNOSTIC_INDEX_ABI_CPU_MISMATCH = 4;
+    private static final int DIAGNOSTIC_COUNT = 5;
+    private static final String[] DIAGNOSTIC_NAMES = {
+        "Timer Drift",
+        "Timer Jitter",
+        "CPU Stability Variance",
+        "Emulator Signals",
+        "ABI/CPU Mismatch"
+    };
+    private static final String[] DIAGNOSTIC_UNITS = {
+        "%",
+        "%",
+        "%",
+        "",
+        ""
+    };
+    private static final String[] DIAGNOSTIC_DESCRIPTIONS = {
+        "Difference between nanoTime and elapsedRealtime clocks",
+        "Max deviation across nanoTime samples",
+        "Variance across repeated integer add microbenchmarks",
+        "Fingerprint and CPU info inspection",
+        "ABI and cpuinfo consistency check"
+    };
     
     // Progress callback interface
     public interface ProgressCallback {
@@ -69,14 +97,14 @@ public class BenchmarkManager {
         public final VectraBenchmark.BenchmarkResult[] metrics;
         public final ValidationReport validation;
         public final EnvironmentSnapshot environment;
-        public final List<DiagnosticMetric> diagnostics;
+        public final DiagnosticMetricsView diagnostics;
         public final long durationMs;
         public final boolean isValid;
         
         public BenchmarkResult(VectraBenchmark.BenchmarkResult[] metrics,
                              ValidationReport validation,
                              EnvironmentSnapshot environment,
-                             List<DiagnosticMetric> diagnostics,
+                             DiagnosticMetricsView diagnostics,
                              long durationMs,
                              boolean isValid) {
             this.metrics = metrics;
@@ -88,17 +116,48 @@ public class BenchmarkManager {
         }
     }
 
-    public static class DiagnosticMetric {
-        public final String name;
-        public final String value;
-        public final String unit;
-        public final String description;
+    public static final class DiagnosticMetricsView {
+        private final String[] names;
+        private final double[] values;
+        private final String[] units;
+        private final String[] descriptions;
 
-        public DiagnosticMetric(String name, String value, String unit, String description) {
-            this.name = name;
-            this.value = value;
-            this.unit = unit;
-            this.description = description;
+        private DiagnosticMetricsView(String[] names,
+                                      double[] values,
+                                      String[] units,
+                                      String[] descriptions) {
+            this.names = names;
+            this.values = values;
+            this.units = units;
+            this.descriptions = descriptions;
+        }
+
+        public int size() {
+            return values.length;
+        }
+
+        public String getName(int index) {
+            return names[index];
+        }
+
+        public double getValue(int index) {
+            return values[index];
+        }
+
+        public String getUnit(int index) {
+            return units[index];
+        }
+
+        public String getDescription(int index) {
+            return descriptions[index];
+        }
+
+        public String getFormattedValue(int index) {
+            if (index == DIAGNOSTIC_INDEX_EMULATOR_SIGNALS
+                || index == DIAGNOSTIC_INDEX_ABI_CPU_MISMATCH) {
+                return values[index] > 0.5 ? "DETECTED" : "NOT DETECTED";
+            }
+            return formatTwoDecimals(values[index]);
         }
     }
 
@@ -198,8 +257,12 @@ public class BenchmarkManager {
     private final AtomicReference<ProgressCallback> callback = new AtomicReference<>();
     private final ThreadLocal<ArrayList<String>> warningBuffer =
         ThreadLocal.withInitial(() -> new ArrayList<>(64));
-    private final ThreadLocal<ArrayList<DiagnosticMetric>> diagnosticsBuffer =
-        ThreadLocal.withInitial(() -> new ArrayList<>(16));
+    private final ThreadLocal<DiagnosticMetricsView> diagnosticsView =
+        ThreadLocal.withInitial(() -> new DiagnosticMetricsView(
+            DIAGNOSTIC_NAMES,
+            new double[DIAGNOSTIC_COUNT],
+            DIAGNOSTIC_UNITS,
+            DIAGNOSTIC_DESCRIPTIONS));
     
     public BenchmarkManager(Context context) {
         this.context = context.getApplicationContext();
@@ -244,7 +307,7 @@ public class BenchmarkManager {
             boolean isValid = validation.errors.isEmpty() && 
                             validation.confidenceScore >= MIN_CONFIDENCE_THRESHOLD;
 
-            List<DiagnosticMetric> diagnostics = buildDiagnostics(envBefore, preflight);
+            DiagnosticMetricsView diagnostics = buildDiagnostics(envBefore, preflight);
             BenchmarkResult result = new BenchmarkResult(
                 results, validation, envAfter, diagnostics, duration, isValid);
             
@@ -460,34 +523,14 @@ public class BenchmarkManager {
                                      timeSourceDrift, timerJitter);
     }
 
-    private List<DiagnosticMetric> buildDiagnostics(EnvironmentSnapshot env, PreflightReport preflight) {
-        ArrayList<DiagnosticMetric> diagnostics = diagnosticsBuffer.get();
-        diagnostics.clear();
-        diagnostics.add(new DiagnosticMetric(
-            "Timer Drift",
-            formatTwoDecimals(env.timeSourceDriftPercent),
-            "%",
-            "Difference between nanoTime and elapsedRealtime clocks"));
-        diagnostics.add(new DiagnosticMetric(
-            "Timer Jitter",
-            formatTwoDecimals(env.timerJitterPercent),
-            "%",
-            "Max deviation across nanoTime samples"));
-        diagnostics.add(new DiagnosticMetric(
-            "CPU Stability Variance",
-            formatTwoDecimals(preflight.cpuStabilityVariance),
-            "%",
-            "Variance across repeated integer add microbenchmarks"));
-        diagnostics.add(new DiagnosticMetric(
-            "Emulator Signals",
-            preflight.emulatorLikely ? "DETECTED" : "NOT DETECTED",
-            "",
-            "Fingerprint and CPU info inspection"));
-        diagnostics.add(new DiagnosticMetric(
-            "ABI/CPU Mismatch",
-            preflight.abiMismatch ? "DETECTED" : "NOT DETECTED",
-            "",
-            "ABI and cpuinfo consistency check"));
+    private DiagnosticMetricsView buildDiagnostics(EnvironmentSnapshot env, PreflightReport preflight) {
+        DiagnosticMetricsView diagnostics = diagnosticsView.get();
+        double[] values = diagnostics.values;
+        values[DIAGNOSTIC_INDEX_TIMER_DRIFT] = env.timeSourceDriftPercent;
+        values[DIAGNOSTIC_INDEX_TIMER_JITTER] = env.timerJitterPercent;
+        values[DIAGNOSTIC_INDEX_CPU_STABILITY] = preflight.cpuStabilityVariance;
+        values[DIAGNOSTIC_INDEX_EMULATOR_SIGNALS] = preflight.emulatorLikely ? 1.0 : 0.0;
+        values[DIAGNOSTIC_INDEX_ABI_CPU_MISMATCH] = preflight.abiMismatch ? 1.0 : 0.0;
         return diagnostics;
     }
     
