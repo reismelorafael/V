@@ -38,6 +38,100 @@ public final class AdvancedAlgorithms {
     
     /** Inverse golden ratio */
     private static final double INV_PHI = 0.618033988749895;
+
+    private static final ThreadLocal<Buffers> THREAD_LOCAL_BUFFERS =
+            ThreadLocal.withInitial(Buffers::new);
+
+    private static final class Buffers {
+        private double[] gradient;
+        private int[] workingState;
+        private int[] entropyFreq;
+        private int[] freqX;
+        private int[] freqY;
+        private int[] joint;
+        private int[] tempInt;
+        private int[] openSet;
+        private boolean[] closedSet;
+        private int[] gScore;
+        private int[] fScore;
+
+        private double[] ensureGradientCapacity(int length) {
+            if (gradient == null || gradient.length < length) {
+                gradient = new double[length];
+            }
+            return gradient;
+        }
+
+        private int[] ensureStateCapacity(int length) {
+            if (workingState == null || workingState.length < length) {
+                workingState = new int[length];
+            }
+            return workingState;
+        }
+
+        private int[] ensureEntropyFreqCapacity() {
+            if (entropyFreq == null || entropyFreq.length < 256) {
+                entropyFreq = new int[256];
+            }
+            return entropyFreq;
+        }
+
+        private int[] ensureFreqXCapacity() {
+            if (freqX == null || freqX.length < 256) {
+                freqX = new int[256];
+            }
+            return freqX;
+        }
+
+        private int[] ensureFreqYCapacity() {
+            if (freqY == null || freqY.length < 256) {
+                freqY = new int[256];
+            }
+            return freqY;
+        }
+
+        private int[] ensureJointCapacity() {
+            if (joint == null || joint.length < 256 * 256) {
+                joint = new int[256 * 256];
+            }
+            return joint;
+        }
+
+        private int[] ensureTempIntCapacity(int length) {
+            if (tempInt == null || tempInt.length < length) {
+                tempInt = new int[length];
+            }
+            return tempInt;
+        }
+
+        private int[] ensureOpenSetCapacity(int length) {
+            if (openSet == null || openSet.length < length) {
+                openSet = new int[length];
+            }
+            return openSet;
+        }
+
+        private boolean[] ensureClosedSetCapacity(int length) {
+            if (closedSet == null || closedSet.length < length) {
+                closedSet = new boolean[length];
+            }
+            return closedSet;
+        }
+
+        private int[] ensureGScoreCapacity(int length) {
+            if (gScore == null || gScore.length < length) {
+                gScore = new int[length];
+            }
+            return gScore;
+        }
+
+        private int[] ensureFScoreCapacity(int length) {
+            if (fScore == null || fScore.length < length) {
+                fScore = new int[length];
+            }
+            return fScore;
+        }
+    }
     
     // ========== Private Constructor ==========
     
@@ -58,7 +152,9 @@ public final class AdvancedAlgorithms {
         if (data == null || data.length == 0) return 0.0;
         
         // Count byte frequencies
-        int[] freq = new int[256];
+        Buffers buffers = THREAD_LOCAL_BUFFERS.get();
+        int[] freq = buffers.ensureEntropyFreqCapacity();
+        java.util.Arrays.fill(freq, 0);
         for (byte b : data) {
             freq[b & 0xFF]++;
         }
@@ -111,14 +207,18 @@ public final class AdvancedAlgorithms {
         }
         
         // Build joint frequency distribution
-        int[][] joint = new int[256][256];
-        int[] freqX = new int[256];
-        int[] freqY = new int[256];
+        Buffers buffers = THREAD_LOCAL_BUFFERS.get();
+        int[] joint = buffers.ensureJointCapacity();
+        int[] freqX = buffers.ensureFreqXCapacity();
+        int[] freqY = buffers.ensureFreqYCapacity();
+        java.util.Arrays.fill(joint, 0);
+        java.util.Arrays.fill(freqX, 0);
+        java.util.Arrays.fill(freqY, 0);
         
         for (int i = 0; i < x.length; i++) {
             int xi = x[i] & 0xFF;
             int yi = y[i] & 0xFF;
-            joint[xi][yi]++;
+            joint[(xi << 8) + yi]++;
             freqX[xi]++;
             freqY[yi]++;
         }
@@ -128,8 +228,9 @@ public final class AdvancedAlgorithms {
         double invLen = 1.0 / x.length;
         for (int i = 0; i < 256; i++) {
             for (int j = 0; j < 256; j++) {
-                if (joint[i][j] > 0) {
-                    double pxy = joint[i][j] * invLen;
+                int jointCount = joint[(i << 8) + j];
+                if (jointCount > 0) {
+                    double pxy = jointCount * invLen;
                     double px = freqX[i] * invLen;
                     double py = freqY[j] * invLen;
                     mi += pxy * (Math.log(pxy / (px * py)) / Math.log(2.0));
@@ -237,6 +338,74 @@ public final class AdvancedAlgorithms {
         
         return bestState;
     }
+
+    /**
+     * Simulated annealing using a caller-provided output buffer.
+     * Avoids repeated allocations in hot loops by reusing arrays.
+     *
+     * @param initialState Initial state
+     * @param costFunction Cost function to minimize
+     * @param neighbor Function to generate neighboring states
+     * @param initialTemp Initial temperature
+     * @param coolingRate Cooling rate (0 < rate < 1)
+     * @param maxIterations Maximum iterations
+     * @param outBestState Output buffer for best state (may be reused)
+     * @return Best state found (same reference as {@code outBestState})
+     */
+    public static int[] simulatedAnnealingInto(
+            int[] initialState,
+            CostFunction costFunction,
+            NeighborFunction neighbor,
+            double initialTemp,
+            double coolingRate,
+            int maxIterations,
+            int[] outBestState) {
+
+        Buffers buffers = THREAD_LOCAL_BUFFERS.get();
+        int stateLength = initialState.length;
+        int[] currentState = buffers.ensureStateCapacity(initialState.length);
+        System.arraycopy(initialState, 0, currentState, 0, initialState.length);
+        int[] bestState = outBestState;
+        if (bestState == null || bestState.length < stateLength) {
+            bestState = new int[stateLength];
+        }
+        System.arraycopy(initialState, 0, bestState, 0, stateLength);
+
+        double currentCost = costFunction.evaluate(currentState);
+        double bestCost = currentCost;
+        double temperature = initialTemp;
+
+        long seed = System.nanoTime();
+
+        for (int i = 0; i < maxIterations; i++) {
+            int[] newState = neighbor.generate(currentState);
+            double newCost = costFunction.evaluate(newState);
+            double delta = newCost - currentCost;
+
+            boolean accept = delta < 0;
+            if (!accept && temperature > EPSILON) {
+                seed ^= seed << 13;
+                seed ^= seed >>> 7;
+                seed ^= seed << 17;
+                double rand = ((seed & 0x7FFFFFFFL) / (double) 0x7FFFFFFFL);
+                accept = rand < Math.exp(-delta / temperature);
+            }
+
+            if (accept) {
+                currentState = newState;
+                currentCost = newCost;
+
+                if (newCost < bestCost) {
+                    System.arraycopy(newState, 0, bestState, 0, stateLength);
+                    bestCost = newCost;
+                }
+            }
+
+            temperature *= coolingRate;
+        }
+
+        return bestState;
+    }
     
     /**
      * Gradient descent optimization (fixed-point arithmetic).
@@ -253,26 +422,52 @@ public final class AdvancedAlgorithms {
             GradientFunction gradient,
             double learningRate,
             int maxIterations) {
-        
-        double[] point = initialPoint.clone();
-        double[] grad = new double[point.length];
-        
+        double[] point = new double[initialPoint.length];
+        System.arraycopy(initialPoint, 0, point, 0, initialPoint.length);
+        return gradientDescentInto(point, gradient, learningRate, maxIterations, point);
+    }
+
+    /**
+     * Gradient descent using a caller-provided output buffer.
+     * Avoids allocating a gradient array on every invocation.
+     *
+     * @param initialPoint Starting point
+     * @param gradient Gradient function
+     * @param learningRate Step size
+     * @param maxIterations Maximum iterations
+     * @param outPoint Output buffer for the optimized point
+     * @return Optimized point (same reference as {@code outPoint})
+     */
+    public static double[] gradientDescentInto(
+            double[] initialPoint,
+            GradientFunction gradient,
+            double learningRate,
+            int maxIterations,
+            double[] outPoint) {
+
+        double[] point = outPoint;
+        if (point == null || point.length < initialPoint.length) {
+            point = new double[initialPoint.length];
+        }
+        System.arraycopy(initialPoint, 0, point, 0, initialPoint.length);
+
+        Buffers buffers = THREAD_LOCAL_BUFFERS.get();
+        double[] grad = buffers.ensureGradientCapacity(point.length);
+
         for (int iter = 0; iter < maxIterations; iter++) {
             gradient.evaluate(point, grad);
-            
-            // Check convergence
+
             double gradNorm = 0.0;
             for (double g : grad) {
                 gradNorm += g * g;
             }
             if (gradNorm < EPSILON) break;
-            
-            // Update: x = x - lr * gradient
+
             for (int i = 0; i < point.length; i++) {
                 point[i] -= learningRate * grad[i];
             }
         }
-        
+
         return point;
     }
 
@@ -290,15 +485,15 @@ public final class AdvancedAlgorithms {
      */
     public static int aStarSearch(int start, int goal, HeuristicFunction heuristic, int maxNodes) {
         // Simplified A* for demonstration
-        int[] openSet = new int[maxNodes];
-        boolean[] closedSet = new boolean[maxNodes];
-        int[] gScore = new int[maxNodes];
-        int[] fScore = new int[maxNodes];
+        Buffers buffers = THREAD_LOCAL_BUFFERS.get();
+        int[] openSet = buffers.ensureOpenSetCapacity(maxNodes);
+        boolean[] closedSet = buffers.ensureClosedSetCapacity(maxNodes);
+        int[] gScore = buffers.ensureGScoreCapacity(maxNodes);
+        int[] fScore = buffers.ensureFScoreCapacity(maxNodes);
         
-        for (int i = 0; i < maxNodes; i++) {
-            gScore[i] = Integer.MAX_VALUE;
-            fScore[i] = Integer.MAX_VALUE;
-        }
+        java.util.Arrays.fill(closedSet, 0, maxNodes, false);
+        java.util.Arrays.fill(gScore, 0, maxNodes, Integer.MAX_VALUE);
+        java.util.Arrays.fill(fScore, 0, maxNodes, Integer.MAX_VALUE);
         
         gScore[start] = 0;
         fScore[start] = heuristic.estimate(start, goal);
@@ -395,7 +590,8 @@ public final class AdvancedAlgorithms {
      */
     public static void walshSequencyOrder(int[] data) {
         int n = data.length;
-        int[] temp = new int[n];
+        Buffers buffers = THREAD_LOCAL_BUFFERS.get();
+        int[] temp = buffers.ensureTempIntCapacity(n);
         
         // Gray code permutation for sequency ordering
         for (int i = 0; i < n; i++) {

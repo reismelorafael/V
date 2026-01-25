@@ -38,6 +38,27 @@ public final class AlgorithmAnalyzer {
     
     /** Page size for memory analysis */
     private static final int PAGE_SIZE = 4096;
+
+    private static final ThreadLocal<CacheLineScratch> CACHE_LINE_SCRATCH =
+            ThreadLocal.withInitial(CacheLineScratch::new);
+
+    private static final class CacheLineScratch {
+        private int[] lineStamps;
+        private int stamp;
+
+        private int[] ensureCapacity(int length) {
+            if (lineStamps == null || lineStamps.length < length) {
+                lineStamps = new int[length];
+                stamp = 1;
+            } else if (stamp == Integer.MAX_VALUE) {
+                java.util.Arrays.fill(lineStamps, 0);
+                stamp = 1;
+            } else {
+                stamp++;
+            }
+            return lineStamps;
+        }
+    }
     
     // ========== Private Constructor ==========
     
@@ -134,7 +155,10 @@ public final class AlgorithmAnalyzer {
         }
         
         // Track unique cache lines accessed
-        boolean[] cacheLines = new boolean[data.length / CACHE_LINE_SIZE + 1];
+        int cacheLineCount = data.length / CACHE_LINE_SIZE + 1;
+        CacheLineScratch scratch = CACHE_LINE_SCRATCH.get();
+        int[] cacheLineStamps = scratch.ensureCapacity(cacheLineCount);
+        int stamp = scratch.stamp;
         int sequentialHits = 0;
         int totalAccesses = accessPattern.length;
         
@@ -149,14 +173,16 @@ public final class AlgorithmAnalyzer {
                 sequentialHits++;
             }
             
-            cacheLines[line] = true;
+            cacheLineStamps[line] = stamp;
             lastLine = line;
         }
         
         // Estimate: more unique lines + less sequential = more misses
         int uniqueLines = 0;
-        for (boolean accessed : cacheLines) {
-            if (accessed) uniqueLines++;
+        for (int i = 0; i < cacheLineCount; i++) {
+            if (cacheLineStamps[i] == stamp) {
+                uniqueLines++;
+            }
         }
         
         double sequentialRatio = (double) sequentialHits / totalAccesses;
