@@ -14,6 +14,7 @@ import android.view.View;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.vectras.qemu.MainSettingsManager;
+import com.vectras.vm.AppConfig;
 import com.vectras.vm.databinding.ActivitySetArchBinding;
 import com.vectras.vm.main.MainActivity;
 import com.vectras.vm.utils.FileUtils;
@@ -118,7 +119,7 @@ public class SetArchActivity extends AppCompatActivity implements View.OnClickLi
             startActivity(new Intent(activity, VMCreatorActivity.class));
             finish();
         } else if (id == R.id.webBtn) {
-            String qe = "https://www.qemu.org/";
+            String qe = AppConfig.qemuDocsUrl;
             Intent q = new Intent(Intent.ACTION_VIEW);
             q.addCategory(Intent.CATEGORY_BROWSABLE);
             q.setData(Uri.parse(qe));

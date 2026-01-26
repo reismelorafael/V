@@ -472,7 +472,7 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
                     intent.setClass(this, WebViewActivity.class);
                 } else {
                     intent.setAction(ACTION_VIEW);
-                    intent.setData(Uri.parse("https://www.qemu.org/docs/master/"));
+                    intent.setData(Uri.parse(AppConfig.qemuDocsUrl));
                 }
                 startActivity(intent);
             }
