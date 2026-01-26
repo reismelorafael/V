@@ -24,6 +24,7 @@ import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
 import com.vectras.vm.benchmark.VectraBenchmark;
+import com.vectras.vm.core.QualityStandardsCatalog;
 import com.vectras.vm.utils.FileUtils;
 
 import java.io.File;
@@ -393,6 +394,7 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
         report.categoryScores = new int[6]; // Not used in new format
         report.methodologies = methodologies;
         report.selectedCategories = selectedCategories;
+        report.complianceStandards = QualityStandardsCatalog.getDefaultStandards();
         
         // Store device specifications
         report.deviceModel = deviceSpec.cpuModel;
@@ -681,6 +683,14 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
             sb.append(String.format("║  ✓ %-75s║\n", method));
         }
         sb.append("╠════════════════════════════════════════════════════════════════════════════════╣\n");
+
+        // Section 2A: Compliance Standards Catalog
+        sb.append("║ 2A. COMPLIANCE STANDARDS CATALOG                                              ║\n");
+        sb.append("╠════════════════════════════════════════════════════════════════════════════════╣\n");
+        for (String standard : report.complianceStandards) {
+            sb.append(String.format("║  • %-75s║\n", standard));
+        }
+        sb.append("╠════════════════════════════════════════════════════════════════════════════════╣\n");
         
         // Section 3: Statistical Analysis with SI Units
         sb.append("║ 3. STATISTICAL ROBUSTNESS (SI Units)                                          ║\n");
@@ -850,6 +860,7 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
         int totalScore;
         int[] categoryScores;
         List<String> methodologies;
+        List<String> complianceStandards;
         List<Integer> selectedCategories;
         
         // Statistical analysis
