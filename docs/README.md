@@ -112,6 +112,37 @@ O projeto incorpora funcionalidades avançadas incluindo:
 
 ---
 
+## Mapa de Totalidade / Total Coverage Map
+
+Esta documentação foi organizada para cobrir a totalidade do projeto — do panorama executivo à execução técnica diária. Use a matriz abaixo para localizar rapidamente o conteúdo completo de cada dimensão.  
+
+| Dimensão / Dimension | Documentos centrais / Core documents | Objetivo / Goal |
+|---|---|---|
+| **Visão do projeto / Project vision** | [PREFACE.md](PREFACE.md), [ABSTRACT.md](ABSTRACT.md), [RESUMO.md](RESUMO.md) | Contexto, motivação e síntese técnica |
+| **Arquitetura e design** | [ARCHITECTURE.md](ARCHITECTURE.md), [VECTRA_CORE.md](../VECTRA_CORE.md) | Componentes, padrões e decisões técnicas |
+| **Performance e integridade** | [PERFORMANCE_INTEGRITY.md](PERFORMANCE_INTEGRITY.md), [BENCHMARK_COMPARISONS.md](navigation/BENCHMARK_COMPARISONS.md) | Metodologia, métricas e comparação de benchmarks |
+| **Operações e otimização** | [PERFORMANCE_OPERATIONS.md](navigation/PERFORMANCE_OPERATIONS.md) | Uso diário, performance sustentada e troubleshooting |
+| **Mercado e estratégia** | [HIGH_LEVEL_INVESTORS.md](navigation/HIGH_LEVEL_INVESTORS.md) | TAM, ROI, riscos e projeções |
+| **Pesquisa e academia** | [SCIENTISTS_RESEARCH.md](navigation/SCIENTISTS_RESEARCH.md), [UNIVERSITIES_ACADEMIC.md](navigation/UNIVERSITIES_ACADEMIC.md) | Base teórica, metodologia e aplicação educacional |
+| **Conformidade e licenças** | [LEGAL_AND_LICENSES.md](LEGAL_AND_LICENSES.md), [DOCUMENTATION_STANDARDS.md](DOCUMENTATION_STANDARDS.md) | Licenciamento, padrões e governança |
+| **Referências e terminologia** | [BIBLIOGRAPHY.md](BIBLIOGRAPHY.md), [GLOSSARY.md](GLOSSARY.md) | Bibliografia e glossário técnico |
+| **Roadmap e entregas** | [ROADMAP.md](ROADMAP.md), [IMPLEMENTATION_SUMMARY.md](../IMPLEMENTATION_SUMMARY.md) | Planejamento e status de execução |
+
+---
+
+## Status de Atualização / Update Status
+
+| Área | Cadência de atualização / Update cadence | Onde conferir / Where to check |
+|---|---|---|
+| **Arquitetura e Core** | Quando houver mudanças estruturais | [ARCHITECTURE.md](ARCHITECTURE.md), [VECTRA_CORE.md](../VECTRA_CORE.md) |
+| **Benchmarks e performance** | A cada release maior | [PERFORMANCE_INTEGRITY.md](PERFORMANCE_INTEGRITY.md), [BENCHMARK_COMPARISONS.md](navigation/BENCHMARK_COMPARISONS.md) |
+| **Operações** | Sempre que houver novos fluxos/otimizações | [PERFORMANCE_OPERATIONS.md](navigation/PERFORMANCE_OPERATIONS.md) |
+| **Mercado/estratégia** | Revisão trimestral | [HIGH_LEVEL_INVESTORS.md](navigation/HIGH_LEVEL_INVESTORS.md) |
+| **Academia/pesquisa** | A cada novo experimento ou publicação | [SCIENTISTS_RESEARCH.md](navigation/SCIENTISTS_RESEARCH.md), [UNIVERSITIES_ACADEMIC.md](navigation/UNIVERSITIES_ACADEMIC.md) |
+| **Governança e licenças** | Mudança legal ou de políticas | [LEGAL_AND_LICENSES.md](LEGAL_AND_LICENSES.md), [DOCUMENTATION_STANDARDS.md](DOCUMENTATION_STANDARDS.md) |
+
+---
+
 ## Estrutura da Documentação / Documentation Structure
 
 ```
@@ -189,7 +220,7 @@ Vectras-VM-Android/
 | **Título / Title** | Vectras VM - Technical Academic Documentation |
 | **Versão / Version** | 1.0.0 |
 | **Data de Criação / Created** | January 2026 |
-| **Última Atualização / Last Updated** | January 2026 |
+| **Última Atualização / Last Updated** | January 2026 (rolling updates) |
 | **Autores / Authors** | Vectras VM Development Team |
 | **Mantenedor / Maintainer** | @xoureldeen, @AnBui2004 |
 | **Licença / License** | GNU GPL v2.0 |
