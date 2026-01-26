@@ -57,6 +57,7 @@
 |----------|-------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture, design patterns, and component overview |
 | [IMAGES_INDEX.md](IMAGES_INDEX.md) | Architecture and UI images index with code mappings |
+| [INTEGRACAO_RM_QEMU_ANDROIDX.md](INTEGRACAO_RM_QEMU_ANDROIDX.md) | Plano de integração RM (QEMU + AndroidX) |
 | [PERFORMANCE_INTEGRITY.md](PERFORMANCE_INTEGRITY.md) | Performance measurement and integrity validation guide |
 | [VECTRA_CORE.md](../VECTRA_CORE.md) | Vectra Core MVP - Information-theoretic runtime framework |
 | [IMPLEMENTATION_SUMMARY.md](../IMPLEMENTATION_SUMMARY.md) | Implementation summary and deliverables |
@@ -111,6 +112,7 @@ Vectras-VM-Android/
 │   ├── RESUMO.md                  # Portuguese technical summary
 │   ├── ARCHITECTURE.md            # System architecture documentation
 │   ├── IMAGES_INDEX.md            # Architecture/UI images index and code mappings
+│   ├── INTEGRACAO_RM_QEMU_ANDROIDX.md # Plano de integração RM (QEMU + AndroidX)
 │   ├── PERFORMANCE_INTEGRITY.md   # Performance and integrity validation guide
 │   ├── BIBLIOGRAPHY.md            # Academic references
 │   ├── GLOSSARY.md                # Technical glossary

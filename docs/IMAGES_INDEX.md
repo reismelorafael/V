@@ -35,6 +35,8 @@ This document provides a comprehensive mapping of architecture, UI, and system i
 | 5 | `ziprafa-integrity-architecture.png` | [97010343-3677-4766-b070-9fece88ba754](https://github.com/user-attachments/assets/97010343-3677-4766-b070-9fece88ba754) | ⏳ Pending |
 | 6 | `additional-image-01.png` | [2123ec50-7240-490a-8975-bd675ca1fa92](https://github.com/user-attachments/assets/2123ec50-7240-490a-8975-bd675ca1fa92) | ⏳ Pending |
 | 7-90 | `additional-image-XX.png` | (Various URLs from issue) | ⏳ Pending |
+| 91 | `rafaelia-core-eye-toroid.png` | (Provided via chat prompt) | ⏳ Pending |
+| 92 | `rafaelia-coherence-layers.png` | (Provided via chat prompt) | ⏳ Pending |
 
 **To add images:**
 ```bash
@@ -59,6 +61,8 @@ Based on the visible images, here is the comprehensive mapping:
 | `rafaelia-mathematical.png` | Geometric/mathematical model with Traceçilda/ICAZC formulas | **QEMU / Engine** | `QemuParamsEditorActivity.java`, `Config.java` | Mathematical parameter optimization | Complex config not user-friendly | Add preset profiles for common configurations |
 | `vectra-mystical-ui-concept.png` | Vertical layered visualization concept (1008 Hz, FIAT DEI/FIAT VIAT LUX) | **UI/UX Concept** | `MainActivity.java`, layouts in `res/layout/` | Visual representation of system layers | N/A - Conceptual only | Consider animated splash/about screen |
 | `ziprafa-integrity-architecture.png` | ZIPRAFA integrity framework: Data Recovery, Blake3 Hashing, Ed25519 Signing, Modular Core (Core/Crypto/FEC), CLI & API | **Integrity / Logging** | `VectraCore.kt` (CRC32C parity), `VectraBitStackLog`, `RafaeliaMvp.java` | Data integrity verification, error recovery, secure identity | Blake3/Ed25519 not implemented (CRC32C used instead) | Document roadmap for advanced crypto; current CRC32C is sufficient for MVP |
+| `rafaelia-core-eye-toroid.png` | Diagram of the core axis (IA/eye/toroid) expressing pipeline hierarchy and orchestration | **Vectra Core / Architecture** | `VectraCore.kt`, `RafaeliaMvp.java`, `VectraCycle` | Unified pipeline view and orchestration | No explicit diagram mapping in docs | Add mapping in `docs/INTEGRACAO_RM_QEMU_ANDROIDX.md` and link in docs |
+| `rafaelia-coherence-layers.png` | Coherence and stability layers defining balanced integration (stable, low dissipation, between cycles) | **System Integration** | `Config.java`, `QemuParamsEditorActivity.java`, AndroidX UI flows | Integration stability and quality checks | Criteria not encoded in code/UI | Add integration checklist and presets matching diagram labels |
 
 ---
 
