@@ -113,4 +113,20 @@
         <item>3840x2160</item>
         <item>7680x4320</item>
     </string-array>
+    <string-array name="rafaeliaModeLabels">
+        <item>@string/rafaelia_mode_silent</item>
+        <item>@string/rafaelia_mode_log</item>
+        <item>@string/rafaelia_mode_trace</item>
+        <item>@string/rafaelia_mode_symbiosis</item>
+        <item>@string/rafaelia_mode_audit</item>
+        <item>@string/rafaelia_mode_bench</item>
+    </string-array>
+    <string-array name="rafaeliaModeValues">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+        <item>5</item>
+    </string-array>
 </resources>

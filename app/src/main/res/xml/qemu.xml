@@ -127,6 +127,78 @@
     <PreferenceCategory
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:title="@string/rafaelia_runtime"
+        app:icon="@drawable/round_terminal_24">
+
+        <SwitchPreferenceCompat
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:defaultValue="false"
+            android:key="rafaeliaEnabled"
+            android:title="@string/rafaelia_enable"
+            app:icon="@drawable/round_settings_24" />
+
+        <ListPreference
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:defaultValue="0"
+            android:entries="@array/rafaeliaModeLabels"
+            android:entryValues="@array/rafaeliaModeValues"
+            android:key="rafaeliaMode"
+            android:title="@string/rafaelia_mode"
+            app:icon="@drawable/round_info_24" />
+
+        <EditTextPreference
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:defaultValue="10"
+            android:inputType="number"
+            android:key="rafaeliaTickMs"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="@string/rafaelia_tick_ms"
+            app:useSimpleSummaryProvider="true"
+            app:icon="@drawable/round_update_24" />
+
+        <SwitchPreferenceCompat
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:defaultValue="false"
+            android:key="rafaeliaDebug"
+            android:title="@string/rafaelia_debug"
+            app:icon="@drawable/outline_bug_report_24" />
+
+        <EditTextPreference
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:defaultValue="30"
+            android:inputType="number"
+            android:key="rafaeliaBenchDurationSec"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="@string/rafaelia_bench_duration"
+            app:useSimpleSummaryProvider="true"
+            app:icon="@drawable/round_update_24" />
+
+        <SwitchPreferenceCompat
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:defaultValue="true"
+            android:key="rafaeliaLogCapture"
+            android:title="@string/rafaelia_log_capture"
+            app:icon="@drawable/round_terminal_24" />
+
+        <SwitchPreferenceCompat
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:defaultValue="false"
+            android:key="rafaeliaBitStack"
+            android:title="@string/rafaelia_bitstack"
+            app:icon="@drawable/round_storage_24" />
+    </PreferenceCategory>
+    <PreferenceCategory
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:title="@string/ui_environment"
         app:isPreferenceVisible="true"
         app:iconSpaceReserved="false">

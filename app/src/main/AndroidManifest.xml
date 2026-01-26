@@ -95,6 +95,11 @@
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
             android:exported="false" />
         <activity
+            android:name=".rafaelia.RafaeliaLogActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+            android:exported="false"
+            android:label="@string/rafaelia_logs_title" />
+        <activity
             android:name=".RomReceiverActivity"
             android:exported="true"
             android:label="@string/importRom">

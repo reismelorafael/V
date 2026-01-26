@@ -37,6 +37,7 @@ import com.vectras.qemu.VNCConfig;
 import com.vectras.qemu.utils.QmpClient;
 import com.vectras.vm.main.MainActivity;
 import com.vectras.vm.main.core.MainStartVM;
+import com.vectras.vm.rafaelia.RafaeliaEventRecorder;
 import com.vectras.vm.settings.VNCSettingsActivity;
 import com.vectras.vm.settings.X11DisplaySettingsActivity;
 import com.vectras.vm.utils.DialogUtils;
@@ -722,6 +723,7 @@ public class VMManager {
 
         if (_command.contains("qemu-system") && _result.contains("Killed")) {
             isQemuStopedWithError = true;
+            RafaeliaEventRecorder.recordCrash(_activity, _result);
             return true;
         }
         //Error code: PROOT_IS_MISSING_0
@@ -738,11 +740,13 @@ public class VMManager {
                     },
                     null, null);
             isQemuStopedWithError = true;
+            RafaeliaEventRecorder.recordCrash(_activity, _result);
             return true;
         } else if (_result.contains(") exists") && _result.contains("drive with bus")) {
             //Error code: DRIVE_INDEX_0_EXISTS
             DialogUtils.oneDialog(_activity, _activity.getString(R.string.problem_has_been_detected), _activity.getString(R.string.error_DRIVE_INDEX_0_EXISTS) + "\n\n" + _result, R.drawable.hard_drive_24px);
             isQemuStopedWithError = true;
+            RafaeliaEventRecorder.recordCrash(_activity, _result);
             return true;
         } else if (_result.contains("gtk initialization failed") || _result.contains("x11 not available")) {
             //Error code: X11_NOT_AVAILABLE
@@ -753,12 +757,14 @@ public class VMManager {
                     },
                     null, null);
             isQemuStopedWithError = true;
+            RafaeliaEventRecorder.recordCrash(_activity, _result);
             return true;
         } else if (_result.contains("Couldn't connect to XServer")) {
             if (isTryAgain) {
                 DialogUtils.oneDialog(_activity, _activity.getString(R.string.problem_has_been_detected), _activity.getString(R.string.x11_display_cannot_be_used_at_this_time_content) + "\n\n" + _result, R.drawable.cast_warning_24px);
                 _activity.stopService(new Intent(_activity, MainService.class));
                 isQemuStopedWithError = true;
+                RafaeliaEventRecorder.recordCrash(_activity, _result);
                 isTryAgain = false;
             } else {
                 MainStartVM.startTryAgain(_activity);
@@ -770,12 +776,14 @@ public class VMManager {
             DialogUtils.oneDialog(_activity, _activity.getString(R.string.problem_has_been_detected), _activity.getString(R.string.error_NO_SUCH_FILE_OR_DIRECTORY) + "\n\n" + _result, R.drawable.file_copy_24px);
             _activity.stopService(new Intent(_activity, MainService.class));
             isQemuStopedWithError = true;
+            RafaeliaEventRecorder.recordCrash(_activity, _result);
             return true;
         } else if (_result.contains("another process using")) {
             //Error code: ANOTHER_PROCESS_USING_IMAGE
             DialogUtils.oneDialog(_activity, _activity.getString(R.string.problem_has_been_detected), _activity.getString(R.string.error_ANOTHER_PROCESS_USING_IMAGE) + "\n\n" + _result, R.drawable.file_copy_24px);
             _activity.stopService(new Intent(_activity, MainService.class));
             isQemuStopedWithError = true;
+            RafaeliaEventRecorder.recordCrash(_activity, _result);
             return true;
         } else if (_result.contains("mesapt: invalid sdl display")) {
             DialogUtils.twoDialog(_activity,
@@ -798,6 +806,7 @@ public class VMManager {
             DialogUtils.oneDialog(_activity, _activity.getString(R.string.problem_has_been_detected), _activity.getString(R.string.vm_could_not_be_run_content) + "\n\n" + _result, R.drawable.error_96px);
             _activity.stopService(new Intent(_activity, MainService.class));
             isQemuStopedWithError = true;
+            RafaeliaEventRecorder.recordCrash(_activity, _result);
             return true;
         } else {
             isQemuStopedWithError = false;
@@ -977,6 +986,9 @@ public class VMManager {
         vterm.executeShellCommand2("killall -15 qemu-system-x86_64", false, null);
         vterm.executeShellCommand2("killall -15 qemu-system-aarch64", false, null);
         vterm.executeShellCommand2("killall -15 qemu-system-ppc", false, null);
+        if (!MainStartVM.lastVMName.isEmpty()) {
+            RafaeliaEventRecorder.recordStop(context, MainStartVM.lastVMName);
+        }
     }
 
     public static void shutdownCurrentVM() {

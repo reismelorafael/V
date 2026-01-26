@@ -7,6 +7,8 @@ import com.vectras.qemu.Config;
 import com.vectras.qemu.MainSettingsManager;
 import com.vectras.qemu.utils.RamInfo;
 import com.vectras.vm.utils.FileUtils;
+import com.vectras.vm.rafaelia.RafaeliaConfig;
+import com.vectras.vm.rafaelia.RafaeliaSettings;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -230,6 +232,21 @@ public class StartVM {
                 if (extras.contains("-cdrom ")) {
                     finalextra = extras.replace("-cdrom ", "-drive index=1,media=cdrom,file=");
                 }
+            }
+        }
+
+        RafaeliaConfig rafaeliaConfig = RafaeliaConfig.fromPreferences(activity);
+        String rafaeliaArg = rafaeliaConfig.toQemuArgument();
+        if (rafaeliaArg != null && !finalextra.contains("-rafaelia")) {
+            params.add(rafaeliaArg);
+        }
+
+        if (rafaeliaConfig.getEnabled() && RafaeliaSettings.isLogCaptureEnabled(activity)) {
+            if (!finalextra.contains("-d trace") && !finalextra.contains("-D ")) {
+                params.add("-d");
+                params.add("trace");
+                params.add("-D");
+                params.add("'" + RafaeliaSettings.logFile(activity).getAbsolutePath() + "'");
             }
         }
 

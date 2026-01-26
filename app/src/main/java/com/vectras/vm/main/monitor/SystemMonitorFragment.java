@@ -7,6 +7,7 @@ import android.annotation.SuppressLint;
 import android.app.ActivityManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.content.Intent;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -30,6 +31,7 @@ import com.vectras.vm.databinding.FragmentHomeSystemMonitorBinding;
 import com.vectras.vm.utils.CommandUtils;
 import com.vectras.vm.utils.DialogUtils;
 import com.vectras.vterm.Terminal;
+import com.vectras.vm.rafaelia.RafaeliaLogActivity;
 
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
@@ -102,6 +104,11 @@ public class SystemMonitorFragment extends Fragment {
                 }
             }, 500, TimeUnit.MILLISECONDS);
         }));
+
+        binding.btRafaeliaLogs.setOnClickListener(v -> {
+            Intent intent = new Intent(requireActivity(), RafaeliaLogActivity.class);
+            startActivity(intent);
+        });
 
         binding.btStopvmvnc.setOnClickListener(v -> {
             if (Config.currentVNCServervmID.isEmpty()) {

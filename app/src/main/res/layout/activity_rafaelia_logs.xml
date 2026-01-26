@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurface"
+        android:theme="@style/ThemeOverlay.Material3.ActionBar"
+        app:title="@string/rafaelia_logs_title" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Material3.CardView.Filled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardBackgroundColor="?attr/colorSurfaceContainer">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        style="@style/MaterialAlertDialog.Material3Expressive.Title.Text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/rafaelia_bench_report_title" />
+
+                    <TextView
+                        android:id="@+id/bench_report_text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/rafaelia_bench_report_empty"
+                        android:textIsSelectable="true" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_snapshot_bin"
+                            style="@style/Widget.Material3Expressive.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/rafaelia_snapshot_bin" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_snapshot_json"
+                            style="@style/Widget.Material3Expressive.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/rafaelia_snapshot_json" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                style="@style/MaterialAlertDialog.Material3Expressive.Title.Text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/rafaelia_log_filter" />
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/log_filter_group"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                app:singleSelection="true"
+                app:selectionRequired="true">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filter_all"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:checked="true"
+                    android:text="@string/rafaelia_filter_all" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filter_init"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:text="@string/rafaelia_filter_init" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filter_tick"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:text="@string/rafaelia_filter_tick" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filter_shutdown"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:text="@string/rafaelia_filter_shutdown" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filter_entropy"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:text="@string/rafaelia_filter_entropy" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/filter_coherence"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:text="@string/rafaelia_filter_coherence" />
+            </com.google.android.material.chip.ChipGroup>
+
+            <TextView
+                android:id="@+id/log_path"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/rafaelia_log_path"
+                android:textAppearance="?attr/textAppearanceBodySmall" />
+
+            <TextView
+                android:id="@+id/log_output"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/rafaelia_log_empty"
+                android:textIsSelectable="true"
+                android:fontFamily="monospace" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

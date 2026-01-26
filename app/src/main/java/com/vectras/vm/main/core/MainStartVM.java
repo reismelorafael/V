@@ -35,6 +35,10 @@ import com.vectras.vm.utils.NetworkUtils;
 import com.vectras.vm.utils.PackageUtils;
 import com.vectras.vm.utils.ServiceUtils;
 import com.vectras.vterm.Terminal;
+import com.vectras.vm.rafaelia.RafaeliaBenchManager;
+import com.vectras.vm.rafaelia.RafaeliaConfig;
+import com.vectras.vm.rafaelia.RafaeliaEventRecorder;
+import com.vectras.vm.rafaelia.RafaeliaSettings;
 
 import java.io.File;
 
@@ -202,6 +206,16 @@ public class MainStartVM {
         }
         Log.i(TAG, finalCommand);
 
+        RafaeliaConfig rafaeliaConfig = RafaeliaConfig.fromPreferences(context);
+        if (rafaeliaConfig.getEnabled() && RafaeliaSettings.isLogCaptureEnabled(context)) {
+            File logFile = RafaeliaSettings.logFile(context);
+            if (logFile.exists()) {
+                logFile.delete();
+            }
+        }
+
+        RafaeliaEventRecorder.recordStart(context, vmName);
+
         if (ServiceUtils.isServiceRunning(context, MainService.class)) {
             MainService.startCommand(finalCommand, context);
         } else {
@@ -215,6 +229,8 @@ public class MainStartVM {
                 context.startService(serviceIntent);
             }
         }
+
+        RafaeliaBenchManager.scheduleBenchIfNeeded(context, vmName);
 
         if (MainSettingsManager.getVmUi(context).equals("X11") && !DisplaySystem.isUseBuiltInX11()) {
             if (!PackageUtils.isInstalled("com.termux.x11", context)) {

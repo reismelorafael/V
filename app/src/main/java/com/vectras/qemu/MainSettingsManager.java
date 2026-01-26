@@ -27,6 +27,7 @@ import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.SwitchPreferenceCompat;
 
 import com.google.android.material.appbar.CollapsingToolbarLayout;
+import com.vectras.vm.rafaelia.RafaeliaMode;
 import com.vectras.vm.R;
 import com.vectras.vm.SplashActivity;
 import com.vectras.vm.VectrasApp;
@@ -453,6 +454,42 @@ public class MainSettingsManager extends AppCompatActivity
                 if (prefAVX != null) {
                     prefAVX.setVisible(false);
                 }
+
+            EditTextPreference rafaeliaTickMs = findPreference("rafaeliaTickMs");
+            if (rafaeliaTickMs != null) {
+                rafaeliaTickMs.setOnBindEditTextListener(editText -> {
+                    editText.setInputType(InputType.TYPE_CLASS_NUMBER);
+                    editText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(5)});
+                });
+            }
+
+            EditTextPreference rafaeliaBenchDuration = findPreference("rafaeliaBenchDurationSec");
+            if (rafaeliaBenchDuration != null) {
+                rafaeliaBenchDuration.setOnBindEditTextListener(editText -> {
+                    editText.setInputType(InputType.TYPE_CLASS_NUMBER);
+                    editText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4)});
+                });
+            }
+
+            ListPreference rafaeliaMode = findPreference("rafaeliaMode");
+            if (rafaeliaMode != null) {
+                updateRafaeliaModeSummary(rafaeliaMode, rafaeliaMode.getValue());
+                rafaeliaMode.setOnPreferenceChangeListener((preference, newValue) -> {
+                    updateRafaeliaModeSummary(rafaeliaMode, String.valueOf(newValue));
+                    return true;
+                });
+            }
+        }
+
+        private void updateRafaeliaModeSummary(ListPreference preference, String value) {
+            int modeId;
+            try {
+                modeId = Integer.parseInt(value);
+            } catch (NumberFormatException e) {
+                modeId = 0;
+            }
+            RafaeliaMode mode = RafaeliaMode.fromId(modeId);
+            preference.setSummary(getString(mode.getDescriptionRes()));
         }
 
         @Override
