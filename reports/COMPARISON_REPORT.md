@@ -1,4 +1,4 @@
-# Cross-Repository Comparison Report
+# Cross-Repository Comparison Report (Formal)
 
 ## Status
 Only `Vectras-VM-Android` is present in the workspace (`/workspace/Vectras-VM-Android`). The following repositories were not found, so direct comparisons cannot be completed in this environment:
@@ -6,18 +6,27 @@ Only `Vectras-VM-Android` is present in the workspace (`/workspace/Vectras-VM-An
 - `qemu_rafaelia-master`
 - `Vectras-VM-Android-master`
 
-## Requested comparisons (blocked)
-### 1) androidx official vs androidx_RmR
-- **Blocked:** Missing both the official `androidx` repo and `androidx_RmR-androidx-main` in the workspace.
-- **Requested focus:** extra `rmr/*` and `room3/*` directories, plus changes in `README`/`CONTRIBUTING`.
+## Comparações solicitadas (bloqueadas)
+### 1) androidx oficial vs androidx_RmR
+- **Bloqueio:** ausência do repositório oficial e de `androidx_RmR-androidx-main`.
+- **Foco solicitado:** diretórios extras (`rmr/*`, `room3/*`) e mudanças em `README`/`CONTRIBUTING`.
 
-### 2) qemu official vs qemu_rafaelia
-- **Blocked:** Missing both the official `qemu` repo and `qemu_rafaelia-master` in the workspace.
-- **Requested focus:** docs/dir deltas, and changes in `hw/core` and `android/vectras-vm-android`.
+### 2) qemu oficial vs qemu_rafaelia
+- **Bloqueio:** ausência do repositório oficial e de `qemu_rafaelia-master`.
+- **Foco solicitado:** docs e diretórios extras, mudanças em `hw/core` e `android/vectras-vm-android`.
 
 ### 3) Vectras-VM-Android vs Vectras-VM-Android-master
-- **Blocked:** Missing `Vectras-VM-Android-master` in the workspace.
-- **Requested focus:** module differences (benchmark/core vs creator) and architectural impact.
+- **Bloqueio:** ausência de `Vectras-VM-Android-master`.
+- **Foco solicitado:** diferenças de módulos (benchmark/core vs creator) e impacto arquitetural.
 
-## Next steps to unblock
-Provide the missing repositories in the workspace (or paths to them) so a direct diff can be generated and summarized.
+## Template de comparação (para execução futura)
+| Comparação | Diretórios extras | Docs alterados | Arquivos críticos | Resultado |
+|-----------|-------------------|----------------|-------------------|-----------|
+| androidx | rmr/*, room3/* | README/CONTRIBUTING | build scripts | Pendente |
+| qemu | hw/core, android/vectras-vm-android | docs/* | targets/hw/* | Pendente |
+| Vectras | módulos benchmark/core/creator | docs/ARCHITECTURE | app/ | Pendente |
+
+## Próximos passos
+1. Disponibilizar os repositórios faltantes no workspace.
+2. Rodar comparações estruturais (árvore e `.md`).
+3. Gerar diffs textuais em arquivos críticos (`README`, `CONTRIBUTING`, `ARCHITECTURE`).

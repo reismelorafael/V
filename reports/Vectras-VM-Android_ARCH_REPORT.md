@@ -1,28 +1,44 @@
-# Vectras-VM-Android — Architecture Report
+# Vectras-VM-Android — Relatório de Arquitetura (Formal)
 
-## Build system
-- **Gradle (Android)** with Android Gradle Plugin and Kotlin plugin (`build.gradle`).
-- Modules defined in `settings.gradle` (no CMake/Meson/Make/configure found in repository).
+**Versão:** 1.1
+**Data:** 2026-01-01
 
-## Main modules (top-level Gradle modules)
+## Sumário
+1. [Build System](#1-build-system)
+2. [Módulos Principais](#2-módulos-principais)
+3. [Pontos de Entrada](#3-pontos-de-entrada)
+4. [Árvore Resumida](#4-árvore-resumida)
+5. [Arquivos Mais Importantes](#5-arquivos-mais-importantes)
+6. [Checklist de Build/Execução](#6-checklist-de-buildexecução)
+7. [Notas de Impacto Arquitetural](#7-notas-de-impacto-arquitetural)
+
+---
+
+## 1. Build system
+- **Gradle (Android)** com Android Gradle Plugin e Kotlin plugin (`build.gradle`).
+- Módulos definidos em `settings.gradle`.
+- **Observação:** não foram encontrados CMake/Meson/Make/configure no repositório.
+
+## 2. Módulos principais
+### 2.1 Módulos Gradle
 - `:app`
 - `:terminal-emulator`
 - `:terminal-view`
 - `:shell-loader`
 - `:shell-loader:stub`
 
-## Main modules (top-level directories)
+### 2.2 Diretórios top-level
 `.git`, `.github`, `.gradle`, `3dfx`, `app`, `build`, `docs`, `fastlane`, `gradle`, `resources`, `seguranda`, `shell-loader`, `terminal-emulator`, `terminal-view`, `web`.
 
-## Entry points
-### Android manifests
+## 3. Pontos de entrada
+### 3.1 Android manifests
 - `app/src/main/AndroidManifest.xml`
 - `terminal-emulator/src/main/AndroidManifest.xml`
 - `terminal-view/src/main/AndroidManifest.xml`
 - `shell-loader/src/main/AndroidManifest.xml`
 - `shell-loader/stub/src/main/AndroidManifest.xml`
 
-### Android activities (from `app` manifest)
+### 3.2 Activities (manifest do módulo `app`)
 - `.crashtracker.LastCrashActivity`
 - `.WebViewActivity`
 - `.settings.X11DisplaySettingsActivity`
@@ -54,10 +70,10 @@
 - `.x11.X11Activity`
 - `.x11.LoriePreferences`
 
-### QEMU entry points
-- **N/A in this repo.** (No `targets/hw/*/docs` tree present; this is an Android application wrapper around QEMU.)
+### 3.3 QEMU entry points
+- **N/A neste repositório.** (Não há árvore `targets/hw/*/docs`; este repo é um front-end Android para QEMU.)
 
-## Tree summary (max depth 3)
+## 4. Árvore resumida (até 3 níveis)
 ```
 /
   3dfx/
@@ -87,27 +103,28 @@
     data/
 ```
 
-## 10 most important files (with justification)
-1. `README.md` — project overview and primary onboarding entry point.
-2. `build.gradle` — top-level build configuration and plugin versions.
-3. `settings.gradle` — defines project modules and build graph.
-4. `app/build.gradle` — Android app build config, dependencies, build types.
-5. `app/src/main/AndroidManifest.xml` — core Android app entry-point definitions.
-6. `app/src/main/java/com/vectras/vm/main/MainActivity.java` — main UI navigation hub.
-7. `app/src/main/java/com/vectras/qemu/MainVNCActivity.java` — primary VM display/VNC runtime activity.
-8. `docs/ARCHITECTURE.md` — canonical architecture description and component map.
-9. `docs/CONTRIBUTING.md` — build, test, and workflow instructions.
-10. `app/FIREBASE.md` — Firebase configuration requirements for builds.
+## 5. Arquivos mais importantes (top-10)
+| # | Arquivo | Justificativa | Impacto |
+|---|---------|---------------|---------|
+| 1 | `README.md` | Porta de entrada do projeto | Alto |
+| 2 | `build.gradle` | Configura o build global | Alto |
+| 3 | `settings.gradle` | Define módulos | Alto |
+| 4 | `app/build.gradle` | Configura o app e dependências | Alto |
+| 5 | `app/src/main/AndroidManifest.xml` | Entry points Android | Alto |
+| 6 | `app/src/main/java/com/vectras/vm/main/MainActivity.java` | UI principal | Alto |
+| 7 | `app/src/main/java/com/vectras/qemu/MainVNCActivity.java` | Execução/VNC | Alto |
+| 8 | `docs/ARCHITECTURE.md` | Arquitetura oficial | Médio |
+| 9 | `docs/CONTRIBUTING.md` | Build e testes | Médio |
+| 10 | `app/FIREBASE.md` | Configuração Firebase | Médio |
 
-## Build/exec checklist (from repo docs)
+## 6. Checklist de build/execução
 - `./gradlew assembleDebug`
 - `./gradlew assembleRelease`
 - `./gradlew test`
 - `./gradlew lint`
-- If Firebase is required, configure per `app/FIREBASE.md` as referenced in `docs/CONTRIBUTING.md`.
+- Para builds com Firebase, seguir `app/FIREBASE.md` conforme `docs/CONTRIBUTING.md`.
 
-## Module focus note (benchmark/core vs creator)
-- **Benchmark module**: `app/src/main/java/com/vectras/vm/benchmark/` (runtime benchmarking and performance instrumentation).
-- **Core module**: `app/src/main/java/com/vectras/vm/core/` and `app/src/main/java/com/vectras/vm/vectra/` (core runtime utilities and Vectra Core framework).
-- **Creator flow**: `VMCreatorActivity` and related UI flow in the app manifest, handling VM creation.
-- **Architectural impact:** benchmark/core introduce measurement/instrumentation and runtime subsystems that cross-cut VM lifecycle, while creator focuses on VM provisioning UX and configuration routing into runtime services.
+## 7. Notas de impacto arquitetural
+- **Benchmark/Core** adicionam instrumentação e subsistemas de runtime que influenciam execução e métricas do VM lifecycle.
+- **Creator (VMCreator)** concentra lógica de provisionamento e geração de VMs, impactando fluxo de configuração.
+- **Implicação geral:** a arquitetura combina UI (provisionamento/controle) + runtime (benchmark/core) + execução (QEMU/VNC), exigindo documentação integrada.

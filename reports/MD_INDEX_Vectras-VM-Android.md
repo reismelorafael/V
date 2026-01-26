@@ -35,3 +35,12 @@
 - **Core documentation set:** Architecture, benchmarks, glossary, integrity/performance, and general documentation summaries under `docs/`.
 - **Navigation/positioning docs:** Audience-specific and benchmarking navigation pages under `docs/navigation/`.
 - **Security/audit notes:** Security and auditing narrative under `seguranda/`.
+
+## Cluster metrics (quantitativo)
+| Cluster | Arquivos | Observação |
+|---------|----------|------------|
+| Root-level engineering notes | 6 | Alto valor de referência técnica |
+| App integration docs | 1 | Configuração crítica de serviços |
+| Core documentation set | 12 | Núcleo de documentação do produto |
+| Navigation/positioning docs | 7 | Materiais de navegação e segmentação |
+| Security/audit notes | 1 | Risco e conformidade |
