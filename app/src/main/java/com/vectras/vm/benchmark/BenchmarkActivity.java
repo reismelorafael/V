@@ -1,7 +1,6 @@
 package com.vectras.vm.benchmark;
 
 import android.content.Intent;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -26,6 +25,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -343,80 +343,69 @@ public class BenchmarkActivity extends AppCompatActivity {
                 StringBuilder fullReport = new StringBuilder();
                 
                 // Add header
-                fullReport.append("VECTRAS VM PROFESSIONAL BENCHMARK REPORT\n");
+                fullReport.append(REPORT_HEADER).append("\n");
                 fullReport.append("Generated: ").append(timestamp).append("\n");
-                fullReport.append("═══════════════════════════════════════════════════════════\n\n");
+                fullReport.append(REPORT_HEADER_DIVIDER).append("\n\n");
                 
                 // Add validation report if available
                 if (lastBenchmarkResult != null && lastBenchmarkResult.validation != null) {
                     fullReport.append(BenchmarkManager.formatValidationReport(lastBenchmarkResult.validation));
                     fullReport.append("\n\n");
-                    
-                    // Add environment snapshot
-                    if (lastBenchmarkResult.environment != null) {
-                        BenchmarkManager.EnvironmentSnapshot env = lastBenchmarkResult.environment;
-                        fullReport.append("ENVIRONMENT SNAPSHOT\n");
-                        fullReport.append("─────────────────────────────────────────────────────────\n");
-                        fullReport.append(String.format("CPU Temperature: %.1f°C\n", env.cpuTempC));
-                        fullReport.append(String.format("Free Memory: %d MB\n", env.freeMemoryMb));
-                        fullReport.append(String.format("Running Processes: %d\n", env.runningProcesses));
-                        fullReport.append(String.format("CPU Governor: %s\n", env.cpuGovernor));
-                        fullReport.append(String.format("CPU Info Model: %s\n", env.cpuInfoModel));
-                        fullReport.append(String.format("CPU Info Hardware: %s\n", env.cpuInfoHardware));
-                        fullReport.append(String.format("Primary ABI: %s\n", env.cpuAbi));
-                        fullReport.append(String.format("Build Fingerprint: %s\n", env.buildFingerprint));
-                        fullReport.append(String.format("Build Hardware: %s\n", env.buildHardware));
-                        fullReport.append(String.format("Build Product: %s\n", env.buildProduct));
-                        fullReport.append(String.format(java.util.Locale.US,
-                            "Timer Drift: %.1f%%\n", env.timeSourceDriftPercent));
-                        fullReport.append(String.format(java.util.Locale.US,
-                            "Timer Jitter: %.1f%%\n", env.timerJitterPercent));
-                        fullReport.append(String.format("Benchmark Duration: %d ms\n", lastBenchmarkResult.durationMs));
-                        fullReport.append("\n\n");
-                    }
-
-                    if (lastBenchmarkResult != null
-                        && lastBenchmarkResult.getDiagnosticsView() != null
-                        && lastBenchmarkResult.getDiagnosticsView().size() > 0) {
-                        writeLine(writer, DIAGNOSTICS_HEADER);
-                        writeLine(writer, SECTION_DIVIDER);
-                        BenchmarkManager.DiagnosticMetricsView diagnostics =
-                            lastBenchmarkResult.getDiagnosticsView();
-                        for (int i = 0; i < diagnostics.size(); i++) {
-                            String unit = diagnostics.getUnit(i);
-                            String unitLabel = unit == null || unit.isEmpty()
-                                ? ""
-                                : " " + unit;
-                            writeLine(writer, diagnostics.getName(i) + ": "
-                                + diagnostics.getFormattedValue(i) + unitLabel);
-                            String description = diagnostics.getDescription(i);
-                            if (description != null && !description.isEmpty()) {
-                                writeLine(writer, "  • " + description);
-                            }
-                        }
-                        writer.newLine();
-                        writer.newLine();
-                    }
-
-                    // Add detailed benchmark results
-                    writer.write(VectraBenchmark.formatDetailedReport(lastResults));
                 }
 
-                if (lastBenchmarkResult != null && lastBenchmarkResult.diagnostics != null
-                    && !lastBenchmarkResult.diagnostics.isEmpty()) {
-                    fullReport.append("BENCHMARK DIAGNOSTICS\n");
-                    fullReport.append("─────────────────────────────────────────────────────────\n");
-                    for (BenchmarkManager.DiagnosticMetric metric : lastBenchmarkResult.diagnostics) {
-                        String unit = metric.unit == null || metric.unit.isEmpty()
+                // Add environment snapshot
+                if (lastBenchmarkResult != null && lastBenchmarkResult.environment != null) {
+                    BenchmarkManager.EnvironmentSnapshot env = lastBenchmarkResult.environment;
+                    fullReport.append(ENVIRONMENT_HEADER).append("\n");
+                    fullReport.append(SECTION_DIVIDER).append("\n");
+                    fullReport.append(String.format("CPU Temperature: %.1f°C\n", env.cpuTempC));
+                    fullReport.append(String.format("Free Memory: %d MB\n", env.freeMemoryMb));
+                    fullReport.append(String.format("Running Processes: %d\n", env.runningProcesses));
+                    fullReport.append(String.format("CPU Governor: %s\n", safeValue(env.cpuGovernor)));
+                    fullReport.append(String.format("CPU Info Model: %s\n", safeValue(env.cpuInfoModel)));
+                    fullReport.append(String.format("CPU Info Hardware: %s\n", safeValue(env.cpuInfoHardware)));
+                    fullReport.append(String.format("Primary ABI: %s\n", safeValue(env.cpuAbi)));
+                    fullReport.append(String.format("Build Fingerprint: %s\n", safeValue(env.buildFingerprint)));
+                    fullReport.append(String.format("Build Hardware: %s\n", safeValue(env.buildHardware)));
+                    fullReport.append(String.format("Build Product: %s\n", safeValue(env.buildProduct)));
+                    fullReport.append(String.format(Locale.US,
+                        "Timer Drift: %.1f%%\n", env.timeSourceDriftPercent));
+                    fullReport.append(String.format(Locale.US,
+                        "Timer Jitter: %.1f%%\n", env.timerJitterPercent));
+                    fullReport.append(String.format("Benchmark Duration: %d ms\n", lastBenchmarkResult.durationMs));
+                    fullReport.append("\n\n");
+                }
+
+                if (lastBenchmarkResult != null
+                    && lastBenchmarkResult.getDiagnosticsView() != null
+                    && lastBenchmarkResult.getDiagnosticsView().size() > 0) {
+                    fullReport.append(DIAGNOSTICS_HEADER).append("\n");
+                    fullReport.append(SECTION_DIVIDER).append("\n");
+                    BenchmarkManager.DiagnosticMetricsView diagnostics =
+                        lastBenchmarkResult.getDiagnosticsView();
+                    for (int i = 0; i < diagnostics.size(); i++) {
+                        String unit = diagnostics.getUnit(i);
+                        String unitLabel = unit == null || unit.isEmpty()
                             ? ""
-                            : " " + metric.unit;
-                        fullReport.append(String.format("%s: %s%s\n",
-                            metric.name, metric.value, unit));
-                        if (metric.description != null && !metric.description.isEmpty()) {
-                            fullReport.append(String.format("  • %s\n", metric.description));
+                            : " " + unit;
+                        fullReport.append(diagnostics.getName(i)).append(": ")
+                            .append(diagnostics.getFormattedValue(i))
+                            .append(unitLabel)
+                            .append("\n");
+                        String description = diagnostics.getDescription(i);
+                        if (description != null && !description.isEmpty()) {
+                            fullReport.append("  • ").append(description).append("\n");
                         }
                     }
                     fullReport.append("\n\n");
+                }
+
+                // Add detailed benchmark results
+                fullReport.append(VectraBenchmark.formatDetailedReport(lastResults));
+
+                try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+                    new FileOutputStream(exportFile), StandardCharsets.UTF_8))) {
+                    writer.write(fullReport.toString());
                 }
                 
                 mainHandler.post(() -> {
