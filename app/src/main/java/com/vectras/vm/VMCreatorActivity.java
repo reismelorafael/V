@@ -30,6 +30,7 @@ import com.vectras.vm.main.vms.DataMainRoms;
 import com.vectras.vm.databinding.ActivityVmCreatorBinding;
 import com.vectras.vm.databinding.DialogProgressStyleBinding;
 import com.vectras.vm.main.MainActivity;
+import com.vectras.vm.rafaelia.RafaeliaQemuProfile;
 import com.vectras.vm.utils.DeviceUtils;
 import com.vectras.vm.utils.DialogUtils;
 import com.vectras.vm.utils.FileUtils;
@@ -466,28 +467,10 @@ public class VMCreatorActivity extends AppCompatActivity {
             });
 
     private void setDefault() {
-        String defQemuParams;
-        if (DeviceUtils.is64bit()) {
-            defQemuParams = switch (MainSettingsManager.getArch(this)) {
-                case "ARM64" ->
-                        "-M virt,virtualization=true -cpu cortex-a76 -accel tcg,thread=multi -net nic,model=e1000 -net user -device nec-usb-xhci -device usb-kbd -device usb-mouse -device VGA";
-                case "PPC" -> "-M mac99 -cpu g4 -accel tcg,thread=multi -smp 1";
-                case "I386" ->
-                        "-M pc -cpu coreduo,+popcnt -accel tcg,thread=multi -smp 4 -vga std -netdev user,id=usernet -device e1000,netdev=usernet  -usb -device usb-tablet";
-                default ->
-                        "-M pc -cpu core2duo,+popcnt -accel tcg,thread=multi -smp 4 -vga std -netdev user,id=usernet -device e1000,netdev=usernet  -usb -device usb-tablet";
-            };
-        } else {
-            defQemuParams = switch (MainSettingsManager.getArch(this)) {
-                case "ARM64" ->
-                        "-M virt -cpu cortex-a76 -net nic,model=e1000 -net user -device nec-usb-xhci -device usb-kbd -device usb-mouse -device VGA";
-                case "PPC" -> "-M mac99 -cpu g4 -smp 1";
-                case "I386" ->
-                        "-M pc -cpu coreduo,+popcnt -smp 4 -vga std -netdev user,id=usernet -device e1000,netdev=usernet  -usb -device usb-tablet";
-                default ->
-                        "-M pc -cpu core2duo,+popcnt -smp 4 -vga std -netdev user,id=usernet -device e1000,netdev=usernet -usb -device usb-tablet";
-            };
-        }
+        String defQemuParams = RafaeliaQemuProfile.defaultParams(
+                DeviceUtils.is64bit(),
+                MainSettingsManager.getArch(this)
+        );
         binding.title.setText(getString(R.string.new_vm));
         binding.qemu.setText(defQemuParams);
     }
