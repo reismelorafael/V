@@ -48,7 +48,7 @@ void RmR_HW_Detect(RmR_HW_Info *out){
   if(!out) return;
   u32 arch = RmR_ArchDetect();
   out->arch = arch;
-  out->word_bits = (u32)(sizeof(unsigned int) * 8u);
+  out->word_bits = (u32)(sizeof(unsigned long) * 8u);
   out->ptr_bits = (u32)(sizeof(void*) * 8u);
   out->is_little_endian = RmR_IsLittleEndian();
   out->has_cycle_counter = (RmR_ReadCycles() != 0u) ? 1u : 0u;

@@ -138,7 +138,7 @@ static void rmr_hw_caps_detect(rmr_hw_caps_t *caps){
   if(!caps) return;
   caps->arch = rmr_detect_arch();
   caps->is_little_endian = rmr_is_little_endian();
-  caps->word_bits = (u8)(sizeof(u32) * 8u);
+  caps->word_bits = (u8)(sizeof(unsigned long) * 8u);
   caps->ptr_bits = (u8)(sizeof(void*) * 8u);
 }
 
@@ -177,8 +177,14 @@ typedef struct {
   u32 vec_len;    /* comprimento do vetor (fixo) */
 } rmr_point23_t;
 
+static u32 rmr_image_bytes_per_pixel(u8 bpp){
+  u32 bytes = (u32)((bpp + 7u) >> 3);
+  return (bytes == 0u) ? 1u : bytes;
+}
+
 static u32 rmr_image_pixel_offset(const rmr_image_info_t *info, u32 x, u32 y){
-  return (y * info->stride) + (x * (info->bpp >> 3));
+  u32 bytes = rmr_image_bytes_per_pixel(info->bpp);
+  return (y * info->stride) + (x * bytes);
 }
 
 static u32 rmr_image_sample_value(
@@ -190,8 +196,8 @@ static u32 rmr_image_sample_value(
 ){
   if(!info || !buf) return 0;
   if(x >= info->width || y >= info->height) return 0;
+  u32 bytes = rmr_image_bytes_per_pixel(info->bpp);
   u32 offset = rmr_image_pixel_offset(info, x, y);
-  u32 bytes = (u32)(info->bpp >> 3);
   if(offset + bytes > buf_len) return 0;
 
   if(info->channels <= 1u){
@@ -199,10 +205,11 @@ static u32 rmr_image_sample_value(
   }
 
   u32 sum = 0;
-  for(u32 i=0;i<info->channels;i++){
+  u32 channels = (info->channels > bytes) ? bytes : info->channels;
+  for(u32 i=0;i<channels;i++){
     sum += (u32)buf[offset + i];
   }
-  return (sum / (u32)info->channels);
+  return (channels == 0u) ? 0u : (sum / (u32)channels);
 }
 
 static u8 rmr_sector8(u32 cx, u32 cy, u32 x, u32 y){
