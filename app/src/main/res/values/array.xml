@@ -129,4 +129,14 @@
         <item>4</item>
         <item>5</item>
     </string-array>
+    <string-array name="rafaeliaBenchProfileLabels">
+        <item>Light</item>
+        <item>Standard</item>
+        <item>Intensive</item>
+    </string-array>
+    <string-array name="rafaeliaBenchProfileValues">
+        <item>light</item>
+        <item>standard</item>
+        <item>intensive</item>
+    </string-array>
 </resources>

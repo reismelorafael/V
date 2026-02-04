@@ -11,7 +11,8 @@
         android:layout_height="wrap_content"
         android:gravity="center">
 
-        <com.google.android.material.appbar.CollapsingToolbarLayout
+    <com.google.android.material.appbar.CollapsingToolbarLayout
+            android:id="@+id/collapsingToolbarLayout"
             style="@style/App.CollapsingToolbarLarge"
             app:title="@string/settings">
 
