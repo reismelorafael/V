@@ -19,6 +19,7 @@ public class QmpClient {
 
 	private static final String TAG = "QmpClient";
 	private static String requestCommandMode = "{ \"execute\": \"qmp_capabilities\" }";
+	private static final int MAX_RESPONSE_LINES = 128;
 	public static boolean allow_external = false;
 
 	public synchronized static String sendCommand(String command) {
@@ -104,7 +105,7 @@ public class QmpClient {
         StringBuilder stringBuilder = new StringBuilder("");
 
         try {
-            do {
+            for (int linesRead = 0; linesRead < MAX_RESPONSE_LINES; linesRead++) {
                 line = in.readLine();
                 if (line != null) {
                     if(Config.debugQmp)
@@ -129,7 +130,7 @@ public class QmpClient {
 
                 } else
                     break;
-            } while (true);
+            }
         } catch (Exception ex) {
             Log.e(TAG, "Could not get Response: " + ex.getMessage());
             if(Config.debugQmp)
@@ -144,7 +145,7 @@ public class QmpClient {
 		StringBuilder stringBuilder = new StringBuilder("");
 
 		try {
-			do {
+			for (int linesRead = 0; linesRead < MAX_RESPONSE_LINES; linesRead++) {
 				line = in.readLine();
 				if (line != null) {
 				    if(Config.debugQmp)
@@ -167,7 +168,7 @@ public class QmpClient {
 
 				} else
 					break;
-			} while (true);
+			}
 		} catch (Exception ex) {
 			Log.e(TAG, "Could not get query-migrate response: " + ex.getMessage());
 			if (Config.debugQmp)
