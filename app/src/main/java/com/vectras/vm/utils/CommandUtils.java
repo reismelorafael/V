@@ -12,8 +12,6 @@ public class CommandUtils {
                 + version + "/community\" /etc/apk/repositories && sed -i -e \"1ihttps://xssFjnj58Id/yttGkok69Je/" + version + "/main\" /etc/apk/repositories";
 
         command = command.replace("/yttGkok69Je", _beforemain);
-        if (!_https)
-            command = command.replace("https://", "http://");
         return command.replace("xssFjnj58Id", _url);
     }
 

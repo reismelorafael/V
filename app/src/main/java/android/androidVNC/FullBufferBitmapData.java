@@ -132,8 +132,54 @@ class FullBufferBitmapData extends AbstractBitmapData {
 	 */
 	@Override
 	void copyRect(Rect src, Rect dest, Paint paint) {
-		// TODO copy rect working?
-		throw new RuntimeException( "copyrect Not implemented");
+		Rect frame = new Rect(0, 0, framebufferwidth, framebufferheight);
+		Rect srcRect = new Rect(src);
+		if (!srcRect.intersect(frame)) {
+			return;
+		}
+
+		int deltaX = dest.left - src.left;
+		int deltaY = dest.top - src.top;
+		Rect destRect = new Rect(srcRect);
+		destRect.offset(deltaX, deltaY);
+
+		if (destRect.left < 0) {
+			srcRect.offset(-destRect.left, 0);
+			destRect.left = 0;
+		}
+		if (destRect.top < 0) {
+			srcRect.offset(0, -destRect.top);
+			destRect.top = 0;
+		}
+		if (destRect.right > frame.right) {
+			srcRect.right -= destRect.right - frame.right;
+			destRect.right = frame.right;
+		}
+		if (destRect.bottom > frame.bottom) {
+			srcRect.bottom -= destRect.bottom - frame.bottom;
+			destRect.bottom = frame.bottom;
+		}
+
+		int width = srcRect.width();
+		int height = srcRect.height();
+		if (width <= 0 || height <= 0) {
+			return;
+		}
+
+		int startRow = 0;
+		int endRow = height;
+		int step = 1;
+		if (deltaY > 0) {
+			startRow = height - 1;
+			endRow = -1;
+			step = -1;
+		}
+
+		for (int row = startRow; row != endRow; row += step) {
+			int srcOffset = offset(srcRect.left, srcRect.top + row);
+			int destOffset = offset(destRect.left, destRect.top + row);
+			System.arraycopy(bitmapPixels, srcOffset, bitmapPixels, destOffset, width);
+		}
 	}
 
 	/* (non-Javadoc)

@@ -521,8 +521,7 @@ public class FileUtils {
 				fd = pfd.getFd();
 				fds.put(fd, pfd);
 			} catch (final FileNotFoundException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				Log.e(TAG, "Failed to open content URI: " + path, e);
 				new Handler(Looper.getMainLooper()).post(new Runnable() {
 					@Override
 					public void run() {
@@ -538,8 +537,7 @@ public class FileUtils {
 				ParcelFileDescriptor pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_WRITE_ONLY);
 				fd = pfd.getFd();
 			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				Log.e(TAG, "Failed to open file: " + path, e);
 			}
 
 		}
@@ -607,8 +605,7 @@ public class FileUtils {
             try {
                 newFile.createNewFile();
             } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+                Log.e(TAG, "Failed to create file: " + newFile.getAbsolutePath(), e);
             }
         }
 		return oldfile.renameTo(newFile);
