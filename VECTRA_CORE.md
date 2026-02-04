@@ -22,6 +22,15 @@ Vectra Core implements a deterministic processing cycle:
 
 The cycle runs at 10 Hz (100ms intervals) and maintains deterministic behavior through lockstep processing.
 
+### 2.1 Deterministic Operational Policy (Gates)
+Vectra Core treats "deterministic" as a **policy of state transition**, not as a solver. The rule is fixed; the state evolves with experience:
+
+- **Hit**: a cycle receives an event.
+- **Miss**: a cycle receives no event.
+- **Policy gate**: after 2 misses, reduce weighting; after 2 hits, restore weighting.
+
+This keeps the next-state decision deterministic while still adapting to the observed stream.
+
 ### 3. Triad Physical Model (2-of-3 Consensus)
 The **VectraTriad** models three physical components: CPU, RAM, and DISK. Using 2-of-3 consensus, it can detect which component is "out-of-sync":
 - If CPU == RAM but different from DISK → DISK is out

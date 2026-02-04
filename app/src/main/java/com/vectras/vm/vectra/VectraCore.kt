@@ -24,7 +24,10 @@ data class VectraState(
     val stageCounters: LongArray = LongArray(6),
     var crc32c: Int = 0,
     var entropyHint: Int = 0,
-    var seed: Int = 0
+    var seed: Int = 0,
+    var hitStreak: Int = 0,
+    var missStreak: Int = 0,
+    var policyMode: Int = 0
 ) {
     fun setFlag(index: Int, enabled: Boolean) {
         if (index !in 0 until 1024) return
@@ -373,6 +376,7 @@ class VectraCycle(
     private fun executeCycle() {
         // Phase 1: Input
         val event = eventBus.poll()
+        updatePolicy(event)
 
         // Phase 2: Process
         if (event != null) {
@@ -391,18 +395,40 @@ class VectraCycle(
         state.stageCounters[5] = cycleCount // Track total cycles
     }
 
+    private fun updatePolicy(event: VectraEvent?) {
+        if (event == null) {
+            state.missStreak++
+            state.hitStreak = 0
+        } else {
+            state.hitStreak++
+            state.missStreak = 0
+        }
+
+        if (state.missStreak >= 2) {
+            state.policyMode = 1
+        } else if (state.hitStreak >= 2) {
+            state.policyMode = 0
+        }
+    }
+
     private fun processEvent(event: VectraEvent) {
         // Update entropy hint based on event type
-        val weight = when (event.type) {
+        val baseWeight = when (event.type) {
             VectraEvent.EventType.RADIO_EVENT -> 10 // Radio events add more rho
             VectraEvent.EventType.NETWORK_CHANGE -> 5
             VectraEvent.EventType.TIMER_TICK -> 1
             else -> 2
         }
+        val weight = if (state.policyMode == 1) {
+            (baseWeight ushr 1).coerceAtLeast(1)
+        } else {
+            baseWeight
+        }
         
         if (event.payload != null) {
             val entropy = CRC32C.update(state.entropyHint, event.payload)
             state.entropyHint = entropy + weight
+            state.seed = state.seed xor entropy
         }
 
         // Update flag to indicate event processed
