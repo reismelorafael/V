@@ -101,7 +101,7 @@
             android:label="@string/rafaelia_logs_title" />
         <activity
             android:name=".RomReceiverActivity"
-            android:exported="true"
+            android:exported="false"
             android:label="@string/importRom">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -144,7 +144,7 @@
             android:windowSoftInputMode="stateHidden" />
         <activity
             android:name=".CqcmActivity"
-            android:exported="true"
+            android:exported="false"
             android:hardwareAccelerated="true" />
         <activity
             android:name=".QemuParamsEditorActivity"
@@ -165,12 +165,12 @@
         </activity>
         <activity
             android:name=".AboutActivity"
-            android:exported="true"
+            android:exported="false"
             android:hardwareAccelerated="true"
             android:label="@string/about_app" />
         <activity
             android:name=".ImagePrvActivity"
-            android:exported="true"
+            android:exported="false"
             android:hardwareAccelerated="true" />
         <activity
             android:name="com.vectras.qemu.MainVNCActivity"
@@ -188,7 +188,7 @@
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
         <activity
             android:name=".DataExplorerActivity"
-            android:exported="true"
+            android:exported="false"
             android:label="Data Explorer" />
         <activity
             android:name=".SetArchActivity"
@@ -212,12 +212,12 @@
             android:exported="false" />
         <service
             android:name="com.termux.app.RunCommandService"
-            android:exported="true"
+            android:exported="false"
             android:stopWithTask="true" /> <!-- Termux-X11 -->
         <activity
             android:name=".x11.X11Activity"
             android:configChanges="fontScale|orientation|screenSize|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|screenLayout|touchscreen|uiMode|smallestScreenSize|density"
-            android:exported="true"
+            android:exported="false"
             android:resizeableActivity="true"
             android:screenOrientation="sensorLandscape"
             android:supportsPictureInPicture="true"
@@ -226,7 +226,7 @@
         <activity
             android:name=".x11.LoriePreferences"
             android:excludeFromRecents="true"
-            android:exported="true"
+            android:exported="false"
             android:resizeableActivity="true"
             android:supportsPictureInPicture="false"
             android:taskAffinity="com.vectras.vm.x11.LoriePreferences">
@@ -245,7 +245,7 @@
 
         <service
             android:name=".x11.utils.KeyInterceptor"
-            android:exported="true"
+            android:exported="false"
             android:label="Termux:X11 KeyInterceptor"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
@@ -260,7 +260,7 @@
         <receiver
             android:name=".x11.LoriePreferences$Receiver"
             android:enabled="true"
-            android:exported="true"
+            android:exported="false"
             tools:ignore="ExportedReceiver">
             <intent-filter>
                 <action android:name="com.vectras.vm.x11.CHANGE_PREFERENCE" />

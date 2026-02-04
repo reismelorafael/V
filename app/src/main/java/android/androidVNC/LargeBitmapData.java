@@ -115,8 +115,40 @@ class LargeBitmapData extends AbstractBitmapData {
 	 */
 	@Override
 	void copyRect(Rect src, Rect dest, Paint paint) {
-		// TODO copy rect working?
-		throw new RuntimeException( "copyrect Not implemented");
+		Rect bitmapBounds = new Rect(0, 0, bitmapwidth, bitmapheight);
+		Rect srcRect = new Rect(src);
+		srcRect.offset(-xoffset, -yoffset);
+		if (!srcRect.intersect(bitmapBounds)) {
+			return;
+		}
+
+		int deltaX = dest.left - src.left;
+		int deltaY = dest.top - src.top;
+		Rect destRect = new Rect(srcRect);
+		destRect.offset(deltaX, deltaY);
+
+		if (destRect.left < 0) {
+			srcRect.offset(-destRect.left, 0);
+			destRect.left = 0;
+		}
+		if (destRect.top < 0) {
+			srcRect.offset(0, -destRect.top);
+			destRect.top = 0;
+		}
+		if (destRect.right > bitmapBounds.right) {
+			srcRect.right -= destRect.right - bitmapBounds.right;
+			destRect.right = bitmapBounds.right;
+		}
+		if (destRect.bottom > bitmapBounds.bottom) {
+			srcRect.bottom -= destRect.bottom - bitmapBounds.bottom;
+			destRect.bottom = bitmapBounds.bottom;
+		}
+
+		if (srcRect.width() <= 0 || srcRect.height() <= 0) {
+			return;
+		}
+
+		OverlappingCopy.Copy(mbitmap, memGraphics, paint, srcRect, destRect.left, destRect.top, rectPool);
 	}
 
 	/* (non-Javadoc)

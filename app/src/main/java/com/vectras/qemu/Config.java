@@ -104,7 +104,14 @@ public class Config {
 
 
     public static final String getCacheDir(){
-        return cacheDir.toString();
+        if (cacheDir == null) {
+            if (VectrasApp.getApp() != null) {
+                cacheDir = VectrasApp.getApp().getCacheDir().getAbsolutePath();
+            } else {
+                return "";
+            }
+        }
+        return cacheDir;
     }
     public static final String getBasefileDir() {
         return AppConfig.basefiledir;
@@ -114,7 +121,18 @@ public class Config {
     public static String getMachineDir(){
         return getBasefileDir() + machineFolder;
     }
-    public static String logFilePath = cacheDir + "/vectras/vectras-log.txt";
+    public static String logFilePath = null;
+
+    public static String getLogFilePath() {
+        String baseDir = getCacheDir();
+        if (baseDir.isEmpty()) {
+            return "";
+        }
+        if (logFilePath == null || !logFilePath.startsWith(baseDir)) {
+            logFilePath = baseDir + "/vectras/vectras-log.txt";
+        }
+        return logFilePath;
+    }
 
 
     public static final String defaultDNSServer = "8.8.8.8";
@@ -129,7 +147,7 @@ public class Config {
     // VNC Defaults
     public static String defaultVNCHost = "0.0.0.0";
     public static String defaultVNCUsername = "vectras";
-    public static String defaultVNCPasswd = "555555";
+    public static String defaultVNCPasswd = "";
 
     //It seems that for new version of qemu it expects a relative number
     //  so we stop using absolute port numbers
@@ -187,7 +205,7 @@ public class Config {
     public static void setDefault () {
         defaultVNCHost = "0.0.0.0";
         defaultVNCUsername = "vectras";
-        defaultVNCPasswd = "555555";
+        defaultVNCPasswd = "";
         defaultVNCPort = 5901;
         QMPPort = 4444;
     }

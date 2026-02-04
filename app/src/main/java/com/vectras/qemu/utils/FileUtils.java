@@ -116,7 +116,6 @@ public class FileUtils {
     }
 
     public static void saveFileContents(String filePath, String contents) {
-        // TODO: we assume that the contents are of small size so we keep in an array
         byteArrayToFile(contents.getBytes(), new File(filePath));
     }
 
@@ -169,7 +168,8 @@ public class FileUtils {
 
     public static void viewVectrasLog(final Activity activity) {
 
-        String contents = FileUtils.getFileContents(Config.logFilePath);
+        String logPath = Config.getLogFilePath();
+        String contents = logPath.isEmpty() ? "" : FileUtils.getFileContents(logPath);
 
         if (contents.length() > 50 * 1024)
             contents = contents.substring(0, 25 * 1024)
@@ -188,7 +188,7 @@ public class FileUtils {
                 } else {
                     try {
                         Intent intent = new Intent(Intent.ACTION_EDIT);
-                        File file = new File(Config.logFilePath);
+                        File file = new File(Config.getLogFilePath());
                         Uri uri = Uri.fromFile(file);
                         intent.setDataAndType(uri, "text/plain");
                         activity.startActivity(intent);
@@ -388,7 +388,7 @@ public class FileUtils {
 
     public static void startLogging() {
 
-        if (Config.logFilePath == null) {
+        if (Config.getLogFilePath().isEmpty()) {
             Log.e(TAG, "Log file is not setup");
             return;
         }
@@ -399,7 +399,7 @@ public class FileUtils {
                 FileOutputStream os = null;
                 File logFile = null;
                 try {
-                    logFile = new File(Config.logFilePath);
+                    logFile = new File(Config.getLogFilePath());
                     if (logFile.exists()) {
                         logFile.delete();
                     }
@@ -418,7 +418,7 @@ public class FileUtils {
                         os.flush();
                     }
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    Log.e(TAG, "Failed to start log capture", e);
                 } finally {
                     try {
                         if (os != null) {
@@ -426,8 +426,7 @@ public class FileUtils {
                             os.close();
                         }
                     } catch (IOException e) {
-                        // TODO Auto-generated catch block
-                        e.printStackTrace();
+                        Log.e(TAG, "Failed to close log file", e);
                     }
 
                 }
@@ -510,7 +509,7 @@ public class FileUtils {
         Uri uri = null;
 
         try {
-            String logFileContents = getFileContents(Config.logFilePath);
+            String logFileContents = getFileContents(Config.getLogFilePath());
             DocumentFile dir = DocumentFile.fromTreeUri(activity, destDir);
 
             //Create the file if doesn't exist
@@ -548,7 +547,7 @@ public class FileUtils {
         File destFileF = new File(destLogFilePath, Config.destLogFilename);
 
         try {
-            String logFileContents = getFileContents(Config.logFilePath);
+            String logFileContents = getFileContents(Config.getLogFilePath());
             FileUtils.saveFileContents(destFileF.getAbsolutePath(), logFileContents);
 
             //success
