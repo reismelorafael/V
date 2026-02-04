@@ -58,6 +58,7 @@ import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -454,6 +455,11 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 progressText = "";
                 aria2Error = false;
                 isServerError = false;
+                String vncPassword = MainSettingsManager.getVncExternalPassword(this);
+                if (vncPassword == null || vncPassword.isEmpty()) {
+                    vncPassword = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+                    MainSettingsManager.setVncExternalPassword(this, vncPassword);
+                }
 
                 String cmd = selectedMirrorCommand + ";" +
                         " set -e;" +
@@ -483,7 +489,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                         " echo export TMPDIR=/tmp >> /etc/profile;" +
                         " mkdir -p $TMPDIR/pulse;" +
                         " echo export PULSE_SERVER=127.0.0.1 >> /etc/profile;" +
-                        " mkdir -p ~/.vnc && echo -e \"555555\\n555555\" | vncpasswd -f > ~/.vnc/passwd && chmod 0600 ~/.vnc/passwd;" +
+                        " mkdir -p ~/.vnc && echo -e \"" + vncPassword + "\\n" + vncPassword + "\" | vncpasswd -f > ~/.vnc/passwd && chmod 0600 ~/.vnc/passwd;" +
                         " echo \"Installation successful! xssFjnj58Id\"";
 
                 executeShellCommand(cmd);

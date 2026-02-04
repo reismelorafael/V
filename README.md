@@ -336,6 +336,9 @@ Comprehensive technical and academic documentation is available in the [`docs/`]
 | [📖 Glossary](docs/GLOSSARY.md) | Technical terminology and acronyms | EN/PT-BR |
 | [🤝 Contributing](docs/CONTRIBUTING.md) | Contribution guidelines | EN/PT-BR |
 | [⚡ Vectra Core](VECTRA_CORE.md) | Experimental runtime framework | English |
+| [📌 Project State](PROJECT_STATE.md) | Current project lifecycle state | PT-BR |
+| [🧭 Doc Index](DOC_INDEX.md) | Quick index of core documents | PT-BR |
+| [📜 Third-Party Notices](THIRD_PARTY_NOTICES.md) | Third-party components and license pointers | PT-BR |
 
 # Donate
 Help support the project by contributing!

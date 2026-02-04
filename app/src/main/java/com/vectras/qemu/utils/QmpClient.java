@@ -19,6 +19,7 @@ public class QmpClient {
 
 	private static final String TAG = "QmpClient";
 	private static String requestCommandMode = "{ \"execute\": \"qmp_capabilities\" }";
+	private static final int MAX_RESPONSE_LINES = 128;
 	public static boolean allow_external = false;
 
 	public synchronized static String sendCommand(String command) {
@@ -47,18 +48,22 @@ public class QmpClient {
 
 
 			sendRequest(out, QmpClient.requestCommandMode);
-			while(true){
-                response = getResponse(in);
-                if(response == null || response.equals("") || trial <10)
-				    break;
-
-                Thread.sleep(1000);
+			while (trial < 10) {
+				response = getResponse(in);
+				if (response != null && !response.isEmpty()) {
+					break;
+				}
+				Thread.sleep(1000);
 				trial++;
 			}
 
 			sendRequest(out, command);
 			trial=0;
-			while((response = getResponse(in)).equals("") && trial < 10){
+			while (trial < 10) {
+				response = getResponse(in);
+				if (response != null && !response.isEmpty()) {
+					break;
+				}
 				Thread.sleep(1000);
 				trial++;
 			}
@@ -67,7 +72,6 @@ public class QmpClient {
 			if(Config.debugQmp)
 			    e.printStackTrace();
 		} catch(Exception e) {
-			// TODO Auto-generated catch block
             Log.e(TAG, "Error while connecting to QMP: " + e);
             if(Config.debugQmp)
 				e.printStackTrace();
@@ -80,8 +84,7 @@ public class QmpClient {
 				if (pingSocket != null)
 					pingSocket.close();
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				Log.e(TAG, "Error closing QMP connection", e);
 			}
 
 		}
@@ -102,48 +105,32 @@ public class QmpClient {
         StringBuilder stringBuilder = new StringBuilder("");
 
         try {
-            do {
+            for (int linesRead = 0; linesRead < MAX_RESPONSE_LINES; linesRead++) {
                 line = in.readLine();
                 if (line != null) {
                     if(Config.debugQmp)
                         Log.i(TAG, "QMP response: " + line);
                     JSONObject object = new JSONObject(line);
-                    String returnStr = null;
-                    String errStr = null;
+                    boolean hasReturn = object.has("return") && !object.isNull("return");
+                    boolean hasError = object.has("error") && !object.isNull("error");
 
-                    try {
-                        if(line.contains("return"))
-                            returnStr = object.getString("return");
-                    } catch (Exception ex) {
-						if(Config.debugQmp)
-                            ex.printStackTrace();
-                    }
-
-                    if (returnStr != null) {
+                    if (hasReturn) {
 						stringBuilder.append(line);
 						stringBuilder.append("\n");
                         break;
                     }
 
-                    try {
-                        if(line.contains("error"))
-                            errStr = object.getString("error");
-                    } catch (Exception ex) {
-                        if(Config.debugQmp)
-						    ex.printStackTrace();
-                    }
-
                     stringBuilder.append(line);
                     stringBuilder.append("\n");
 
-                    if (errStr != null) {
+                    if (hasError) {
                         break;
                     }
 
 
                 } else
                     break;
-            } while (true);
+            }
         } catch (Exception ex) {
             Log.e(TAG, "Could not get Response: " + ex.getMessage());
             if(Config.debugQmp)
@@ -158,44 +145,34 @@ public class QmpClient {
 		StringBuilder stringBuilder = new StringBuilder("");
 
 		try {
-			do {
+			for (int linesRead = 0; linesRead < MAX_RESPONSE_LINES; linesRead++) {
 				line = in.readLine();
 				if (line != null) {
 				    if(Config.debugQmp)
 					    Log.i(TAG, "QMP query-migrate response: " + line);
 					JSONObject object = new JSONObject(line);
-					String returnStr = null;
-					String errStr = null;
+					boolean hasReturn = object.has("return") && !object.isNull("return");
+					boolean hasError = object.has("error") && !object.isNull("error");
 
-					try {
-						returnStr = object.getString("return");
-					} catch (Exception ex) {
-
-					}
-
-					if (returnStr != null) {
+					if (hasReturn) {
 						break;
-					}
-
-					try {
-						errStr = object.getString("error");
-					} catch (Exception ex) {
-
 					}
 
 					stringBuilder.append(line);
 					stringBuilder.append("\n");
 
-					if (errStr != null) {
+					if (hasError) {
 						break;
 					}
 
 
 				} else
 					break;
-			} while (true);
+			}
 		} catch (Exception ex) {
-
+			Log.e(TAG, "Could not get query-migrate response: " + ex.getMessage());
+			if (Config.debugQmp)
+				ex.printStackTrace();
 		}
 		return stringBuilder.toString();
 	}

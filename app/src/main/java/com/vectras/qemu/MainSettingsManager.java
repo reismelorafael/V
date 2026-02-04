@@ -53,7 +53,6 @@ public class MainSettingsManager extends AppCompatActivity
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // TODO: Implement this method
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
 

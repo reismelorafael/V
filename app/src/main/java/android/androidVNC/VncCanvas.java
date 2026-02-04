@@ -88,7 +88,7 @@ public class VncCanvas extends AppCompatImageView {
 	AbstractBitmapData bitmapData;
 	public Handler handler = new Handler();
 	// VNC Encoding parameters
-	private boolean useCopyRect = false; // TODO CopyRect is not working
+	private boolean useCopyRect = true;
 	private int preferredEncoding = -1;
 	// Unimplemented VNC encoding parameters
 	private boolean requestCursorUpdates = false;
@@ -420,7 +420,7 @@ public class VncCanvas extends AppCompatImageView {
 							break;
 						case RfbProto.EncodingCopyRect:
 							handleCopyRect(rx, ry, rw, rh);
-							Log.v(TAG, "CopyRect is Buggy!");
+							Log.v(TAG, "CopyRect handled");
 							break;
 						case RfbProto.EncodingRRE:
 							handleRRERect(rx, ry, rw, rh);
@@ -1421,9 +1421,6 @@ public class VncCanvas extends AppCompatImageView {
 
 	private void handleCopyRect(int x, int y, int w, int h) throws IOException {
 
-		/**
-		 * This does not work properly yet.
-		 */
 		rfb.readCopyRect();
 		if (!bitmapData.validDraw(x, y, w, h)) {
 			return;

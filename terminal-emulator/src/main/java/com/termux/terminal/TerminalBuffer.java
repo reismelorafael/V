@@ -248,10 +248,21 @@ public final class TerminalBuffer {
                     lastNonSpaceIndex = oldLine.getSpaceUsed();
                     if (cursorAtThisRow) justToCursor = true;
                 } else {
-                    for (int i = 0; i < oldLine.getSpaceUsed(); i++)
-                        // NEWLY INTRODUCED BUG! Should not index oldLine.mStyle with char indices
-                        if (oldLine.mText[i] != ' '/* || oldLine.mStyle[i] != currentStyle */)
+                    int currentOldCol = 0;
+                    for (int i = 0; i < oldLine.getSpaceUsed(); i++) {
+                        char c = oldLine.mText[i];
+                        int codePoint = (Character.isHighSurrogate(c)) ? Character.toCodePoint(c, oldLine.mText[++i]) : c;
+                        int displayWidth = WcWidth.width(codePoint);
+                        if (displayWidth > 0) {
+                            long styleAtCol = oldLine.getStyle(currentOldCol);
+                            if (c != ' ' || styleAtCol != currentStyle) {
+                                lastNonSpaceIndex = i + 1;
+                            }
+                            currentOldCol += displayWidth;
+                        } else if (c != ' ') {
                             lastNonSpaceIndex = i + 1;
+                        }
+                    }
                 }
 
                 int currentOldCol = 0;

@@ -38,19 +38,18 @@ public class RadioGroupPlus extends LinearLayout {
 
         // retrieve selected radio button as requested by the user in the
         // XML layout file
-        //TODO: fix ignored attributes
-//        TypedArray attributes = context.obtainStyledAttributes(
-//                attrs, com.android.internal.R.styleable.RadioGroup, com.android.internal.R.attr.radioButtonStyle, 0);
+        TypedArray attributes = context.obtainStyledAttributes(
+                attrs, new int[]{android.R.attr.checkedButton, android.R.attr.orientation});
 
-//        int value = attributes.getResourceId(com.android.internal.R.styleable.RadioGroup_checkedButton, View.NO_ID);
-//        if (value != View.NO_ID) {
-//            mCheckedId = value;
-//        }
+        int value = attributes.getResourceId(0, View.NO_ID);
+        if (value != View.NO_ID) {
+            mCheckedId = value;
+        }
 
-//        final int index = attributes.getInt(com.android.internal.R.styleable.RadioGroup_orientation, VERTICAL);
-//        setOrientation(index);
+        final int index = attributes.getInt(1, VERTICAL);
+        setOrientation(index);
 
-//        attributes.recycle();
+        attributes.recycle();
         init();
     }
 
