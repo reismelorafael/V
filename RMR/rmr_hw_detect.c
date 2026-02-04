@@ -1,0 +1,62 @@
+/* rmr_hw_detect.c - autodetecção avançada low-level */
+#include "rmr_hw_detect.h"
+#include "rmr_cycles.h"
+
+static u32 RmR_IsLittleEndian(void){
+  unsigned short v = 0x0102u;
+  return (*((unsigned char*)&v) == 0x02u) ? 1u : 0u;
+}
+
+static u32 RmR_ArchDetect(void){
+#if defined(__x86_64__) || defined(_M_X64)
+  return 2u;
+#elif defined(__i386__) || defined(_M_IX86)
+  return 1u;
+#elif defined(__aarch64__)
+  return 4u;
+#elif defined(__arm__) || defined(_M_ARM)
+  return 3u;
+#elif defined(__riscv)
+  return 5u;
+#elif defined(__mips__)
+  return 6u;
+#else
+  return 0u;
+#endif
+}
+
+static u32 RmR_CachelineHint(u32 arch){
+  if(arch == 2u || arch == 1u) return 64u;
+  if(arch == 4u || arch == 3u) return 64u;
+  if(arch == 5u) return 64u;
+  return 32u;
+}
+
+static u32 RmR_PageHint(u32 arch){
+  if(arch == 5u) return 4096u;
+  return 4096u;
+}
+
+static u32 RmR_MemBusHint(u32 arch){
+  if(arch == 2u || arch == 1u) return 64u;
+  if(arch == 4u || arch == 3u) return 64u;
+  if(arch == 5u) return 64u;
+  return 32u;
+}
+
+void RmR_HW_Detect(RmR_HW_Info *out){
+  if(!out) return;
+  u32 arch = RmR_ArchDetect();
+  out->arch = arch;
+  out->word_bits = (u32)(sizeof(unsigned int) * 8u);
+  out->ptr_bits = (u32)(sizeof(void*) * 8u);
+  out->is_little_endian = RmR_IsLittleEndian();
+  out->has_cycle_counter = (RmR_ReadCycles() != 0u) ? 1u : 0u;
+  out->cacheline_bytes = RmR_CachelineHint(arch);
+  out->cache_hint_l1 = 32u * 1024u;
+  out->cache_hint_l2 = 256u * 1024u;
+  out->cache_hint_l3 = 1024u * 1024u;
+  out->page_bytes = RmR_PageHint(arch);
+  out->mem_bus_bits = RmR_MemBusHint(arch);
+  out->align_bytes = out->cacheline_bytes;
+}

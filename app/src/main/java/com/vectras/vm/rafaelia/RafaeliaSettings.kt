@@ -12,8 +12,16 @@ object RafaeliaSettings {
     const val KEY_RAFAELIA_LOG_CAPTURE = "rafaeliaLogCapture"
     const val KEY_RAFAELIA_BENCH_DURATION = "rafaeliaBenchDurationSec"
     const val KEY_RAFAELIA_BITSTACK = "rafaeliaBitStack"
+    const val KEY_RAFAELIA_AUTOTUNE = "rafaeliaAutotuneEnabled"
+    const val KEY_RAFAELIA_TCG_TB_SIZE = "rafaeliaTcgTbSize"
+    const val KEY_RAFAELIA_BENCH_PROFILE = "rafaeliaBenchProfile"
+    const val KEY_RAFAELIA_BENCH_STRIDE = "rafaeliaBenchStrideBytes"
+    const val KEY_RAFAELIA_BENCH_MATRIX = "rafaeliaBenchMatrixN"
 
     private const val DEFAULT_BENCH_SECONDS = 30
+    private const val DEFAULT_TB_SIZE = 2048
+    private const val DEFAULT_BENCH_STRIDE = 2
+    private const val DEFAULT_BENCH_MATRIX = 4
 
     @JvmStatic
     fun isLogCaptureEnabled(context: Context): Boolean {
@@ -32,7 +40,45 @@ object RafaeliaSettings {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val seconds = prefs.getString(KEY_RAFAELIA_BENCH_DURATION, DEFAULT_BENCH_SECONDS.toString())
             ?.toLongOrNull() ?: DEFAULT_BENCH_SECONDS.toLong()
-        return (if (seconds > 0) seconds else DEFAULT_BENCH_SECONDS.toLong()) * 1000L
+        val base = if (seconds > 0) seconds else DEFAULT_BENCH_SECONDS.toLong()
+        val profile = prefs.getString(KEY_RAFAELIA_BENCH_PROFILE, "standard") ?: "standard"
+        val multiplier = when (profile) {
+            "light" -> 0.5
+            "intensive" -> 2.0
+            else -> 1.0
+        }
+        val scaled = (base * multiplier).toLong().coerceAtLeast(5L)
+        return scaled * 1000L
+    }
+
+    @JvmStatic
+    fun isAutotuneEnabled(context: Context): Boolean {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        return prefs.getBoolean(KEY_RAFAELIA_AUTOTUNE, true)
+    }
+
+    @JvmStatic
+    fun tcgTbSize(context: Context): Int {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val value = prefs.getString(KEY_RAFAELIA_TCG_TB_SIZE, DEFAULT_TB_SIZE.toString())
+            ?.toIntOrNull() ?: DEFAULT_TB_SIZE
+        return value.coerceAtLeast(256)
+    }
+
+    @JvmStatic
+    fun benchStrideBytes(context: Context): Int {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val value = prefs.getString(KEY_RAFAELIA_BENCH_STRIDE, DEFAULT_BENCH_STRIDE.toString())
+            ?.toIntOrNull() ?: DEFAULT_BENCH_STRIDE
+        return value.coerceAtLeast(1)
+    }
+
+    @JvmStatic
+    fun benchMatrixN(context: Context): Int {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val value = prefs.getString(KEY_RAFAELIA_BENCH_MATRIX, DEFAULT_BENCH_MATRIX.toString())
+            ?.toIntOrNull() ?: DEFAULT_BENCH_MATRIX
+        return value.coerceIn(2, 32)
     }
 
     @JvmStatic

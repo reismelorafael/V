@@ -17,10 +17,14 @@ public final class RafaeliaQemuTuning {
         if (config == null || !config.getEnabled()) {
             return extras;
         }
-        return ensureTcgTbSize(extras);
+        if (!config.getAutotuneEnabled()) {
+            return extras;
+        }
+        int tbSize = config.getTcgTbSize() > 0 ? config.getTcgTbSize() : DEFAULT_TB_SIZE;
+        return ensureTcgTbSize(extras, tbSize);
     }
 
-    private static String ensureTcgTbSize(String extras) {
+    private static String ensureTcgTbSize(String extras, int tbSize) {
         Matcher matcher = ACCEL_TCG_PATTERN.matcher(extras);
         StringBuffer updated = new StringBuffer();
         boolean changed = false;
@@ -30,7 +34,7 @@ public final class RafaeliaQemuTuning {
                 matcher.appendReplacement(updated, Matcher.quoteReplacement(accel));
                 continue;
             }
-            String tuned = accel + ",tb-size=" + DEFAULT_TB_SIZE;
+            String tuned = accel + ",tb-size=" + tbSize;
             matcher.appendReplacement(updated, Matcher.quoteReplacement(tuned));
             changed = true;
         }

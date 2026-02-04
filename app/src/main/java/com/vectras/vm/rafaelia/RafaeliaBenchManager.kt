@@ -7,6 +7,7 @@ import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.preference.PreferenceManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.vectras.vm.R
 import com.vectras.vm.VMManager
@@ -110,6 +111,22 @@ object RafaeliaBenchManager {
         val coherenceAvg = if (coherenceCount > 0) coherenceSum / coherenceCount else 0.0
 
         Log.i(TAG, String.format(Locale.US, "bench parsed ticks=%d entropy=%.6f coherence=%.6f", ticks, entropyAvg, coherenceAvg))
-        return RafaeliaBenchReport(ticks, entropyAvg, coherenceAvg, durationMs)
+        val benchProfile = PreferenceManager.getDefaultSharedPreferences(context)
+            .getString(RafaeliaSettings.KEY_RAFAELIA_BENCH_PROFILE, "standard") ?: "standard"
+        val benchStride = RafaeliaSettings.benchStrideBytes(context)
+        val benchMatrix = RafaeliaSettings.benchMatrixN(context)
+        val autotuneEnabled = RafaeliaSettings.isAutotuneEnabled(context)
+        val tbSize = RafaeliaSettings.tcgTbSize(context)
+        return RafaeliaBenchReport(
+            ticks,
+            entropyAvg,
+            coherenceAvg,
+            durationMs,
+            benchProfile,
+            benchStride,
+            benchMatrix,
+            autotuneEnabled,
+            tbSize
+        )
     }
 }

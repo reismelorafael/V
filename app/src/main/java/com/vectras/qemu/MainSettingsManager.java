@@ -471,6 +471,30 @@ public class MainSettingsManager extends AppCompatActivity
                 });
             }
 
+            EditTextPreference rafaeliaTcgTbSize = findPreference("rafaeliaTcgTbSize");
+            if (rafaeliaTcgTbSize != null) {
+                rafaeliaTcgTbSize.setOnBindEditTextListener(editText -> {
+                    editText.setInputType(InputType.TYPE_CLASS_NUMBER);
+                    editText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(5)});
+                });
+            }
+
+            EditTextPreference rafaeliaBenchStride = findPreference("rafaeliaBenchStrideBytes");
+            if (rafaeliaBenchStride != null) {
+                rafaeliaBenchStride.setOnBindEditTextListener(editText -> {
+                    editText.setInputType(InputType.TYPE_CLASS_NUMBER);
+                    editText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4)});
+                });
+            }
+
+            EditTextPreference rafaeliaBenchMatrix = findPreference("rafaeliaBenchMatrixN");
+            if (rafaeliaBenchMatrix != null) {
+                rafaeliaBenchMatrix.setOnBindEditTextListener(editText -> {
+                    editText.setInputType(InputType.TYPE_CLASS_NUMBER);
+                    editText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(3)});
+                });
+            }
+
             ListPreference rafaeliaMode = findPreference("rafaeliaMode");
             if (rafaeliaMode != null) {
                 updateRafaeliaModeSummary(rafaeliaMode, rafaeliaMode.getValue());

@@ -224,6 +224,17 @@
     <string name="rafaelia_tick_ms">Tick interval (ms)</string>
     <string name="rafaelia_debug">Enable Rafaelia debug</string>
     <string name="rafaelia_bench_duration">Bench duration (seconds)</string>
+    <string name="rafaelia_autotune">Autotuning & Bench Control</string>
+    <string name="rafaelia_autotune_enabled">Enable autotuning</string>
+    <string name="rafaelia_autotune_enabled_desc">Apply adaptive tuning when Rafaelia is enabled.</string>
+    <string name="rafaelia_tcg_tb_size">TCG translation block size</string>
+    <string name="rafaelia_tcg_tb_size_desc">Higher values favor throughput; lower values favor latency.</string>
+    <string name="rafaelia_bench_profile">Benchmark profile</string>
+    <string name="rafaelia_bench_profile_desc">Controls workload intensity and runtime budget.</string>
+    <string name="rafaelia_bench_stride">Bench memory stride (bytes)</string>
+    <string name="rafaelia_bench_stride_desc">Stride used for memory access sampling in benchmarks.</string>
+    <string name="rafaelia_bench_matrix">Bench matrix size (N)</string>
+    <string name="rafaelia_bench_matrix_desc">Matrix dimension used for dense compute sampling.</string>
     <string name="rafaelia_log_capture">Capture QEMU trace log</string>
     <string name="rafaelia_bitstack">Enable BitStack event log</string>
     <string name="rafaelia_logs_title">Rafaelia Logs</string>
