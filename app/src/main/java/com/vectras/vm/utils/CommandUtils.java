@@ -11,10 +11,10 @@ public class CommandUtils {
         String command = "echo \"\" > /etc/apk/repositories && sed -i -e \"1ihttps://xssFjnj58Id/yttGkok69Je/edge/testing\" /etc/apk/repositories && sed -i -e \"1ihttps://xssFjnj58Id/yttGkok69Je/"
                 + version + "/community\" /etc/apk/repositories && sed -i -e \"1ihttps://xssFjnj58Id/yttGkok69Je/" + version + "/main\" /etc/apk/repositories";
 
-        command = command.replaceAll("/yttGkok69Je", _beforemain);
+        command = command.replace("/yttGkok69Je", _beforemain);
         if (!_https)
-            command = command.replaceAll("https://", "http://");
-        return command.replaceAll("xssFjnj58Id", _url);
+            command = command.replace("https://", "http://");
+        return command.replace("xssFjnj58Id", _url);
     }
 
     public static void run(String _command, boolean _isShowResult, Activity _activity) {
@@ -32,7 +32,7 @@ public class CommandUtils {
     }
 
     public static String getQemuVersion() {
-        return VectrasApp.getContext() == null ? "Unknow" : Terminal.executeShellCommandWithResult("qemu-system-x86_64 --version | head -n1 | awk '{print $4}'", VectrasApp.getContext()).replaceAll("\n", "");
+        return VectrasApp.getContext() == null ? "Unknow" : Terminal.executeShellCommandWithResult("qemu-system-x86_64 --version | head -n1 | awk '{print $4}'", VectrasApp.getContext()).replace("\n", "");
     }
 
     public static boolean is3dfxVersion() {

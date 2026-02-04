@@ -81,7 +81,7 @@ public class StartVM {
                     if (MainSettingsManager.getArch(activity).equals("ARM64")) {
                         cdrom = " -drive";
                         cdrom += " if=none,id=cdrom,format=raw,media=cdrom,file='" + cdromFile.getPath() + "'";
-                        cdrom += "-device";
+                        cdrom += " -device";
                         cdrom += " usb-storage,drive=cdrom";
                         if (!extras.contains("-device nec-usb-xhci")) {
                             cdrom += " -device";

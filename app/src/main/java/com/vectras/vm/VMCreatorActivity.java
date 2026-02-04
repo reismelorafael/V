@@ -252,7 +252,7 @@ public class VMCreatorActivity extends AppCompatActivity {
                 if (Objects.requireNonNull(getIntent().getStringExtra("romextra")).isEmpty()) {
                     setDefault();
                 } else {
-                    binding.qemu.setText(Objects.requireNonNull(getIntent().getStringExtra("romextra")).replaceAll("OhnoIjustrealizeditsmidnightandIstillhavetodothis", AppConfig.vmFolder + vmID + "/"));
+                    binding.qemu.setText(Objects.requireNonNull(getIntent().getStringExtra("romextra")).replace("OhnoIjustrealizeditsmidnightandIstillhavetodothis", AppConfig.vmFolder + vmID + "/"));
                 }
 
                 binding.title.setText(getIntent().getStringExtra("romname"));
@@ -862,10 +862,10 @@ public class VMCreatorActivity extends AppCompatActivity {
                             binding.drive.setText(_getDiskFile);
                         } else {
                             if (Objects.requireNonNull(getIntent().getStringExtra("romextra")).contains(Objects.requireNonNull(getIntent().getStringExtra("finalromfilename")))) {
-                                binding.qemu.setText(Objects.requireNonNull(getIntent().getStringExtra("romextra")).replaceAll(Objects.requireNonNull(getIntent().getStringExtra("finalromfilename")), "\"" + _getDiskFile + "\""));
+                                binding.qemu.setText(Objects.requireNonNull(getIntent().getStringExtra("romextra")).replace(Objects.requireNonNull(getIntent().getStringExtra("finalromfilename")), "\"" + _getDiskFile + "\""));
                             } else {
                                 binding.drive.setText(_getDiskFile);
-                                binding.qemu.setText(Objects.requireNonNull(getIntent().getStringExtra("romextra")).replaceAll("OhnoIjustrealizeditsmidnightandIstillhavetodothis", AppConfig.vmFolder + vmID + "/"));
+                                binding.qemu.setText(Objects.requireNonNull(getIntent().getStringExtra("romextra")).replace("OhnoIjustrealizeditsmidnightandIstillhavetodothis", AppConfig.vmFolder + vmID + "/"));
                             }
                         }
 
@@ -920,7 +920,7 @@ public class VMCreatorActivity extends AppCompatActivity {
 
                 if (jObj.has("qemu") && !jObj.isNull("qemu")) {
                     if (!jObj.getString("qemu").isEmpty()) {
-                        binding.qemu.setText(jObj.getString("qemu").replaceAll("OhnoIjustrealizeditsmidnightandIstillhavetodothis", AppConfig.vmFolder + vmID + "/"));
+                        binding.qemu.setText(jObj.getString("qemu").replace("OhnoIjustrealizeditsmidnightandIstillhavetodothis", AppConfig.vmFolder + vmID + "/"));
                     }
                 }
 
