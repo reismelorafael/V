@@ -267,11 +267,41 @@ public class RafaeliaMvp {
             | ((long)(tick & 0xFFFFFFFFL) << 40);
 
         int meta = packMeta(computedParity8, whoOut, rhoScore);
-        bs.appendRecord(payloadU64, meta);
+        RafaeliaKernelV22.SystemState<Long, Long, Integer> state =
+            new RafaeliaKernelV22.SystemState<>(cpuState, ramState, whoOut);
+
+        double u = rhoScore;
+        double uHat = syn;
+        double lambda = RafaeliaKernelV22.lambda(u, uHat);
+        double epsilon = RafaeliaKernelV22.epsilon(u - uHat, lambda);
+        double localTemp = RafaeliaKernelV22.localTemp(1.0, 0.1, lambda, 0.05, syn, 0.01, Math.abs(whoOut));
+        double xi = RafaeliaKernelV22.abortVector(rhoScore, syn);
+        boolean abort = RafaeliaKernelV22.shouldAbort(xi, RHO_SLEEP_THRESHOLD);
+
+        double[] probs = routeProbs(ev.priority(), ev.type().ordinal());
+        int route = RafaeliaKernelV22.routeMax(probs);
+        double[][] gotas = kernelGotas(cpuState, ramState, diskState);
+        double[] mix = RafaeliaKernelV22.mixWeighted(probs, gotas);
+        double[][] distances = kernelDistances(mix);
+        double[][] kappas = kernelKappas(route);
+        double potential = RafaeliaKernelV22.graphPotential(distances, kappas);
+        double[] grad = kernelGrad(mix);
+        double[] next = RafaeliaKernelV22.attractorStep(mix, grad, 0.01);
+
+        double deltaSimpson = RafaeliaKernelV22.deltaSimpson(epsilon,
+            new double[]{lambda, epsilon}, new double[]{0.5, 0.5});
+        double deltaBelady = RafaeliaKernelV22.deltaBelady(syn, rhoScore);
+        double mirage = RafaeliaKernelV22.mirageVariance(new double[]{lambda, epsilon, localTemp});
+        double score = RafaeliaKernelV22.score(1.0, epsilon, 1.0, localTemp, 1.0, state.action,
+            1.0, deltaSimpson + deltaBelady + mirage);
+
+        if (!abort) {
+          bs.appendRecord(payloadU64, meta);
+        }
 
         // (4) Next input: adapt (very minimal)
         // If rho high, simulate “lower harmonic” by brief sleep (stabilize)
-        if (rhoScore >= RHO_SLEEP_THRESHOLD) Thread.sleep(RHO_SLEEP_MS);
+        if (rhoScore >= RHO_SLEEP_THRESHOLD || abort) Thread.sleep(RHO_SLEEP_MS);
 
         // occasionally flush
         if ((tick & 0x3FF) == 0) bs.flush();
@@ -280,6 +310,8 @@ public class RafaeliaMvp {
         if ((tick % 500) == 0) {
           System.out.printf("tick=%d ev=%s pr=%d bits=0x%04X parity=%02X syn=%d rho=%d whoOut=%d%n",
               tick, ev.type(), ev.priority(), bits16, computedParity8, syn, rhoScore, whoOut);
+          System.out.printf("route=%d lambda=%.2f eps=%.2f temp=%.2f U=%.2f score=%.2f next=[%.1f,%.1f,%.1f]%n",
+              route, lambda, epsilon, localTemp, potential, score, next[0], next[1], next[2]);
         }
 
         tick++;
@@ -303,5 +335,51 @@ public class RafaeliaMvp {
     x *= 0x94D049BB133111EBL;
     x ^= (x >>> 31);
     return x;
+  }
+
+  static double[] routeProbs(int priority, int typeOrdinal) {
+    double a = 1.0 + (priority % 5);
+    double b = 1.0 + (typeOrdinal % 3);
+    double c = 1.0 + ((priority + typeOrdinal) % 7);
+    double sum = a + b + c;
+    return new double[]{a / sum, b / sum, c / sum};
+  }
+
+  static double[][] kernelGotas(long cpu, long ram, long disk) {
+    double c = (double) (cpu & 0xFFFF);
+    double r = (double) (ram & 0xFFFF);
+    double d = (double) (disk & 0xFFFF);
+    return new double[][]{
+        {c, r, d},
+        {r, d, c},
+        {d, c, r}
+    };
+  }
+
+  static double[][] kernelDistances(double[] v) {
+    double[][] out = new double[v.length][v.length];
+    for (int i = 0; i < v.length; i++) {
+      for (int j = 0; j < v.length; j++) {
+        out[i][j] = Math.abs(v[i] - v[j]);
+      }
+    }
+    return out;
+  }
+
+  static double[][] kernelKappas(int route) {
+    double base = 1.0 + (route % 3);
+    return new double[][]{
+        {0.0, base, base / 2.0},
+        {base, 0.0, base * 1.5},
+        {base / 2.0, base * 1.5, 0.0}
+    };
+  }
+
+  static double[] kernelGrad(double[] v) {
+    return new double[]{
+        v[0] - v[1],
+        v[1] - v[2],
+        v[2] - v[0]
+    };
   }
 }

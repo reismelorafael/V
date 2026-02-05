@@ -208,6 +208,7 @@ RAFAELIA_KERNEL_SPEC_V22
 Este contrato fica acoplado à implementação determinística em:
 
 - `app/src/main/java/com/vectras/vm/rafaelia/RafaeliaKernelV22.java`
+- `app/src/main/java/com/vectras/vm/rafaelia/RafaeliaMvp.java` (uso runtime)
 - `app/src/test/java/com/vectras/vm/rafaelia/RafaeliaKernelV22Test.java`
 
 Lote único (obrigatório): documento + código + testes devem ser entregues juntos,
