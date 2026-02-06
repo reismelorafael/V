@@ -51,6 +51,8 @@ public final class AdvancedAlgorithms {
         private int[] joint;
         private int[] tempInt;
         private int[] openSet;
+        private int[] heapIndex;
+        private byte[] openState;
         private boolean[] closedSet;
         private int[] gScore;
         private int[] fScore;
@@ -109,6 +111,20 @@ public final class AdvancedAlgorithms {
                 openSet = new int[length];
             }
             return openSet;
+        }
+
+        private int[] ensureHeapIndexCapacity(int length) {
+            if (heapIndex == null || heapIndex.length < length) {
+                heapIndex = new int[length];
+            }
+            return heapIndex;
+        }
+
+        private byte[] ensureOpenStateCapacity(int length) {
+            if (openState == null || openState.length < length) {
+                openState = new byte[length];
+            }
+            return openState;
         }
 
         private boolean[] ensureClosedSetCapacity(int length) {
@@ -484,75 +500,154 @@ public final class AdvancedAlgorithms {
      * @return Path length or -1 if not found
      */
     public static int aStarSearch(int start, int goal, HeuristicFunction heuristic, int maxNodes) {
-        // Simplified A* for demonstration
+        if (heuristic == null || maxNodes <= 0 || start < 0 || goal < 0 || start >= maxNodes || goal >= maxNodes) {
+            return -1;
+        }
+
         Buffers buffers = THREAD_LOCAL_BUFFERS.get();
         int[] openSet = buffers.ensureOpenSetCapacity(maxNodes);
+        int[] heapIndex = buffers.ensureHeapIndexCapacity(maxNodes);
+        byte[] openState = buffers.ensureOpenStateCapacity(maxNodes);
         boolean[] closedSet = buffers.ensureClosedSetCapacity(maxNodes);
         int[] gScore = buffers.ensureGScoreCapacity(maxNodes);
         int[] fScore = buffers.ensureFScoreCapacity(maxNodes);
-        
-        java.util.Arrays.fill(closedSet, 0, maxNodes, false);
-        java.util.Arrays.fill(gScore, 0, maxNodes, Integer.MAX_VALUE);
-        java.util.Arrays.fill(fScore, 0, maxNodes, Integer.MAX_VALUE);
-        
+
+        for (int i = 0; i < maxNodes; i++) {
+            closedSet[i] = false;
+            openState[i] = 0;
+            heapIndex[i] = -1;
+            gScore[i] = Integer.MAX_VALUE;
+            fScore[i] = Integer.MAX_VALUE;
+        }
+
         gScore[start] = 0;
         fScore[start] = heuristic.estimate(start, goal);
-        openSet[0] = start;
-        int openCount = 1;
-        
-        while (openCount > 0) {
-            // Find node with lowest fScore in openSet
-            int current = -1;
-            int minF = Integer.MAX_VALUE;
-            int currentIdx = -1;
-            
-            for (int i = 0; i < openCount; i++) {
-                int node = openSet[i];
-                if (fScore[node] < minF) {
-                    minF = fScore[node];
-                    current = node;
-                    currentIdx = i;
-                }
+
+        int heapSize = heapPush(openSet, heapIndex, fScore, start, 0);
+        openState[start] = 1;
+
+        while (heapSize > 0) {
+            int current = openSet[0];
+            heapSize = heapPop(openSet, heapIndex, fScore, heapSize);
+            openState[current] = 0;
+
+            if (closedSet[current]) {
+                continue;
             }
-            
             if (current == goal) {
                 return gScore[goal];
             }
-            
-            // Remove current from openSet
-            openSet[currentIdx] = openSet[openCount - 1];
-            openCount--;
+
             closedSet[current] = true;
-            
-            // Explore neighbors (simplified - assumes grid connectivity)
             int[] neighbors = heuristic.getNeighbors(current);
-            for (int neighbor : neighbors) {
+            if (neighbors == null) {
+                continue;
+            }
+
+            int baseG = gScore[current];
+            if (baseG == Integer.MAX_VALUE) {
+                continue;
+            }
+
+            for (int i = 0; i < neighbors.length; i++) {
+                int neighbor = neighbors[i];
                 if (neighbor < 0 || neighbor >= maxNodes || closedSet[neighbor]) {
                     continue;
                 }
-                
-                int tentativeG = gScore[current] + 1; // Edge weight = 1
-                
+
+                int tentativeG = baseG + 1;
                 if (tentativeG < gScore[neighbor]) {
                     gScore[neighbor] = tentativeG;
                     fScore[neighbor] = tentativeG + heuristic.estimate(neighbor, goal);
-                    
-                    // Add to openSet if not present
-                    boolean inOpen = false;
-                    for (int i = 0; i < openCount; i++) {
-                        if (openSet[i] == neighbor) {
-                            inOpen = true;
-                            break;
-                        }
-                    }
-                    if (!inOpen && openCount < maxNodes) {
-                        openSet[openCount++] = neighbor;
+
+                    if (openState[neighbor] == 0) {
+                        heapSize = heapPush(openSet, heapIndex, fScore, neighbor, heapSize);
+                        openState[neighbor] = 1;
+                    } else {
+                        heapSiftUp(openSet, heapIndex, fScore, heapIndex[neighbor]);
                     }
                 }
             }
         }
-        
-        return -1; // Path not found
+
+        return -1;
+    }
+
+    private static int heapPush(int[] heap, int[] heapIndex, int[] fScore, int node, int heapSize) {
+        heap[heapSize] = node;
+        heapIndex[node] = heapSize;
+        heapSiftUp(heap, heapIndex, fScore, heapSize);
+        return heapSize + 1;
+    }
+
+    private static int heapPop(int[] heap, int[] heapIndex, int[] fScore, int heapSize) {
+        int lastIndex = heapSize - 1;
+        int root = heap[0];
+        int lastNode = heap[lastIndex];
+        heapIndex[root] = -1;
+        if (lastIndex == 0) {
+            return 0;
+        }
+
+        heap[0] = lastNode;
+        heapIndex[lastNode] = 0;
+        heapSiftDown(heap, heapIndex, fScore, 0, lastIndex);
+        return lastIndex;
+    }
+
+    private static void heapSiftUp(int[] heap, int[] heapIndex, int[] fScore, int index) {
+        int node = heap[index];
+        int score = fScore[node];
+
+        while (index > 0) {
+            int parent = (index - 1) >>> 1;
+            int parentNode = heap[parent];
+            int parentScore = fScore[parentNode];
+            if (parentScore < score || (parentScore == score && parentNode <= node)) {
+                break;
+            }
+            heap[index] = parentNode;
+            heapIndex[parentNode] = index;
+            index = parent;
+        }
+
+        heap[index] = node;
+        heapIndex[node] = index;
+    }
+
+    private static void heapSiftDown(int[] heap, int[] heapIndex, int[] fScore, int index, int heapSize) {
+        int node = heap[index];
+        int score = fScore[node];
+        int half = heapSize >>> 1;
+
+        while (index < half) {
+            int left = (index << 1) + 1;
+            int right = left + 1;
+            int best = left;
+            int bestNode = heap[left];
+            int bestScore = fScore[bestNode];
+
+            if (right < heapSize) {
+                int rightNode = heap[right];
+                int rightScore = fScore[rightNode];
+                if (rightScore < bestScore || (rightScore == bestScore && rightNode < bestNode)) {
+                    best = right;
+                    bestNode = rightNode;
+                    bestScore = rightScore;
+                }
+            }
+
+            if (bestScore > score || (bestScore == score && bestNode >= node)) {
+                break;
+            }
+
+            heap[index] = bestNode;
+            heapIndex[bestNode] = index;
+            index = best;
+        }
+
+        heap[index] = node;
+        heapIndex[node] = index;
     }
 
     // ========== Fast Transforms ==========

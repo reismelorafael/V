@@ -15,6 +15,12 @@ public final class LowLevelAsm {
     public static final int FIXED_TWO_PI = 411774;
 
     private static final int SINE_TABLE_SIZE = 256;
+    private static final int[] DEBRUIJN_TZ_INDEX_32 = new int[] {
+        0, 1, 28, 2, 29, 14, 24, 3,
+        30, 22, 20, 15, 25, 17, 4, 8,
+        31, 27, 13, 23, 21, 19, 16, 7,
+        26, 12, 18, 6, 11, 5, 10, 9
+    };
     private static final short[] SINE_TABLE = new short[] {
         0, 201, 402, 603, 804, 1005, 1206, 1407, 1608, 1809, 2009, 2210, 2410, 2611, 2811, 3012,
         3212, 3412, 3612, 3811, 4011, 4210, 4410, 4609, 4808, 5007, 5205, 5404, 5602, 5800, 5998, 6195,
@@ -93,15 +99,39 @@ public final class LowLevelAsm {
     // ========== Matrix ops with offsets ==========
 
     public static void asmMat4Mul(short[] m, int mOffset, short[] v, int vOffset, int[] out, int outOffset) {
-        for (int i = 0; i < 4; i++) {
-            int row = mOffset + (i << 2);
-            int sum = 0;
-            sum += m[row] * v[vOffset];
-            sum += m[row + 1] * v[vOffset + 1];
-            sum += m[row + 2] * v[vOffset + 2];
-            sum += m[row + 3] * v[vOffset + 3];
-            out[outOffset + i] = sum >> FIXED_POINT_BITS;
-        }
+        final int v0 = v[vOffset];
+        final int v1 = v[vOffset + 1];
+        final int v2 = v[vOffset + 2];
+        final int v3 = v[vOffset + 3];
+
+        int row = mOffset;
+        int sum0 = m[row] * v0;
+        sum0 += m[row + 1] * v1;
+        sum0 += m[row + 2] * v2;
+        sum0 += m[row + 3] * v3;
+
+        row += 4;
+        int sum1 = m[row] * v0;
+        sum1 += m[row + 1] * v1;
+        sum1 += m[row + 2] * v2;
+        sum1 += m[row + 3] * v3;
+
+        row += 4;
+        int sum2 = m[row] * v0;
+        sum2 += m[row + 1] * v1;
+        sum2 += m[row + 2] * v2;
+        sum2 += m[row + 3] * v3;
+
+        row += 4;
+        int sum3 = m[row] * v0;
+        sum3 += m[row + 1] * v1;
+        sum3 += m[row + 2] * v2;
+        sum3 += m[row + 3] * v3;
+
+        out[outOffset] = sum0 >> FIXED_POINT_BITS;
+        out[outOffset + 1] = sum1 >> FIXED_POINT_BITS;
+        out[outOffset + 2] = sum2 >> FIXED_POINT_BITS;
+        out[outOffset + 3] = sum3 >> FIXED_POINT_BITS;
     }
 
     public static void asmMat4Transpose(short[] m, int offset) {
@@ -206,34 +236,40 @@ public final class LowLevelAsm {
 
     public static int asmLeadingZeros32(int x) {
         if (x == 0) return 32;
-        int n = 0;
+        int n = 1;
         int v = x;
-        while ((v & 0x80000000) == 0) {
-            n++;
-            v <<= 1;
+        if ((v >>> 16) == 0) {
+            n += 16;
+            v <<= 16;
         }
-        return n;
+        if ((v >>> 24) == 0) {
+            n += 8;
+            v <<= 8;
+        }
+        if ((v >>> 28) == 0) {
+            n += 4;
+            v <<= 4;
+        }
+        if ((v >>> 30) == 0) {
+            n += 2;
+            v <<= 2;
+        }
+        return n - (v >>> 31);
     }
 
     public static int asmTrailingZeros32(int x) {
         if (x == 0) return 32;
-        int n = 0;
-        int v = x;
-        while ((v & 1) == 0) {
-            n++;
-            v >>>= 1;
-        }
-        return n;
+        int isolated = x & -x;
+        int index = (isolated * 0x077CB531) >>> 27;
+        return DEBRUIJN_TZ_INDEX_32[index];
     }
 
     public static int asmLeadingZeros64(long x) {
         if (x == 0L) return 64;
-        int n = 0;
-        long v = x;
-        while ((v & 0x8000000000000000L) == 0) {
-            n++;
-            v <<= 1;
+        int high = (int) (x >>> 32);
+        if (high != 0) {
+            return asmLeadingZeros32(high);
         }
-        return n;
+        return 32 + asmLeadingZeros32((int) x);
     }
 }
