@@ -536,6 +536,9 @@ public final class BitwiseMath {
      * @return Interleaved 32-bit Morton code
      */
     public static int interleave16(int x, int y) {
+        x &= 0xFFFF;
+        y &= 0xFFFF;
+
         x = (x | (x << 8)) & 0x00FF00FF;
         x = (x | (x << 4)) & 0x0F0F0F0F;
         x = (x | (x << 2)) & 0x33333333;
@@ -582,7 +585,7 @@ public final class BitwiseMath {
      * @return Rotated value
      */
     public static int rotateLeft(int value, int bits) {
-        return (value << bits) | (value >>> (32 - bits));
+        return Integer.rotateLeft(value, bits);
     }
     
     /**
@@ -593,7 +596,7 @@ public final class BitwiseMath {
      * @return Rotated value
      */
     public static int rotateRight(int value, int bits) {
-        return (value >>> bits) | (value << (32 - bits));
+        return Integer.rotateRight(value, bits);
     }
     
     /**
@@ -643,17 +646,15 @@ public final class BitwiseMath {
      */
     public static int parallelBitDeposit(int source, int mask) {
         int result = 0;
-        int sourceBit = 0;
-        
-        for (int i = 0; i < 32; i++) {
-            if ((mask & (1 << i)) != 0) {
-                if ((source & (1 << sourceBit)) != 0) {
-                    result |= (1 << i);
-                }
-                sourceBit++;
+
+        for (int sourceBits = source; mask != 0; sourceBits >>>= 1) {
+            int lowestMaskBit = mask & -mask;
+            if ((sourceBits & 1) != 0) {
+                result |= lowestMaskBit;
             }
+            mask ^= lowestMaskBit;
         }
-        
+
         return result;
     }
     
@@ -668,16 +669,16 @@ public final class BitwiseMath {
     public static int parallelBitExtract(int source, int mask) {
         int result = 0;
         int resultBit = 0;
-        
-        for (int i = 0; i < 32; i++) {
-            if ((mask & (1 << i)) != 0) {
-                if ((source & (1 << i)) != 0) {
-                    result |= (1 << resultBit);
-                }
-                resultBit++;
+
+        while (mask != 0) {
+            int lowestMaskBit = mask & -mask;
+            if ((source & lowestMaskBit) != 0) {
+                result |= (1 << resultBit);
             }
+            resultBit++;
+            mask ^= lowestMaskBit;
         }
-        
+
         return result;
     }
     
@@ -730,6 +731,7 @@ public final class BitwiseMath {
      * @return Floor(log2(x))
      */
     public static int fastLog2(int x) {
+        if (x <= 0) return Integer.MIN_VALUE;
         return 31 - LowLevelAsm.asmLeadingZeros32(x);
     }
     
@@ -792,6 +794,10 @@ public final class BitwiseMath {
      * @return 30-bit Morton code
      */
     public static int interleave3D(int x, int y, int z) {
+        x &= 0x3FF;
+        y &= 0x3FF;
+        z &= 0x3FF;
+
         x = (x | (x << 16)) & 0x030000FF;
         x = (x | (x << 8)) & 0x0300F00F;
         x = (x | (x << 4)) & 0x030C30C3;

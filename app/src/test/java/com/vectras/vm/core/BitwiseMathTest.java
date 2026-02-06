@@ -350,6 +350,11 @@ public class BitwiseMathTest {
     }
 
     @Test
+    public void interleave16_masksHigherBits() {
+        assertEquals(BitwiseMath.interleave16(0xFFFF, 0xFFFF), BitwiseMath.interleave16(-1, -1));
+    }
+
+    @Test
     public void interleave16_xOnly() {
         int morton = BitwiseMath.interleave16(0xFFFF, 0);
         // All even bits should be set
@@ -468,15 +473,13 @@ public class BitwiseMathTest {
     @Test
     public void parallelBitDeposit_basic() {
         int result = BitwiseMath.parallelBitDeposit(0b1111, 0b10101010);
-        // Should deposit 1111 into positions of mask
-        assertTrue(result != 0);
+        assertEquals(0b10101010, result);
     }
 
     @Test
     public void parallelBitExtract_basic() {
         int result = BitwiseMath.parallelBitExtract(0b11110000, 0b10101010);
-        // Should extract bits where mask is 1
-        assertTrue(result >= 0);
+        assertEquals(0b1100, result);
     }
 
     @Test
@@ -516,6 +519,12 @@ public class BitwiseMathTest {
         assertFalse(BitwiseMath.isPowerOf2(3));
         assertFalse(BitwiseMath.isPowerOf2(5));
         assertFalse(BitwiseMath.isPowerOf2(100));
+    }
+
+    @Test
+    public void fastLog2_nonPositive_returnsMinValue() {
+        assertEquals(Integer.MIN_VALUE, BitwiseMath.fastLog2(0));
+        assertEquals(Integer.MIN_VALUE, BitwiseMath.fastLog2(-1));
     }
 
     @Test
