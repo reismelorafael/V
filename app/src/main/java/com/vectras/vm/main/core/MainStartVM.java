@@ -26,8 +26,10 @@ import com.vectras.vm.AppConfig;
 import com.vectras.vm.BuildConfig;
 import com.vectras.vm.MainService;
 import com.vectras.vm.R;
+import com.vectras.vm.StartVM;
 import com.vectras.vm.VMManager;
 import com.vectras.vm.logger.VectrasStatus;
+import com.vectras.vm.qemu.VmLaunchLedger;
 import com.vectras.vm.settings.ExternalVNCSettingsActivity;
 import com.vectras.vm.utils.DeviceUtils;
 import com.vectras.vm.utils.DialogUtils;
@@ -108,6 +110,10 @@ public class MainStartVM {
         }
 
         Config.vmID = finalvmID;
+        boolean headless = AppConfig.engineHeadlessMode || env.contains("-display none") || env.contains("headless=true");
+        if (headless) {
+            Log.i(TAG, "engine-only mode enabled (headless=true)");
+        }
 
         File romDir = new File(Config.getCacheDir() + "/" + finalvmID);
         if (!romDir.exists()) {
@@ -195,19 +201,31 @@ public class MainStartVM {
             return;
         }
 
-        showProgressDialog(context, vmName, thumbnailFile);
+        if (!headless) {
+            showProgressDialog(context, vmName, thumbnailFile);
+        }
 
         VMManager.isQemuStopedWithError = false;
 
         String finalCommand = VMManager.addAudioDevSdl(String.format(runCommandFormat, env));
 
-        if (MainSettingsManager.getVmUi(context).equals("X11")) {
+        if (MainSettingsManager.getVmUi(context).equals("X11") && !headless) {
             finalCommand = "export DISPLAY=:0 && " + finalCommand;
             DisplaySystem.startDesktop(context);
         }
         if (BuildConfig.DEBUG) {
             Log.i(TAG, finalCommand);
         }
+
+        VmLaunchLedger.append(
+                context,
+                finalvmID,
+                StartVM.lastResolvedProfile,
+                headless,
+                StartVM.lastKvmEnabled,
+                StartVM.lastKvmReason,
+                finalCommand
+        );
 
         RafaeliaConfig rafaeliaConfig = RafaeliaConfig.fromPreferences(context);
         if (rafaeliaConfig.getEnabled() && RafaeliaSettings.isLogCaptureEnabled(context)) {
@@ -257,7 +275,9 @@ public class MainStartVM {
                     }
 
                     if (!isStopNow && !VMManager.isQemuStopedWithError) {
-                        if (MainSettingsManager.getVmUi(context).equals("VNC")) {
+                        if (headless) {
+                            Log.i(TAG, "engine-only launch completed without frontend attach");
+                        } else if (MainSettingsManager.getVmUi(context).equals("VNC")) {
                             if (MainSettingsManager.getVncExternal(context)) {
                                 Config.currentVNCServervmID = finalvmID;
                                 DialogUtils.oneDialog(context,

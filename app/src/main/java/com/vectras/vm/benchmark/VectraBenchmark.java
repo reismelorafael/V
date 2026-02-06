@@ -1,5 +1,8 @@
 package com.vectras.vm.benchmark;
 
+import com.vectras.vm.core.BareMetalProfile;
+import com.vectras.vm.core.NativeFastPath;
+
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
@@ -68,7 +71,28 @@ public class VectraBenchmark {
     
     // CRC32C thread-local pool
     private static final ThreadLocal<CRC32C> CRC32C_POOL = ThreadLocal.withInitial(CRC32C::new);
+    private static final int M4_ROWS = 1024;
+    private static final int M4_COLS = 4096;
+    private static final int M4_BYTES = M4_ROWS * M4_COLS;
+    private static volatile int copyStripeBytes = BareMetalProfile.recommendedWorkBlockBytes();
+    private static final ThreadLocal<byte[]> COPY_SCRATCH_POOL =
+            ThreadLocal.withInitial(() -> new byte[M4_BYTES]);
+
     
+
+    public static void setCopyStripeBytes(int bytes) {
+        if (bytes < 256) {
+            copyStripeBytes = 256;
+        } else if (bytes > M4_COLS) {
+            copyStripeBytes = M4_COLS;
+        } else {
+            copyStripeBytes = bytes;
+        }
+    }
+
+    public static int getCopyStripeBytes() {
+        return copyStripeBytes;
+    }
     // ========== Metric Categories ==========
     // Category 1: CPU (metrics 0-19)
     static final int CPU_INTEGER_ADD = 0;
@@ -679,18 +703,27 @@ public class VectraBenchmark {
     }
     
     static long benchMemCopyBandwidth(byte[] s0, byte[] d0) {
-        // Low-level manual copy (no System.arraycopy)
-        int n0 = M4.length;
-        int n1 = M4[0].length;
-        byte[][] d1 = new byte[n0][n1];
+        // Low-level manual copy with thread-local arena (no per-call allocations)
+        byte[] scratch = COPY_SCRATCH_POOL.get();
+        int dstOffset = 0;
         long t0 = System.nanoTime();
-        for (int i = 0; i < n0; i++) {
-            for (int j = 0; j < n1; j++) {
-                d1[i][j] = M4[i][j];
+
+        for (int i = 0; i < M4_ROWS; i++) {
+            byte[] row = M4[i];
+            int copied = 0;
+            while (copied < M4_COLS) {
+                int chunk = M4_COLS - copied;
+                if (chunk > copyStripeBytes) {
+                    chunk = copyStripeBytes;
+                }
+                NativeFastPath.copyBytes(row, copied, scratch, dstOffset + copied, chunk);
+                copied += chunk;
             }
+            dstOffset += M4_COLS;
         }
+
         long t1 = System.nanoTime();
-        return t1 - t0 + (d1[0][0] & 0);
+        return t1 - t0 + (NativeFastPath.xorChecksum(scratch, 0, M4_BYTES) & 0);
     }
     
     static long benchMemFillBandwidth(byte[] b0, byte v0) {

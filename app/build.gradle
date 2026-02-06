@@ -20,6 +20,13 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled false
 
+        externalNativeBuild {
+            cmake {
+                cppFlags "-O3 -ffast-math -fno-exceptions -fno-rtti"
+                cFlags "-O3 -ffast-math"
+            }
+        }
+
         resValue "string", "app_version", versionName
         resValue "integer", "app_version_code", versionCode.toString()
         manifestPlaceholders = [
@@ -96,6 +103,13 @@ android {
 
     buildToolsVersion '36.1.0'
     ndkVersion '21'
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
 
     kotlin {
         compilerOptions {

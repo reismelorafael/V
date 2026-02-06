@@ -176,6 +176,26 @@ public class AdvancedAlgorithmsTest {
         assertEquals("Manhattan path length should be 18", 18, pathLength);
     }
 
+
+    @Test
+    public void testAStarSearchInvalidInputs() {
+        AdvancedAlgorithms.HeuristicFunction heuristic = new AdvancedAlgorithms.HeuristicFunction() {
+            @Override
+            public int estimate(int node, int goal) {
+                return 0;
+            }
+
+            @Override
+            public int[] getNeighbors(int node) {
+                return null;
+            }
+        };
+
+        assertEquals(-1, AdvancedAlgorithms.aStarSearch(-1, 5, heuristic, 10));
+        assertEquals(-1, AdvancedAlgorithms.aStarSearch(1, 11, heuristic, 10));
+        assertEquals(-1, AdvancedAlgorithms.aStarSearch(1, 2, null, 10));
+    }
+
     @Test
     public void testFastHadamardTransform() {
         int[] data = {1, 2, 3, 4, 5, 6, 7, 8};

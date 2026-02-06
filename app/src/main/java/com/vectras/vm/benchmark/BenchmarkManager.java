@@ -6,6 +6,9 @@ import android.os.Build;
 import android.os.Debug;
 import android.os.Process;
 
+import com.vectras.vm.core.BareMetalProfile;
+import com.vectras.vm.core.NativeFastPath;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -91,6 +94,30 @@ public class BenchmarkManager {
         void onWarning(String warning);
         void onComplete(BenchmarkResult result);
         void onError(String error);
+    }
+
+    public enum ExecutionProfile {
+        AUTO_ADAPTIVE,
+        DETERMINISTIC,
+        THROUGHPUT,
+        LOW_LATENCY
+    }
+
+    public static final class TuningProfile {
+        public final ExecutionProfile mode;
+        public final int copyStripeBytes;
+        public final int threadPriority;
+        public final int warmupDelayMs;
+        public final String label;
+
+        private TuningProfile(ExecutionProfile mode, int copyStripeBytes, int threadPriority,
+                              int warmupDelayMs, String label) {
+            this.mode = mode;
+            this.copyStripeBytes = copyStripeBytes;
+            this.threadPriority = threadPriority;
+            this.warmupDelayMs = warmupDelayMs;
+            this.label = label;
+        }
     }
     
     // Comprehensive benchmark result with validation
@@ -319,10 +346,9 @@ public class BenchmarkManager {
     private final Context context;
     private final AtomicInteger progressMetric = new AtomicInteger(0);
     private final AtomicReference<ProgressCallback> callback = new AtomicReference<>();
-    private final ArrayList<String> warningBuffer = new ArrayList<>(64);
     private final ArrayList<DiagnosticMetric> diagnosticsBuffer = new ArrayList<>(8);
     private final StringBuilder scratchBuilder = new StringBuilder(128);
-    private final ThreadLocal<ArrayList<String>> warningBuffer =
+    private final ThreadLocal<ArrayList<String>> warningBufferStore =
         ThreadLocal.withInitial(() -> new ArrayList<>(64));
     private final ThreadLocal<DiagnosticMetrics> diagnosticsStore =
         ThreadLocal.withInitial(() -> new DiagnosticMetrics(
@@ -340,26 +366,34 @@ public class BenchmarkManager {
      * This is the main entry point for professional benchmarking.
      */
     public BenchmarkResult runBenchmark(ProgressCallback callback) {
+        return runBenchmark(callback, ExecutionProfile.AUTO_ADAPTIVE);
+    }
+
+    public BenchmarkResult runBenchmark(ProgressCallback callback, ExecutionProfile mode) {
         this.callback.set(callback);
         long startTime = System.currentTimeMillis();
-        
+
         try {
             // Step 1: Pre-flight checks
             notifyProgress(0, VectraBenchmark.METRIC_COUNT, "Performing pre-flight checks...");
             EnvironmentSnapshot envBefore = captureEnvironment();
             PreflightReport preflight = performPreflightChecks(envBefore);
-            
+
             for (String warning : preflight.warnings) {
                 notifyWarning(warning);
             }
-            
+
+            TuningProfile tuningProfile = resolveTuningProfile(mode, envBefore);
+            notifyWarning("Benchmark profile: " + tuningProfile.label +
+                " | stripe=" + tuningProfile.copyStripeBytes + "B");
+
             // Step 2: Optimize environment
             notifyProgress(0, VectraBenchmark.METRIC_COUNT, "Optimizing environment...");
-            optimizeEnvironment();
-            
+            optimizeEnvironment(tuningProfile);
+
             // Step 3: Run benchmarks with progress tracking
             notifyProgress(0, VectraBenchmark.METRIC_COUNT, "Running benchmarks...");
-            VectraBenchmark.BenchmarkResult[] results = runBenchmarksWithProgress();
+            VectraBenchmark.BenchmarkResult[] results = runBenchmarksWithProgress(tuningProfile);
             
             // Step 4: Capture post-benchmark environment
             EnvironmentSnapshot envAfter = captureEnvironment();
@@ -390,72 +424,111 @@ public class BenchmarkManager {
     /**
      * Run benchmarks with real-time progress updates.
      */
-    private VectraBenchmark.BenchmarkResult[] runBenchmarksWithProgress() throws Exception {
+    private VectraBenchmark.BenchmarkResult[] runBenchmarksWithProgress(TuningProfile profile) throws Exception {
         // Use the existing benchmark runner but with progress tracking
         // We'll intercept the benchmark execution to provide progress
         progressMetric.set(0);
         
         // Note: Ideally we'd modify VectraBenchmark.runAllBenchmarks() to accept
         // a progress callback, but for minimal changes, we run it as-is
+        VectraBenchmark.setCopyStripeBytes(profile.copyStripeBytes);
         VectraBenchmark.BenchmarkResult[] results = VectraBenchmark.runAllBenchmarks();
         
         return results;
+    }
+
+    public static TuningProfile buildUiPreviewProfile(ExecutionProfile mode) {
+        int stripeBase = BareMetalProfile.recommendedWorkBlockBytes();
+        int arch = BareMetalProfile.detectArchitecture();
+        int cores = Runtime.getRuntime().availableProcessors();
+        boolean little = (arch == BareMetalProfile.ARCH_ARM32 || arch == BareMetalProfile.ARCH_ARM64);
+
+        switch (mode) {
+            case DETERMINISTIC:
+                return new TuningProfile(mode, stripeBase, Process.THREAD_PRIORITY_DEFAULT, 120,
+                        "Deterministic / low jitter");
+            case THROUGHPUT:
+                return new TuningProfile(mode, stripeBase << 1, Process.THREAD_PRIORITY_FOREGROUND, 20,
+                        "Throughput / high bandwidth");
+            case LOW_LATENCY:
+                return new TuningProfile(mode, Math.max(512, stripeBase >> 1), Process.THREAD_PRIORITY_DISPLAY, 0,
+                        "Low latency / responsive");
+            case AUTO_ADAPTIVE:
+            default:
+                int autoStripe = stripeBase;
+                if (cores >= 8) autoStripe <<= 1;
+                if (little && cores <= 4) autoStripe = Math.max(512, autoStripe >> 1);
+                String nativeTag = NativeFastPath.isNativeAvailable() ? " + JNI" : " + Java";
+                return new TuningProfile(mode, autoStripe, Process.THREAD_PRIORITY_MORE_FAVORABLE, 40,
+                        "Auto-adaptive / hardware-aware" + nativeTag);
+        }
+    }
+
+    private TuningProfile resolveTuningProfile(ExecutionProfile mode, EnvironmentSnapshot envBefore) {
+        TuningProfile uiProfile = buildUiPreviewProfile(mode);
+        int stripe = uiProfile.copyStripeBytes;
+
+        if (envBefore.cpuTempC > 78.0 || envBefore.thermalThrottling) {
+            stripe = Math.max(512, stripe >> 1);
+        } else if (envBefore.freeMemoryMb > 2048 && envBefore.runningProcesses < 80) {
+            stripe = Math.min(32768, stripe << 1);
+        }
+
+        return new TuningProfile(mode, stripe, uiProfile.threadPriority, uiProfile.warmupDelayMs, uiProfile.label);
     }
     
     /**
      * Perform 30+ pre-flight checks for interference detection.
      */
     private PreflightReport performPreflightChecks(EnvironmentSnapshot env) {
-        warningBuffer.clear();
-        ArrayList<String> warnings = warningBuffer.get();
+        ArrayList<String> warnings = warningBufferStore.get();
         warnings.clear();
-        
+
         // Check 1-5: Thermal state
         if (env.cpuTempC > MAX_CPU_TEMP_C) {
-            warningBuffer.add("High CPU temperature: " + env.cpuTempC + "°C (may cause throttling)");
+            warnings.add("High CPU temperature: " + env.cpuTempC + "°C (may cause throttling)");
         }
         if (env.thermalThrottling) {
-            warningBuffer.add("Thermal throttling detected");
+            warnings.add("Thermal throttling detected");
         }
-        
+
         // Check 6-10: Memory state
         if (env.freeMemoryMb < MIN_FREE_MEMORY_MB) {
-            warningBuffer.add("Low free memory: " + env.freeMemoryMb + " MB");
+            warnings.add("Low free memory: " + env.freeMemoryMb + " MB");
         }
-        
+
         Runtime runtime = Runtime.getRuntime();
         long maxMemory = runtime.maxMemory() / (1024 * 1024);
         long usedMemory = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
         double memoryUsagePercent = (usedMemory * 100.0) / maxMemory;
-        
         if (memoryUsagePercent > 80) {
-            warningBuffer.add("High memory usage: " + (int)memoryUsagePercent + "%");
+            warnings.add("High memory usage: " + (int) memoryUsagePercent + "%");
         }
-        
+
         // Check 11-15: System load
         if (env.runningProcesses > 100) {
-            warningBuffer.add("High process count: " + env.runningProcesses + " processes");
+            warnings.add("High process count: " + env.runningProcesses + " processes");
         }
-        
+
         // Check 16-20: Power state
         if (env.lowBattery) {
-            warningBuffer.add("Low battery detected (may trigger power saving)");
+            warnings.add("Low battery detected (may trigger power saving)");
         }
         if (env.powerSaveMode) {
-            warningBuffer.add("Power save mode enabled (may limit performance)");
+            warnings.add("Power save mode enabled (may limit performance)");
         }
-        
+
         // Check 21-25: CPU governor
         if (!"performance".equals(env.cpuGovernor) && !"schedutil".equals(env.cpuGovernor)) {
-            warningBuffer.add("CPU governor not optimal: " + env.cpuGovernor);
+            warnings.add("CPU governor not optimal: " + env.cpuGovernor);
         }
-        
-        // Check 26-30: CPU frequencies (with heterogeneous architecture awareness)
+
+        // Check 26-30: CPU frequencies
         if (env.cpuFrequencies != null && env.cpuFrequencies.length > 0) {
             long minFreq = Long.MAX_VALUE;
             long maxFreq = 0;
             int activeCount = 0;
-            
+
             for (long freq : env.cpuFrequencies) {
                 if (freq > 0) {
                     minFreq = Math.min(minFreq, freq);
@@ -463,72 +536,21 @@ public class BenchmarkManager {
                     activeCount++;
                 }
             }
-            
+
             if (activeCount > 0 && maxFreq > 0) {
-                // Detect if this is a heterogeneous (big.LITTLE) architecture
-                // by checking if frequency spread is very large
                 boolean isHeterogeneous = (minFreq < maxFreq * 0.6);
-                double threshold = isHeterogeneous ? 
-                    CPU_FREQ_VARIANCE_THRESHOLD_HETEROGENEOUS : 
-                    CPU_FREQ_VARIANCE_THRESHOLD_HOMOGENEOUS;
-                
-                // Calculate actual frequency variance across all active cores
-                // variance = (maxFreq - minFreq) / maxFreq
-                double freqVariance = 1.0 - ((double)minFreq / (double)maxFreq);
-                
-                // For homogeneous: warn if variance > 50% (cores differ by more than half)
-                // For heterogeneous: warn if variance > 30% (more than expected for big.LITTLE)
                 double warnThreshold = isHeterogeneous ? 0.30 : 0.50;
-                
-                // Warn if variance exceeds threshold
+                double freqVariance = 1.0 - ((double) minFreq / (double) maxFreq);
                 if (freqVariance > warnThreshold) {
-                    warningBuffer.add(buildFrequencyVarianceWarning(
+                    warnings.add(buildFrequencyVarianceWarning(
                         freqVariance * 100, minFreq, maxFreq,
                         isHeterogeneous ? "heterogeneous" : "homogeneous"));
-                    StringBuilder message = new StringBuilder(128);
-                    message.append("High CPU frequency variance detected (")
-                        .append(formatOneDecimal(freqVariance * 100))
-                        .append("%, min: ")
-                        .append(minFreq)
-                        .append(" kHz, max: ")
-                        .append(maxFreq)
-                        .append(" kHz, arch: ")
-                        .append(isHeterogeneous ? "heterogeneous" : "homogeneous")
-                        .append(")");
-                    warnings.add(message.toString());
                 }
             }
         }
 
-        // Check 31-35: Device fingerprint consistency (emulator/hardware spoofing)
         boolean emulatorLikely = isLikelyEmulator(env);
         if (emulatorLikely) {
-            warningBuffer.add("Potential emulator or spoofed fingerprint detected");
-        }
-        
-        boolean abiMismatch = isAbiCpuMismatch(env.cpuAbi, env.cpuInfoModel, env.cpuInfoHardware);
-        if (abiMismatch) {
-            warningBuffer.add("CPU/ABI mismatch detected (possible hardware spoofing)");
-        }
-
-        if (env.timeSourceDriftPercent > MAX_TIME_DRIFT_PERCENT) {
-            warningBuffer.add(buildTimerWarning("Timer drift detected: ",
-                env.timeSourceDriftPercent, " difference between clocks"));
-        }
-
-        if (env.timerJitterPercent > MAX_TIMER_JITTER_PERCENT) {
-            warningBuffer.add(buildTimerWarning("High timer jitter detected: ",
-                env.timerJitterPercent, ""));
-        }
-
-        double stabilityVariance = measureCpuStabilityVariance();
-        if (stabilityVariance > MAX_STABILITY_VARIANCE_PERCENT) {
-            warningBuffer.add(buildTimerWarning(
-                "CPU stability variance high: ", stabilityVariance,
-                " (possible throttling or background load)"));
-        }
-        
-        return new PreflightReport(warningBuffer, stabilityVariance, emulatorLikely, abiMismatch);
             warnings.add("Potential emulator or spoofed fingerprint detected");
         }
 
@@ -538,56 +560,44 @@ public class BenchmarkManager {
         }
 
         if (env.timeSourceDriftPercent > MAX_TIME_DRIFT_PERCENT) {
-            warnings.add(new StringBuilder(96)
-                .append("Timer drift detected: ")
-                .append(formatOneDecimal(env.timeSourceDriftPercent))
-                .append("% difference between clocks")
-                .toString());
+            warnings.add(buildTimerWarning("Timer drift detected: ",
+                env.timeSourceDriftPercent, " difference between clocks"));
         }
 
         if (env.timerJitterPercent > MAX_TIMER_JITTER_PERCENT) {
-            warnings.add(new StringBuilder(64)
-                .append("High timer jitter detected: ")
-                .append(formatOneDecimal(env.timerJitterPercent))
-                .append("%")
-                .toString());
+            warnings.add(buildTimerWarning("High timer jitter detected: ",
+                env.timerJitterPercent, ""));
         }
 
-        double stabilityVariance = 0.0;
-        if (ENABLE_STABILITY_PROBE && CONSISTENCY_SAMPLES > 0) {
-            stabilityVariance = measureCpuStabilityVariance();
-            if (stabilityVariance > MAX_STABILITY_VARIANCE_PERCENT) {
-                warnings.add(new StringBuilder(128)
-                    .append("CPU stability variance high: ")
-                    .append(formatOneDecimal(stabilityVariance))
-                    .append("% (possible throttling or background load)")
-                    .toString());
-            }
+        double stabilityVariance = measureCpuStabilityVariance();
+        if (stabilityVariance > MAX_STABILITY_VARIANCE_PERCENT) {
+            warnings.add(buildTimerWarning(
+                "CPU stability variance high: ", stabilityVariance,
+                " (possible throttling or background load)"));
         }
-        
+
         return new PreflightReport(warnings, stabilityVariance, emulatorLikely, abiMismatch);
     }
-    
+
     /**
      * Optimize environment for benchmarking.
      */
-    private void optimizeEnvironment() {
-        // Set process priority to high
+    private void optimizeEnvironment(TuningProfile profile) {
         try {
-            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_DISPLAY);
-        } catch (Exception e) {
-            // Ignore if we can't set priority
+            Process.setThreadPriority(profile.threadPriority);
+        } catch (Exception ignored) {
+            // ignored - permission/device dependent
         }
-        
-        // Request GC before benchmarking to minimize GC during tests
+
+        // GC preparation for reduced benchmark jitter
         System.gc();
         try {
-            Thread.sleep(100); // Give GC time to complete
+            Thread.sleep(profile.warmupDelayMs);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
     }
-    
+
     /**
      * Capture current environment state.
      */

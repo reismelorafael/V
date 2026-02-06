@@ -67,9 +67,12 @@ public class BenchmarkActivity extends AppCompatActivity {
     private LinearLayout layoutProgress;
     private TextView tvProgressText;
     private LinearLayout btnRunBenchmark;
+    private LinearLayout btnTuningProfile;
     private LinearLayout btnViewDetails;
     private LinearLayout btnExportResults;
     private LinearLayout btnShareResults;
+    private TextView tvTuningMode;
+    private TextView tvTuningSummary;
     
     // Data
     private VectraBenchmark.BenchmarkResult[] lastResults;
@@ -108,13 +111,18 @@ public class BenchmarkActivity extends AppCompatActivity {
         layoutProgress = findViewById(R.id.layoutProgress);
         tvProgressText = findViewById(R.id.tvProgressText);
         btnRunBenchmark = findViewById(R.id.btnRunBenchmark);
+        btnTuningProfile = findViewById(R.id.btnTuningProfile);
         btnViewDetails = findViewById(R.id.btnViewDetails);
         btnExportResults = findViewById(R.id.btnExportResults);
         btnShareResults = findViewById(R.id.btnShareResults);
+        tvTuningMode = findViewById(R.id.tvTuningMode);
+        tvTuningSummary = findViewById(R.id.tvTuningSummary);
+        updateTuningProfileViews();
     }
     
     private void setupListeners() {
         btnRunBenchmark.setOnClickListener(v -> runBenchmark());
+        btnTuningProfile.setOnClickListener(v -> showTuningProfileDialog());
         btnViewDetails.setOnClickListener(v -> showDetailedResults());
         btnExportResults.setOnClickListener(v -> exportResults());
         btnShareResults.setOnClickListener(v -> shareResults());
@@ -130,6 +138,7 @@ public class BenchmarkActivity extends AppCompatActivity {
     }
     
     private BenchmarkManager.BenchmarkResult lastBenchmarkResult;
+    private BenchmarkManager.ExecutionProfile selectedProfile = BenchmarkManager.ExecutionProfile.AUTO_ADAPTIVE;
     
     private void runBenchmark() {
         // Show progress
@@ -142,7 +151,7 @@ public class BenchmarkActivity extends AppCompatActivity {
         executor.execute(() -> {
             try {
                 BenchmarkManager manager = new BenchmarkManager(this);
-                
+
                 // Run with progress callbacks
                 BenchmarkManager.BenchmarkResult result = manager.runBenchmark(
                     new BenchmarkManager.ProgressCallback() {
@@ -214,7 +223,7 @@ public class BenchmarkActivity extends AppCompatActivity {
                                     "Error: " + errorMsg, Toast.LENGTH_LONG).show();
                             });
                         }
-                    });
+                    }, selectedProfile);
                 
             } catch (Exception e) {
                 mainHandler.post(() -> {
@@ -231,6 +240,43 @@ public class BenchmarkActivity extends AppCompatActivity {
         });
     }
     
+    private void showTuningProfileDialog() {
+        final BenchmarkManager.ExecutionProfile[] modes = new BenchmarkManager.ExecutionProfile[] {
+            BenchmarkManager.ExecutionProfile.AUTO_ADAPTIVE,
+            BenchmarkManager.ExecutionProfile.DETERMINISTIC,
+            BenchmarkManager.ExecutionProfile.THROUGHPUT,
+            BenchmarkManager.ExecutionProfile.LOW_LATENCY
+        };
+
+        String[] labels = new String[modes.length];
+        int checked = 0;
+        for (int i = 0; i < modes.length; i++) {
+            BenchmarkManager.TuningProfile profile = BenchmarkManager.buildUiPreviewProfile(modes[i]);
+            labels[i] = profile.label + " (" + profile.copyStripeBytes + "B stripe)";
+            if (modes[i] == selectedProfile) checked = i;
+        }
+
+        new MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.benchmark_tuning_select)
+            .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                selectedProfile = modes[which];
+                updateTuningProfileViews();
+                dialog.dismiss();
+            })
+            .setNegativeButton(android.R.string.cancel, null)
+            .show();
+    }
+
+    private void updateTuningProfileViews() {
+        BenchmarkManager.TuningProfile profile = BenchmarkManager.buildUiPreviewProfile(selectedProfile);
+        tvTuningMode.setText(profile.label);
+        String summary = getString(R.string.benchmark_tuning_summary_template,
+            profile.copyStripeBytes,
+            profile.threadPriority,
+            profile.warmupDelayMs);
+        tvTuningSummary.setText(summary);
+    }
+
     private void updateScoreDisplay(VectraBenchmark.BenchmarkResult[] results, 
                                      VectraBenchmark.DeviceSpecification deviceSpec) {
         // Display device info instead of arbitrary score

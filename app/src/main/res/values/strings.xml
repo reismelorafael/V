@@ -27,6 +27,11 @@
     <string name="benchmark_complete">Benchmark complete!</string>
     <string name="benchmark_failed">Benchmark failed</string>
     <string name="preparing_benchmark">Preparing benchmark environment…</string>
+    <string name="benchmark_tuning_profile">Benchmark Tuning Profile</string>
+    <string name="benchmark_tuning_select">Select tuning profile</string>
+    <string name="benchmark_tuning_auto">Auto-adaptive / hardware-aware</string>
+    <string name="benchmark_tuning_auto_desc">Determines stripe, priority and warmup from hardware and thermal state.</string>
+    <string name="benchmark_tuning_summary_template">Stripe: %1$d B · Priority: %2$d · Warmup: %3$d ms</string>
     <string name="pts">metrics</string>
     <string name="detailed_results">Detailed Engineering Report</string>
     <string name="results_exported">Results exported to: %s</string>

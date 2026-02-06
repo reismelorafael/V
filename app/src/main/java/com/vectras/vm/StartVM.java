@@ -2,6 +2,7 @@ package com.vectras.vm;
 
 import android.app.Activity;
 import android.os.Build;
+import android.util.Log;
 
 import com.vectras.qemu.Config;
 import com.vectras.qemu.MainSettingsManager;
@@ -10,6 +11,9 @@ import com.vectras.vm.utils.FileUtils;
 import com.vectras.vm.rafaelia.RafaeliaConfig;
 import com.vectras.vm.rafaelia.RafaeliaQemuTuning;
 import com.vectras.vm.rafaelia.RafaeliaSettings;
+import com.vectras.vm.qemu.KvmProbe;
+import com.vectras.vm.qemu.QemuArgsBuilder;
+import com.vectras.vm.qemu.VmProfile;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -20,6 +24,9 @@ public class StartVM {
     public static String cache;
 
     public static String cdrompath;
+    public static volatile String lastResolvedProfile = "BALANCED";
+    public static volatile boolean lastKvmEnabled = false;
+    public static volatile String lastKvmReason = "unknown";
 
     public static String env(Activity activity, String extras, String img, boolean isQuickRun) {
 
@@ -32,22 +39,16 @@ public class StartVM {
         String finalextra = extras;
 
         ArrayList<String> params = new ArrayList<>(Arrays.asList(qemu));
+        String arch = MainSettingsManager.getArch(activity);
+        String ifType = "";
 
         if (!isQuickRun) {
-            if (MainSettingsManager.getArch(activity).equals("I386"))
-                params.add("qemu-system-i386");
-            else if (MainSettingsManager.getArch(activity).equals("X86_64"))
-                params.add("qemu-system-x86_64");
-            else if (MainSettingsManager.getArch(activity).equals("ARM64"))
-                params.add("qemu-system-aarch64");
-            else if (MainSettingsManager.getArch(activity).equals("PPC"))
-                params.add("qemu-system-ppc");
+            params.add(QemuArgsBuilder.binaryForArch(arch));
 
             params.add("-qmp");
             params.add("unix:" + Config.getLocalQMPSocketPath() + ",server,nowait");
 
-            String ifType;
-            ifType= MainSettingsManager.getIfType(activity);
+            ifType = QemuArgsBuilder.resolveDriveInterface(activity, arch);
 
             String cdrom = "";
             String hdd0;
@@ -64,7 +65,7 @@ public class StartVM {
                     hdd0 += ",if=" + ifType;
                     hdd0 += ",file='" + img + "'";
 
-                    if ((MainSettingsManager.getArch(activity).equals("ARM64") && ifType.equals("ide")) || MainSettingsManager.getArch(activity).equals("PPC")) {
+                    if ((arch.equals("ARM64") && ifType.equals("ide")) || arch.equals("PPC")) {
                         hdd0 = "-drive";
                         hdd0 += " index=0";
                         hdd0 += ",media=disk";
@@ -78,7 +79,7 @@ public class StartVM {
                 File cdromFile = new File(filesDir + "/data/Vectras/drive.iso");
 
                 if (cdromFile.exists()) {
-                    if (MainSettingsManager.getArch(activity).equals("ARM64")) {
+                    if (arch.equals("ARM64")) {
                         cdrom = " -drive";
                         cdrom += " if=none,id=cdrom,format=raw,media=cdrom,file='" + cdromFile.getPath() + "'";
                         cdrom += " -device";
@@ -104,7 +105,7 @@ public class StartVM {
                     params.add(cdrom);
                 }
             } else {
-                if (MainSettingsManager.getArch(activity).equals("ARM64")) {
+                if (arch.equals("ARM64")) {
                     cdrom += " -device";
                     cdrom += " nec-usb-xhci,id=defaultxhci";
                     cdrom += " -device";
@@ -143,8 +144,8 @@ public class StartVM {
             }
 
             if (MainSettingsManager.get3dfxEnabled(activity)
-                    && (MainSettingsManager.getArch(activity).equals("X86_64")
-                    || MainSettingsManager.getArch(activity).equals("I386"))
+                    && (arch.equals("X86_64")
+                    || arch.equals("I386"))
                     && MainSettingsManager.getVmUi(activity).equals("X11")
                     && MainSettingsManager.getUseSdl(activity)) {
                 String wrapperPath = get3dfxWrapperPath(activity);
@@ -154,7 +155,7 @@ public class StartVM {
                 }
             }
 
-            if (MainSettingsManager.getSharedFolder(activity) && !MainSettingsManager.getArch(activity).equals("I386")) {
+            if (MainSettingsManager.getSharedFolder(activity) && !arch.equals("I386")) {
                 String driveParams = "-drive ";
                 if (ifType.isEmpty()) {
                     driveParams += "media=disk,file=fat:";
@@ -167,7 +168,7 @@ public class StartVM {
             }
 
             String memoryStr = "-m ";
-            if (MainSettingsManager.getArch(activity).equals("PPC") && RamInfo.vectrasMemory(activity) > 2048) {
+            if (arch.equals("PPC") && RamInfo.vectrasMemory(activity) > 2048) {
                 memoryStr += 2048;
             } else {
                 memoryStr += RamInfo.vectrasMemory(activity);
@@ -186,15 +187,15 @@ public class StartVM {
             //params.add(soundDevice);
 
             if (MainSettingsManager.useDefaultBios(activity)) {
-                if (MainSettingsManager.getArch(activity).equals("PPC")) {
+                if (arch.equals("PPC")) {
                     bios = "-L ";
                     bios += "pc-bios";
-                } else if (MainSettingsManager.getArch(activity).equals("ARM64")) {
+                } else if (arch.equals("ARM64")) {
                     bios = "-drive ";
                     bios += "file=" + AppConfig.basefiledir + "QEMU_EFI.img,format=raw,readonly=on,if=pflash";
                     bios += " -drive ";
                     bios += "file=" + AppConfig.basefiledir + "QEMU_VARS.img,format=raw,if=pflash";
-                } else if (MainSettingsManager.getArch(activity).equals("X86_64") && MainSettingsManager.getuseUEFI(activity)) {
+                } else if (arch.equals("X86_64") && MainSettingsManager.getuseUEFI(activity)) {
                     bios = "-drive ";
                     bios += "file=" + AppConfig.basefiledir + "RELEASEX64_OVMF.fd,format=raw,readonly=on,if=pflash";
                     bios += " -drive ";
@@ -206,10 +207,10 @@ public class StartVM {
             }
 
             String machine = "-M ";
-            if (Objects.equals(MainSettingsManager.getArch(activity), "X86_64")) {
+            if (Objects.equals(arch, "X86_64")) {
                 machine += "pc";
                 params.add(machine);
-            } else if (Objects.equals(MainSettingsManager.getArch(activity), "ARM64")) {
+            } else if (Objects.equals(arch, "ARM64")) {
                 machine += "virt";
                 params.add(machine);
             }
@@ -225,11 +226,11 @@ public class StartVM {
                 params.add("base=localtime");
             }
 
-            //if (!MainSettingsManager.getArch(activity).equals("PPC")) {
+            //if (!arch.equals("PPC")) {
             //params.add("-nodefaults");
             //}
 
-            //if (!Objects.equals(MainSettingsManager.getArch(activity), "ARM64")) {
+            //if (!Objects.equals(arch, "ARM64")) {
             params.add(bios);
             //}
 
@@ -264,6 +265,19 @@ public class StartVM {
             }
         }
 
+        VmProfile profile = QemuArgsBuilder.resolveProfile(activity, finalextra);
+        QemuArgsBuilder.applyProfile(params, activity, finalextra);
+        QemuArgsBuilder.applyVirtioStorageHints(params, arch, ifType);
+        QemuArgsBuilder.applyVirtioNet(params, finalextra);
+        KvmProbe.ProbeResult kvmProbe = QemuArgsBuilder.applyAcceleration(params);
+        lastResolvedProfile = profile.name();
+        lastKvmEnabled = kvmProbe.enabled;
+        lastKvmReason = kvmProbe.reason;
+        if (BuildConfig.DEBUG) {
+            Log.i("StartVM", "QEMU profile=" + profile + " arch=" + arch
+                    + " kvm=" + (kvmProbe.enabled ? "on" : "off") + " reason=" + kvmProbe.reason);
+        }
+
         params.add(finalextra);
 
         if (isQuickRun) {
@@ -294,7 +308,7 @@ public class StartVM {
                 params.add(vncSocketParams);
             }
 
-            //if (!MainSettingsManager.getArch(activity).equals("PPC") || !MainSettingsManager.getArch(activity).equals("ARM64")) {
+            //if (!arch.equals("PPC") || !arch.equals("ARM64")) {
             params.add("-monitor");
             params.add("vc");
             //}
