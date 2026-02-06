@@ -101,9 +101,29 @@ public final class NativeFastPath {
         return x;
     }
 
+
+    public static int popcount32(int x) {
+        if (NATIVE_AVAILABLE) {
+            int value = nativePopcount32(x);
+            if (value >= 0) {
+                return value;
+            }
+        }
+
+        int v = x;
+        v = v - ((v >>> 1) & 0x55555555);
+        v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
+        v = (v + (v >>> 4)) & 0x0F0F0F0F;
+        v = v + (v >>> 8);
+        v = v + (v >>> 16);
+        return v & 0x3F;
+    }
+
     private static native int nativeInit();
 
     private static native int nativeCopyBytes(byte[] src, int srcOffset, byte[] dst, int dstOffset, int length);
 
     private static native int nativeXorChecksum(byte[] data, int offset, int length);
+
+    private static native int nativePopcount32(int value);
 }

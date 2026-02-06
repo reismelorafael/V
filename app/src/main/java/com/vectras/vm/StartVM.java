@@ -267,7 +267,7 @@ public class StartVM {
 
         VmProfile profile = QemuArgsBuilder.resolveProfile(activity, finalextra);
         QemuArgsBuilder.applyProfile(params, activity, finalextra);
-        QemuArgsBuilder.applyVirtioStorageHints(params, arch, ifType);
+        QemuArgsBuilder.applyVirtioStorageHints(params, arch, ifType, finalextra);
         QemuArgsBuilder.applyVirtioNet(params, finalextra);
         KvmProbe.ProbeResult kvmProbe = QemuArgsBuilder.applyAcceleration(params);
         lastResolvedProfile = profile.name();

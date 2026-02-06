@@ -72,3 +72,21 @@ Java_com_vectras_vm_core_NativeFastPath_nativeXorChecksum(JNIEnv* env, jclass cl
     (*env)->ReleasePrimitiveArrayCritical(env, data, base, JNI_ABORT);
     return x;
 }
+
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativePopcount32(JNIEnv* env, jclass clazz, jint value) {
+    (void)env;
+    (void)clazz;
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_popcount((unsigned int)value);
+#else
+    uint32_t v = (uint32_t)value;
+    v = v - ((v >> 1) & 0x55555555u);
+    v = (v & 0x33333333u) + ((v >> 2) & 0x33333333u);
+    v = (v + (v >> 4)) & 0x0F0F0F0Fu;
+    v = v + (v >> 8);
+    v = v + (v >> 16);
+    return (jint)(v & 0x3Fu);
+#endif
+}

@@ -15,6 +15,11 @@ public final class KvmProbe {
         if (!kvm.exists()) {
             return new ProbeResult(false, "missing /dev/kvm");
         }
+
+        File kvmModule = new File("/sys/module/kvm");
+        if (!kvmModule.exists()) {
+            return new ProbeResult(false, "kvm kernel module unavailable");
+        }
         if (!kvm.canRead() || !kvm.canWrite()) {
             return new ProbeResult(false, "permission denied");
         }

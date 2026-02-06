@@ -78,11 +78,15 @@ public final class QemuArgsBuilder {
     }
 
 
-    public static void applyVirtioStorageHints(ArrayList<String> params, String arch, String ifType) {
+    public static void applyVirtioStorageHints(ArrayList<String> params, String arch, String ifType, String extras) {
         if (!"ARM64".equals(arch) && !"X86_64".equals(arch) && !"I386".equals(arch)) {
             return;
         }
         if (!"virtio".equals(ifType)) {
+            return;
+        }
+
+        if (extras != null && (extras.contains("virtio-scsi") || extras.contains("iothread,id=ioth0"))) {
             return;
         }
 

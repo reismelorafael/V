@@ -31,6 +31,15 @@ public class NativeFastPathTest {
         assertEquals(x1, x2);
     }
 
+
+    @Test
+    public void popcountMatchesKnownValues() {
+        assertEquals(0, NativeFastPath.popcount32(0));
+        assertEquals(32, NativeFastPath.popcount32(-1));
+        assertEquals(16, NativeFastPath.popcount32(0xF0F0F0F0));
+        assertEquals(13, NativeFastPath.popcount32(0x12345678));
+    }
+
     @Test
     public void nativeLibraryOptional() {
         boolean available = NativeFastPath.isNativeAvailable();

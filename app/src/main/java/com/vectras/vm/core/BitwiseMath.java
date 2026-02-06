@@ -328,7 +328,7 @@ public final class BitwiseMath {
      * @return Harmony score (0-32, where 32 = identical)
      */
     public static int computeHarmony(int a, int b) {
-        return 32 - LowLevelAsm.asmBitCount(a ^ b);
+        return 32 - NativeFastPath.popcount32(a ^ b);
     }
     
     /**
@@ -848,7 +848,7 @@ public final class BitwiseMath {
      * @return Hamming distance
      */
     public static int hammingDistance(int x, int y) {
-        return LowLevelAsm.asmBitCount(x ^ y);
+        return NativeFastPath.popcount32(x ^ y);
     }
     
     /**
