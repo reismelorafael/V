@@ -16,8 +16,8 @@ import java.util.Objects;
 public class AppConfig {
 
     // App Config
-    public static String vectrasVersion = "3.5.0";
-    public static int vectrasVersionCode = 54;
+    public static String vectrasVersion = BuildConfig.VERSION_NAME;
+    public static int vectrasVersionCode = BuildConfig.VERSION_CODE;
     public static final int standardSetupVersion = 9222;
     public static String vectrasWebsite = "https://vectras.vercel.app/";
     public static String vectrasWebsiteRaw = "https://raw.githubusercontent.com/AnBui2004/Vectras-VM-Emu-Android/refs/heads/master/web/";
@@ -78,6 +78,7 @@ public class AppConfig {
     public static String importedDriveFolder = maindirpath + "drive/";
     public static String cvbiFolder = maindirpath + "cvbi/";
     public static String pendingCommand = "";
+    public static boolean engineHeadlessMode = false;
     public static String lastCrashLogPath = internalDataDirPath + "logs/lastcrash.txt";
 
     public static String neededPkgs() {

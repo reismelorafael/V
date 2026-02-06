@@ -108,6 +108,10 @@ public class MainStartVM {
         }
 
         Config.vmID = finalvmID;
+        boolean headless = AppConfig.engineHeadlessMode || env.contains("-display none") || env.contains("headless=true");
+        if (headless) {
+            Log.i(TAG, "engine-only mode enabled (headless=true)");
+        }
 
         File romDir = new File(Config.getCacheDir() + "/" + finalvmID);
         if (!romDir.exists()) {
@@ -195,13 +199,15 @@ public class MainStartVM {
             return;
         }
 
-        showProgressDialog(context, vmName, thumbnailFile);
+        if (!headless) {
+            showProgressDialog(context, vmName, thumbnailFile);
+        }
 
         VMManager.isQemuStopedWithError = false;
 
         String finalCommand = VMManager.addAudioDevSdl(String.format(runCommandFormat, env));
 
-        if (MainSettingsManager.getVmUi(context).equals("X11")) {
+        if (MainSettingsManager.getVmUi(context).equals("X11") && !headless) {
             finalCommand = "export DISPLAY=:0 && " + finalCommand;
             DisplaySystem.startDesktop(context);
         }
@@ -257,7 +263,9 @@ public class MainStartVM {
                     }
 
                     if (!isStopNow && !VMManager.isQemuStopedWithError) {
-                        if (MainSettingsManager.getVmUi(context).equals("VNC")) {
+                        if (headless) {
+                            Log.i(TAG, "engine-only launch completed without frontend attach");
+                        } else if (MainSettingsManager.getVmUi(context).equals("VNC")) {
                             if (MainSettingsManager.getVncExternal(context)) {
                                 Config.currentVNCServervmID = finalvmID;
                                 DialogUtils.oneDialog(context,

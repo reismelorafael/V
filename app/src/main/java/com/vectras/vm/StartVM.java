@@ -2,6 +2,7 @@ package com.vectras.vm;
 
 import android.app.Activity;
 import android.os.Build;
+import android.util.Log;
 
 import com.vectras.qemu.Config;
 import com.vectras.qemu.MainSettingsManager;
@@ -10,6 +11,8 @@ import com.vectras.vm.utils.FileUtils;
 import com.vectras.vm.rafaelia.RafaeliaConfig;
 import com.vectras.vm.rafaelia.RafaeliaQemuTuning;
 import com.vectras.vm.rafaelia.RafaeliaSettings;
+import com.vectras.vm.qemu.QemuArgsBuilder;
+import com.vectras.vm.qemu.VmProfile;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -34,20 +37,13 @@ public class StartVM {
         ArrayList<String> params = new ArrayList<>(Arrays.asList(qemu));
 
         if (!isQuickRun) {
-            if (MainSettingsManager.getArch(activity).equals("I386"))
-                params.add("qemu-system-i386");
-            else if (MainSettingsManager.getArch(activity).equals("X86_64"))
-                params.add("qemu-system-x86_64");
-            else if (MainSettingsManager.getArch(activity).equals("ARM64"))
-                params.add("qemu-system-aarch64");
-            else if (MainSettingsManager.getArch(activity).equals("PPC"))
-                params.add("qemu-system-ppc");
+            String arch = MainSettingsManager.getArch(activity);
+            params.add(QemuArgsBuilder.binaryForArch(arch));
 
             params.add("-qmp");
             params.add("unix:" + Config.getLocalQMPSocketPath() + ",server,nowait");
 
-            String ifType;
-            ifType= MainSettingsManager.getIfType(activity);
+            String ifType = QemuArgsBuilder.resolveDriveInterface(activity, MainSettingsManager.getArch(activity));
 
             String cdrom = "";
             String hdd0;
@@ -262,6 +258,14 @@ public class StartVM {
                 params.add("-D");
                 params.add("'" + RafaeliaSettings.logFile(activity).getAbsolutePath() + "'");
             }
+        }
+
+        VmProfile profile = QemuArgsBuilder.resolveProfile(activity, finalextra);
+        QemuArgsBuilder.applyProfile(params, activity, finalextra);
+        QemuArgsBuilder.applyVirtioNet(params, finalextra);
+        QemuArgsBuilder.applyAcceleration(params);
+        if (BuildConfig.DEBUG) {
+            Log.i("StartVM", "QEMU profile=" + profile + " arch=" + MainSettingsManager.getArch(activity));
         }
 
         params.add(finalextra);
