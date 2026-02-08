@@ -12,6 +12,10 @@ typedef struct {
   u32 target_sdk;
   u32 version_code;
   u32 release_signing;
+  u32 termux_mode;
+  u32 host_abi_mask;
+  u32 hw_cacheline_bytes;
+  u32 hw_page_bytes;
 } RmR_ApkProfile;
 
 /* ABI bits: 0=armeabi-v7a, 1=arm64-v8a, 2=x86, 3=x86_64 */
@@ -22,7 +26,11 @@ typedef struct {
 #define RMR_APK_ABI_UNIVERSAL   (RMR_APK_ABI_ARMEABI_V7A | RMR_APK_ABI_ARM64_V8A | RMR_APK_ABI_X86 | RMR_APK_ABI_X86_64)
 
 void RmR_ApkModule_InitProfile(RmR_ApkProfile *out);
+void RmR_ApkModule_AutotuneProfile(RmR_ApkProfile *out);
 u32 RmR_ApkModule_DetectHostAbiMask(void);
+u32 RmR_ApkModule_DetectTermuxLike(const char *termux_prefix,
+                                    const char *home_path,
+                                    const char *shell_path);
 u64 RmR_ApkModule_DeterministicFingerprint(const u8 *data, u32 len, u64 seed);
 int RmR_ApkModule_ValidateSigningInputs(const char *keystore,
                                         const char *store_password,

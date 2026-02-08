@@ -1,4 +1,5 @@
 #include "rmr_apk_module.h"
+#include "rmr_hw_detect.h"
 
 static u32 rmr_strlen(const char *s){
   u32 n = 0u;
@@ -15,6 +16,19 @@ static int rmr_streq(const char *a, const char *b){
     i++;
   }
   return (a[i] == '\0' && b[i] == '\0') ? 1 : 0;
+}
+
+static int rmr_contains(const char *a, const char *b){
+  u32 i, j;
+  if(!a || !b) return 0;
+  if(b[0] == '\0') return 1;
+  for(i = 0u; a[i] != '\0'; ++i){
+    for(j = 0u; b[j] != '\0' && a[i + j] != '\0'; ++j){
+      if(a[i + j] != b[j]) break;
+    }
+    if(b[j] == '\0') return 1;
+  }
+  return 0;
 }
 
 static u32 rmr_append_text(char *out, u32 cap, u32 pos, const char *text){
@@ -49,6 +63,10 @@ void RmR_ApkModule_InitProfile(RmR_ApkProfile *out){
   out->target_sdk = 28u;
   out->version_code = 365u;
   out->release_signing = 1u;
+  out->termux_mode = 0u;
+  out->host_abi_mask = 0u;
+  out->hw_cacheline_bytes = 64u;
+  out->hw_page_bytes = 4096u;
 }
 
 u32 RmR_ApkModule_DetectHostAbiMask(void){
@@ -63,6 +81,24 @@ u32 RmR_ApkModule_DetectHostAbiMask(void){
 #else
   return 0u;
 #endif
+}
+
+u32 RmR_ApkModule_DetectTermuxLike(const char *termux_prefix,
+                                    const char *home_path,
+                                    const char *shell_path){
+  if(rmr_contains(termux_prefix, "com.termux")) return 1u;
+  if(rmr_contains(home_path, "/data/data/com.termux")) return 1u;
+  if(rmr_contains(shell_path, "/com.termux/")) return 1u;
+  return 0u;
+}
+
+void RmR_ApkModule_AutotuneProfile(RmR_ApkProfile *out){
+  RmR_HW_Info hw;
+  if(!out) return;
+  RmR_HW_Detect(&hw);
+  out->host_abi_mask = RmR_ApkModule_DetectHostAbiMask();
+  out->hw_cacheline_bytes = hw.cacheline_bytes;
+  out->hw_page_bytes = hw.page_bytes;
 }
 
 u64 RmR_ApkModule_DeterministicFingerprint(const u8 *data, u32 len, u64 seed){
@@ -102,7 +138,6 @@ int RmR_ApkModule_ValidateSigningInputs(const char *keystore,
   if(rmr_strlen(key_alias) == 0u) return 0;
   if(rmr_strlen(key_password) == 0u) return 0;
 
-  /* Evita chaves de debug para builds de distribuição. */
   if(rmr_streq(key_alias, "androiddebugkey")) return 0;
 
   return 1;
@@ -116,13 +151,17 @@ u32 RmR_ApkModule_BuildPlan(const RmR_ApkProfile *profile,
                             char *out,
                             u32 out_cap){
   u32 pos = 0u;
+  u32 host_mask;
   if(!profile || !out || out_cap < 64u) return 0u;
   out[0] = '\0';
 
   if(profile->release_signing != 0u){
-    if(!RmR_ApkModule_ValidateSigningInputs(keystore, store_password, key_alias, key_password)){
-      return 0u;
-    }
+    if(!RmR_ApkModule_ValidateSigningInputs(keystore, store_password, key_alias, key_password)) return 0u;
+  }
+
+  if(profile->termux_mode != 0u){
+    pos = rmr_append_text(out, out_cap, pos, "GRADLE_USER_HOME=.gradle TERMUX_BUILD=1 ");
+    if(pos == 0u) return 0u;
   }
 
   pos = rmr_append_text(out, out_cap, pos, "./gradlew --no-daemon :app:clean :app:assembleRelease");
@@ -131,6 +170,27 @@ u32 RmR_ApkModule_BuildPlan(const RmR_ApkProfile *profile,
   pos = rmr_append_text(out, out_cap, pos, " -Pvectras.universal=true -Pvectras.abiMask=0x");
   if(pos == 0u) return 0u;
   pos = rmr_append_hex32(out, out_cap, pos, profile->abi_mask);
+  if(pos == 0u) return 0u;
+
+  host_mask = profile->host_abi_mask ? profile->host_abi_mask : RmR_ApkModule_DetectHostAbiMask();
+  pos = rmr_append_text(out, out_cap, pos, " -Pvectras.hostAbiMask=0x");
+  if(pos == 0u) return 0u;
+  pos = rmr_append_hex32(out, out_cap, pos, host_mask);
+  if(pos == 0u) return 0u;
+
+  pos = rmr_append_text(out, out_cap, pos, " -Pvectras.hw.cacheline=0x");
+  if(pos == 0u) return 0u;
+  pos = rmr_append_hex32(out, out_cap, pos, profile->hw_cacheline_bytes);
+  if(pos == 0u) return 0u;
+
+  pos = rmr_append_text(out, out_cap, pos, " -Pvectras.hw.page=0x");
+  if(pos == 0u) return 0u;
+  pos = rmr_append_hex32(out, out_cap, pos, profile->hw_page_bytes);
+  if(pos == 0u) return 0u;
+
+  pos = rmr_append_text(out, out_cap, pos, " -Pvectras.compliance.profile=IEEE_NIST_W3C_RFC_GDPR_LGPD");
+  if(pos == 0u) return 0u;
+  pos = rmr_append_text(out, out_cap, pos, " -Pvectras.signing.ethical=true");
   if(pos == 0u) return 0u;
 
   if(profile->release_signing != 0u){
