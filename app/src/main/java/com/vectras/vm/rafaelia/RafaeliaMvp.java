@@ -58,6 +58,12 @@ public class RafaeliaMvp {
     return meta;
   }
 
+  static int packMetaSalmo(int parity8, int whoOut, int rhoScore, long salmoSignature) {
+    int base = packMeta(parity8, whoOut, rhoScore);
+    int salmoTag = (int) ((salmoSignature >>> 3) & 0x3F);
+    return base ^ (salmoTag << 10);
+  }
+
   // ========== “IRQ” Event model ==========
   enum EventType { RADIO_4G, TIMER, IO, VOICE, MANUAL }
   record Event(EventType type, long tNanos, int priority, int payload) {}
@@ -266,7 +272,8 @@ public class RafaeliaMvp {
             | ((long)(syn & 0xFF) << 32)
             | ((long)(tick & 0xFFFFFFFFL) << 40);
 
-        int meta = packMeta(computedParity8, whoOut, rhoScore);
+        long salmoSignature = RafaeliaSalmoCore.pulseSignature(cpuState, ramState, diskState, rhoScore, syn);
+        int meta = packMetaSalmo(computedParity8, whoOut, rhoScore, salmoSignature);
         RafaeliaKernelV22.SystemState<Long, Long, Integer> state =
             new RafaeliaKernelV22.SystemState<>(cpuState, ramState, whoOut);
 
@@ -275,6 +282,7 @@ public class RafaeliaMvp {
         double lambda = RafaeliaKernelV22.lambda(u, uHat);
         double epsilon = RafaeliaKernelV22.epsilon(u - uHat, lambda);
         double localTemp = RafaeliaKernelV22.localTemp(1.0, 0.1, lambda, 0.05, syn, 0.01, Math.abs(whoOut));
+        double salmoLuminance = RafaeliaSalmoCore.cityLuminance(cpuState, ramState, diskState);
         double xi = RafaeliaKernelV22.abortVector(rhoScore, syn);
         boolean abort = RafaeliaKernelV22.shouldAbort(xi, RHO_SLEEP_THRESHOLD);
 
@@ -293,7 +301,7 @@ public class RafaeliaMvp {
         double deltaBelady = RafaeliaKernelV22.deltaBelady(syn, rhoScore);
         double mirage = RafaeliaKernelV22.mirageVariance(new double[]{lambda, epsilon, localTemp});
         double score = RafaeliaKernelV22.score(1.0, epsilon, 1.0, localTemp, 1.0, state.action,
-            1.0, deltaSimpson + deltaBelady + mirage);
+            1.0, deltaSimpson + deltaBelady + mirage + (salmoLuminance / RafaeliaSalmoCore.CLOCK_LIMIT_70));
 
         if (!abort) {
           bs.appendRecord(payloadU64, meta);
@@ -310,8 +318,8 @@ public class RafaeliaMvp {
         if ((tick % 500) == 0) {
           System.out.printf("tick=%d ev=%s pr=%d bits=0x%04X parity=%02X syn=%d rho=%d whoOut=%d%n",
               tick, ev.type(), ev.priority(), bits16, computedParity8, syn, rhoScore, whoOut);
-          System.out.printf("route=%d lambda=%.2f eps=%.2f temp=%.2f U=%.2f score=%.2f next=[%.1f,%.1f,%.1f]%n",
-              route, lambda, epsilon, localTemp, potential, score, next[0], next[1], next[2]);
+          System.out.printf("route=%d lambda=%.2f eps=%.2f temp=%.2f U=%.2f salmo=%.0f score=%.2f next=[%.1f,%.1f,%.1f]%n",
+              route, lambda, epsilon, localTemp, potential, salmoLuminance, score, next[0], next[1], next[2]);
         }
 
         tick++;

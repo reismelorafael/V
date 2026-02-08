@@ -1,0 +1,49 @@
+name: Engine CI
+
+on:
+  push:
+    paths:
+      - 'engine/**'
+      - 'bench/**'
+      - 'demo_cli/**'
+      - 'Makefile'
+      - 'CMakeLists.txt'
+      - '.github/workflows/engine-ci.yml'
+  pull_request:
+    paths:
+      - 'engine/**'
+      - 'bench/**'
+      - 'demo_cli/**'
+      - 'Makefile'
+      - 'CMakeLists.txt'
+      - '.github/workflows/engine-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  engine-build-bench:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build with Make
+        run: make clean && make all
+
+      - name: Build with CMake
+        run: |
+          cmake -S . -B build-cmake
+          cmake --build build-cmake -j
+
+      - name: Run bench via Make
+        run: make run-bench
+
+      - name: Generate benchmark summary
+        run: bench/scripts/run_bench.sh 7 bench/results
+
+      - name: Upload bench summary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-summary
+          path: bench/results/summary.json
+          if-no-files-found: error

@@ -1,3 +1,33 @@
+# Product Architecture (RAFAELIA Engine-First)
+
+## Objective
+Transform the mixed repository into a productized ecosystem where **Engine (RMR/Bitraf)** is the primary IP and **Runtime (Vectras Android)** is a showcase consumer.
+
+## Layered topology
+1. **engine/rmr/**: deterministic low-level C core (cycles, hw detect, bench, isorf, bitraf).
+2. **bench/**: executable benchmark harness + statistical runner (median/p95).
+3. **demo_cli/**: minimal CLI for sanity and integration.
+4. **docs/**: architecture, benchmarks, whitepaper, IP map.
+5. **runtime/showcase/**: bridge to Android app modules.
+6. **archive/experimental/**: historical/non-critical assets isolated from core path.
+
+## Build graph
+- `librmr.a` is the engine artifact.
+- `rmr_bench` links against `librmr.a` and emits CSV/JSON.
+- `rafaelia_demo` and `bitraf_core` validate runtime behavior and low-level path.
+
+## Product split
+- **Produto 1: Engine** → licensing-ready C toolkit, deterministic benchmarks, integration APIs.
+- **Produto 2: Runtime** → Android VM showcase for user-facing validation and distribution.
+
+## Principles
+- Engine-first prioritization (IP/protection/revenue).
+- No destructive deletes: non-core moved to archive.
+- Reproducibility over ad-hoc experiments.
+- Minimal dependency surface on core.
+
+---
+
 # Architecture Document
 
 ## Documento de Arquitetura
