@@ -13,34 +13,70 @@ collect_files() {
   fi
 }
 
-mapfile -t files < <(collect_files)
+detect_workers() {
+  # Auto-tuning for host CPU while keeping deterministic output ordering.
+  local w=1
+  if command -v getconf >/dev/null 2>&1; then
+    w="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+  elif command -v nproc >/dev/null 2>&1; then
+    w="$(nproc 2>/dev/null || echo 1)"
+  fi
 
-# Build deterministic index with one file hash per file (no re-hashing per directory).
+  case "$w" in
+    ''|*[!0-9]*) w=1 ;;
+  esac
+  [ "$w" -lt 1 ] && w=1
+  [ "$w" -gt 16 ] && w=16
+  echo "$w"
+}
+
+files_list="$(mktemp)"
+idx_unsorted="$(mktemp)"
 idx_file="$(mktemp)"
-trap 'rm -f "$idx_file"' EXIT
+dirs_file="$(mktemp)"
+trap 'rm -f "$files_list" "$idx_unsorted" "$idx_file" "$dirs_file"' EXIT
 
-for f in "${files[@]}"; do
-  [ -f "$f" ] || continue
-  h="$(sha256sum "$f" | awk '{print $1}')"
-  printf '%s\t%s\n' "$f" "$h" >> "$idx_file"
-done
+collect_files > "$files_list"
+file_count="$(wc -l < "$files_list" | tr -d ' \t')"
+workers="$(detect_workers)"
 
-mapfile -t dirs < <(
-  awk -F'\t' '
-    {
-      file=$1;
-      print ".";
-      n=split(file, p, "/");
-      if (n > 1) {
-        d="";
-        for (i=1; i<n; i++) {
-          d=(d=="" ? p[i] : d "/" p[i]);
-          print d;
-        }
+# Auto-tuning: avoid process-fanout overhead on small trees.
+if [ "$file_count" -lt 2000 ]; then
+  workers=1
+fi
+
+# Build deterministic index with one file hash per file.
+if [ "$workers" -eq 1 ]; then
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    h="$(sha256sum "$f" | awk '{print $1}')"
+    printf '%s\t%s\n' "$f" "$h" >> "$idx_unsorted"
+  done < "$files_list"
+else
+  tr '\n' '\0' < "$files_list" | xargs -0 -P "$workers" -I{} sh -c '
+    f="$1"
+    [ -f "$f" ] || exit 0
+    h=$(sha256sum "$f" | awk "{print \$1}")
+    printf "%s\t%s\n" "$f" "$h"
+  ' _ {} > "$idx_unsorted"
+fi
+
+LC_ALL=C sort -t $'\t' -k1,1 -u "$idx_unsorted" > "$idx_file"
+
+awk -F'\t' '
+  {
+    file=$1;
+    print ".";
+    n=split(file, p, "/");
+    if (n > 1) {
+      d="";
+      for (i=1; i<n; i++) {
+        d=(d=="" ? p[i] : d "/" p[i]);
+        print d;
       }
     }
-  ' "$idx_file" | LC_ALL=C sort -u
-)
+  }
+' "$idx_file" | LC_ALL=C sort -u > "$dirs_file"
 
 count_files() {
   local d="$1"
@@ -67,20 +103,21 @@ hash_dir() {
   ' "$idx_file" | sha256sum | awk '{print $1}'
 }
 
+n="$(wc -l < "$dirs_file" | tr -d ' ')"
+i=0
+
 {
   echo "{"
   echo '  "schema": "baremetal-integrity-v1",'
   echo '  "directories": ['
-  n=${#dirs[@]}
-  i=0
-  for d in "${dirs[@]}"; do
+  while IFS= read -r d; do
     i=$((i+1))
     h="$(hash_dir "$d")"
     c="$(count_files "$d")"
     comma=","
     [ "$i" -eq "$n" ] && comma=""
     echo "    {\"path\": \"$d\", \"files\": $c, \"sha256_tree\": \"$h\"}$comma"
-  done
+  done < "$dirs_file"
   echo "  ]"
   echo "}"
 } > "$out"
