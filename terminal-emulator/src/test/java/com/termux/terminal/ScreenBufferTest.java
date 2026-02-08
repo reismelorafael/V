@@ -45,4 +45,26 @@ public class ScreenBufferTest extends TerminalTestCase {
 		withTerminalSized(5, 3).enterString("ABC\r\nFG");
 		assertEquals("ABC\nFG", mTerminal.getScreen().getSelectedText(0, 0, 1, 1, true, true));
 	}
+
+	public void testBlockSetFullWidthClear() {
+		TerminalBuffer screen = new TerminalBuffer(5, 3, 3);
+		screen.blockSet(0, 0, 5, 3, 'X', 1);
+		screen.blockSet(0, 1, 5, 1, ' ', 2);
+		assertEquals("XXXXX\n\nXXXXX", screen.getTranscriptText());
+		for (int x = 0; x < 5; x++) {
+			assertEquals(2, screen.getStyleAt(1, x));
+		}
+	}
+
+	public void testBlockCopySameRowOverlapAscii() {
+		TerminalBuffer screen = new TerminalBuffer(5, 3, 3);
+		screen.blockSet(0, 0, 5, 1, ' ', 0);
+		screen.setChar(0, 0, 'A', 0);
+		screen.setChar(1, 0, 'B', 0);
+		screen.setChar(2, 0, 'C', 0);
+		screen.setChar(3, 0, 'D', 0);
+		screen.setChar(4, 0, 'E', 0);
+		screen.blockCopy(0, 0, 4, 1, 1, 0);
+		assertEquals("AABCD", screen.getSelectedText(0, 0, 4, 0));
+	}
 }

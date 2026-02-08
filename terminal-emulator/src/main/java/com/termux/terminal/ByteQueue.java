@@ -31,24 +31,23 @@ final class ByteQueue {
         }
         if (!mOpen) return -1;
 
-        int totalRead = 0;
-        int bufferLength = mBuffer.length;
-        boolean wasFull = bufferLength == mStoredBytes;
-        int length = buffer.length;
-        int offset = 0;
-        while (length > 0 && mStoredBytes > 0) {
-            int oneRun = Math.min(bufferLength - mHead, mStoredBytes);
-            int bytesToCopy = Math.min(length, oneRun);
-            System.arraycopy(mBuffer, mHead, buffer, offset, bytesToCopy);
-            mHead += bytesToCopy;
-            if (mHead >= bufferLength) mHead = 0;
-            mStoredBytes -= bytesToCopy;
-            length -= bytesToCopy;
-            offset += bytesToCopy;
-            totalRead += bytesToCopy;
+        final int bufferLength = mBuffer.length;
+        final boolean wasFull = bufferLength == mStoredBytes;
+        final int bytesToRead = Math.min(buffer.length, mStoredBytes);
+        final int firstRun = Math.min(bytesToRead, bufferLength - mHead);
+        final int secondRun = bytesToRead - firstRun;
+
+        System.arraycopy(mBuffer, mHead, buffer, 0, firstRun);
+        if (secondRun > 0) {
+            System.arraycopy(mBuffer, 0, buffer, firstRun, secondRun);
         }
-        if (wasFull) notify();
-        return totalRead;
+
+        mHead += bytesToRead;
+        if (mHead >= bufferLength) mHead -= bufferLength;
+        mStoredBytes -= bytesToRead;
+
+        if (wasFull && bytesToRead > 0) notify();
+        return bytesToRead;
     }
 
     /**
@@ -76,30 +75,21 @@ final class ByteQueue {
                 }
                 if (!mOpen) return false;
                 final boolean wasEmpty = mStoredBytes == 0;
-                int bytesToWriteBeforeWaiting = Math.min(lengthToWrite, bufferLength - mStoredBytes);
-                lengthToWrite -= bytesToWriteBeforeWaiting;
+                final int freeBytes = bufferLength - mStoredBytes;
+                final int bytesToWrite = Math.min(lengthToWrite, freeBytes);
+                int tail = mHead + mStoredBytes;
+                if (tail >= bufferLength) tail -= bufferLength;
+                final int firstRun = Math.min(bytesToWrite, bufferLength - tail);
+                final int secondRun = bytesToWrite - firstRun;
 
-                while (bytesToWriteBeforeWaiting > 0) {
-                    int tail = mHead + mStoredBytes;
-                    int oneRun;
-                    if (tail >= bufferLength) {
-                        // Buffer: [.............]
-                        // ________________H_______T
-                        // =>
-                        // Buffer: [.............]
-                        // ___________T____H
-                        // onRun= _____----_
-                        tail = tail - bufferLength;
-                        oneRun = mHead - tail;
-                    } else {
-                        oneRun = bufferLength - tail;
-                    }
-                    int bytesToCopy = Math.min(oneRun, bytesToWriteBeforeWaiting);
-                    System.arraycopy(buffer, offset, mBuffer, tail, bytesToCopy);
-                    offset += bytesToCopy;
-                    bytesToWriteBeforeWaiting -= bytesToCopy;
-                    mStoredBytes += bytesToCopy;
+                System.arraycopy(buffer, offset, mBuffer, tail, firstRun);
+                if (secondRun > 0) {
+                    System.arraycopy(buffer, offset + firstRun, mBuffer, 0, secondRun);
                 }
+
+                offset += bytesToWrite;
+                lengthToWrite -= bytesToWrite;
+                mStoredBytes += bytesToWrite;
                 if (wasEmpty) notify();
             }
         }

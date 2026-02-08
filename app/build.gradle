@@ -102,7 +102,7 @@ android {
     }
 
     buildToolsVersion '36.1.0'
-    ndkVersion '21'
+    ndkVersion '21.4.7075529'
 
     externalNativeBuild {
         cmake {

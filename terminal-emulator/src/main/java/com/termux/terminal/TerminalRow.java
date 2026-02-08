@@ -34,7 +34,14 @@ public final class TerminalRow {
 
     /** NOTE: The sourceX2 is exclusive. */
     public void copyInterval(TerminalRow line, int sourceX1, int sourceX2, int destinationX) {
-        mHasNonOneWidthOrSurrogateChars |= line.mHasNonOneWidthOrSurrogateChars;
+        if (!line.mHasNonOneWidthOrSurrogateChars) {
+            final int len = sourceX2 - sourceX1;
+            System.arraycopy(line.mText, sourceX1, mText, destinationX, len);
+            System.arraycopy(line.mStyle, sourceX1, mStyle, destinationX, len);
+            return;
+        }
+
+        mHasNonOneWidthOrSurrogateChars = true;
         final int x1 = line.findStartOfColumn(sourceX1);
         final int x2 = line.findStartOfColumn(sourceX2);
         boolean startingFromSecondHalfOfWideChar = (sourceX1 > 0 && line.wideDisplayCharacterStartingAt(sourceX1 - 1));
@@ -116,7 +123,7 @@ public final class TerminalRow {
     }
 
     public void clear(long style) {
-        Arrays.fill(mText, ' ');
+        Arrays.fill(mText, 0, mColumns, ' ');
         Arrays.fill(mStyle, style);
         mSpaceUsed = (short) mColumns;
         mHasNonOneWidthOrSurrogateChars = false;
@@ -235,7 +242,7 @@ public final class TerminalRow {
     }
 
     boolean isBlank() {
-        for (int charIndex = 0, charLen = getSpaceUsed(); charIndex < charLen; charIndex++)
+        for (int charIndex = 0, charLen = mSpaceUsed; charIndex < charLen; charIndex++)
             if (mText[charIndex] != ' ') return false;
         return true;
     }
