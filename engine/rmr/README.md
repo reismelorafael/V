@@ -16,3 +16,10 @@ make all
 - `build/demo/rafaelia_demo`
 - `build/demo/bitraf_core`
 - `build/bench/rmr_bench`
+
+## Módulo APK determinístico
+- Header: `include/rmr_apk_module.h`
+- Fonte: `src/rmr_apk_module.c`
+- Demo: `build/demo/apk_module_demo`
+
+Gera plano determinístico de build `:app:assembleRelease` com máscara universal de ABI e validação de assinatura legítima (sem chave de debug).

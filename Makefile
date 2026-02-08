@@ -3,7 +3,7 @@ AR ?= ar
 CFLAGS ?= -O3 -std=c11 -Wall -Wextra -pedantic -Iengine/rmr/include
 LDFLAGS ?=
 
-ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c
+ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c
 ENGINE_OBJS := $(patsubst %.c,build/%.o,$(ENGINE_SRCS))
 BITRAF_API_SRC := engine/rmr/src/bitraf.c
 BITRAF_API_OBJ := $(patsubst %.c,build/%.o,$(BITRAF_API_SRC))
@@ -15,8 +15,9 @@ LIB_BITRAF_SHARED := build/engine/libbitraf.so
 DEMO_BIN := build/demo/rafaelia_demo
 BENCH_BIN := build/bench/rmr_bench
 SELFTEST_BIN := build/demo/bitraf_selftest
+APK_MODULE_BIN := build/demo/apk_module_demo
 
-all: $(LIB_STATIC) $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN)
+all: $(LIB_STATIC) $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(APK_MODULE_BIN)
 
 build/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -49,6 +50,10 @@ $(SELFTEST_BIN): demo_cli/src/bitraf_selftest.c $(LIB_BITRAF_STATIC) $(LIB_STATI
 $(BITRAF_BIN): engine/rmr/src/rafaelia_bitraf_core.c $(LIB_STATIC)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -DRAF_HOSTED_TEST=1 $< $(LIB_STATIC) $(LDFLAGS) -o $@
+
+$(APK_MODULE_BIN): demo_cli/src/apk_module_demo.c $(LIB_STATIC)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
 
 run-demo: $(DEMO_BIN)
 	./$(DEMO_BIN)
