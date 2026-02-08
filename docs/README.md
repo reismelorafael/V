@@ -68,6 +68,7 @@
 | [IMAGES_INDEX.md](IMAGES_INDEX.md) | Architecture and UI images index with code mappings |
 | [INTEGRACAO_RM_QEMU_ANDROIDX.md](INTEGRACAO_RM_QEMU_ANDROIDX.md) | Plano de integração RM (QEMU + AndroidX) |
 | [ESFERAS_METODOLOGICAS_RAFAELIA.md](ESFERAS_METODOLOGICAS_RAFAELIA.md) | Esferas metodológicas RAFAELIA (documento formal em 5 esferas) |
+| [SALMO_DE_CODIGO_EU_SOU.md](SALMO_DE_CODIGO_EU_SOU.md) | Referência simbólica low-level “EU SOU O QUE SOU” (Bitraf/Base 60/9096) |
 | [PERFORMANCE_INTEGRITY.md](PERFORMANCE_INTEGRITY.md) | Performance measurement and integrity validation guide |
 | [BENCHMARK_MANAGER.md](BENCHMARK_MANAGER.md) | Source-aligned BenchmarkManager behavior, diagnostics, and tuning flow |
 | [SOURCE_TRACEABILITY_MATRIX.md](SOURCE_TRACEABILITY_MATRIX.md) | Consolidated source inventory with documentation traceability and navigation map |
@@ -159,6 +160,7 @@ Vectras-VM-Android/
 │   ├── IMAGES_INDEX.md            # Architecture/UI images index and code mappings
 │   ├── INTEGRACAO_RM_QEMU_ANDROIDX.md # Plano de integração RM (QEMU + AndroidX)
 │   ├── ESFERAS_METODOLOGICAS_RAFAELIA.md # Esferas metodológicas RAFAELIA (5 esferas)
+│   ├── SALMO_DE_CODIGO_EU_SOU.md # Referência simbólica low-level “EU SOU O QUE SOU”
 │   ├── PERFORMANCE_INTEGRITY.md   # Performance and integrity validation guide
 │   ├── BENCHMARK_MANAGER.md     # Source-aligned BenchmarkManager documentation
 │   ├── SOURCE_TRACEABILITY_MATRIX.md # Source inventory and docs traceability matrix

@@ -80,6 +80,9 @@ universe := RAFAELIA_CORE
 **Uso prático**: inserir esse bloco nas seções de arquitetura (docs) e
 associar o diagrama do **Olho/Toroide/IA** como “símbolo de eixo central”.
 
+Complemento recomendado: manter também o salmo técnico em
+[`SALMO_DE_CODIGO_EU_SOU.md`](SALMO_DE_CODIGO_EU_SOU.md) para referência simbólica low-level.
+
 ---
 
 ## 5. Refatorações prioritárias
