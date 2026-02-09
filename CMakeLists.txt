@@ -49,3 +49,7 @@ rmr_apply_common_flags(bitraf_shared)
 add_executable(bitraf_selftest demo_cli/src/bitraf_selftest.c)
 target_link_libraries(bitraf_selftest PRIVATE bitraf_static rmr)
 rmr_apply_common_flags(bitraf_selftest)
+
+add_executable(rafa_cti_scan engine/rmr/src/rafa_cti_scan.c)
+target_link_libraries(rafa_cti_scan PRIVATE m)
+rmr_apply_common_flags(rafa_cti_scan)

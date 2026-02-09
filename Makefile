@@ -24,8 +24,9 @@ DEMO_BIN := build/demo/rafaelia_demo
 BENCH_BIN := build/bench/rmr_bench
 SELFTEST_BIN := build/demo/bitraf_selftest
 APK_MODULE_BIN := build/demo/apk_module_demo
+CTI_SCAN_BIN := build/demo/rafa_cti_scan
 
-all: $(LIB_STATIC) $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(APK_MODULE_BIN)
+all: $(LIB_STATIC) $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN)
 
 build/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -62,6 +63,10 @@ $(BITRAF_BIN): engine/rmr/src/rafaelia_bitraf_core.c $(LIB_STATIC)
 $(APK_MODULE_BIN): demo_cli/src/apk_module_demo.c $(LIB_STATIC)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
+
+$(CTI_SCAN_BIN): engine/rmr/src/rafa_cti_scan.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $< $(LDFLAGS) -lm -o $@
 
 run-demo: $(DEMO_BIN)
 	./$(DEMO_BIN)
