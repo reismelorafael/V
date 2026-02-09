@@ -9,7 +9,7 @@ plugins {
 
 android {
     namespace = 'com.vectras.vm'
-    compileSdk = 36
+    compileSdk = compileApi
 
     defaultConfig {
         applicationId "com.vectras.vm"
@@ -101,8 +101,6 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    buildToolsVersion = '36.1.0'
-    ndkVersion = '21.4.7075529'
 
     externalNativeBuild {
         cmake {
