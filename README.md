@@ -29,8 +29,8 @@ Outros diretórios relevantes:
 ## Estado técnico resumido
 
 - Linguagens principais: Java e Kotlin.
-- Build Android: AGP 8.13.2.
-- Kotlin Gradle plugin: 2.3.0.
+- Build Android: AGP 8.5.2.
+- Kotlin Gradle plugin: 2.0.21.
 - `compileSdk`: 36.
 - `minSdk`: 23.
 - `targetSdk`: 28.
