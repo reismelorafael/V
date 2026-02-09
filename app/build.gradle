@@ -8,17 +8,17 @@ plugins {
 }
 
 android {
-    namespace 'com.vectras.vm'
+    namespace = 'com.vectras.vm'
     compileSdk = 36
 
     defaultConfig {
         applicationId "com.vectras.vm"
-        minSdk minApi
-        targetSdk targetApi
-        versionCode 69
-        versionName "3.6.5"
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        multiDexEnabled false
+        minSdk = minApi
+        targetSdk = targetApi
+        versionCode = 69
+        versionName = "3.6.5"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        multiDexEnabled = false
 
         externalNativeBuild {
             cmake {
@@ -53,16 +53,16 @@ android {
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
-            minifyEnabled true
-            shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig = signingConfigs.release
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles = [getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro']
             buildConfigField "boolean", "VECTRA_CORE_ENABLED", "false"
         }
         debug {
-            signingConfig signingConfigs.debug
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig = signingConfigs.debug
+            minifyEnabled = false
+            proguardFiles = [getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro']
             buildConfigField "boolean", "VECTRA_CORE_ENABLED", "true"
         }
         perfRelease {
@@ -77,20 +77,20 @@ android {
     }
 
     buildFeatures {
-        viewBinding true
-        buildConfig true
-        aidl true
+        viewBinding = true
+        buildConfig = true
+        aidl = true
     }
 
     splits {
         abi {
-            enable false
+            enable = false
         }
     }
 
-    lintOptions {
-        checkReleaseBuilds false
-        abortOnError false
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     // Note: Using Java 17 for CI compatibility
@@ -101,19 +101,19 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    buildToolsVersion '36.1.0'
-    ndkVersion '21.4.7075529'
+    buildToolsVersion = '36.1.0'
+    ndkVersion = '21.4.7075529'
 
     externalNativeBuild {
         cmake {
-            path "src/main/cpp/CMakeLists.txt"
-            version "3.22.1"
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
         }
     }
 
     kotlin {
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
+            jvmTarget = JvmTarget.JVM_17
         }
     }
 }

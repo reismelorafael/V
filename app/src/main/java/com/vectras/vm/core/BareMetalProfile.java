@@ -119,6 +119,8 @@ public final class BareMetalProfile {
         int arch = detectArchitecture();
         int cores = detectCoreCount();
         int caps = detectCapabilities();
+        int cacheLine = NativeFastPath.getNativeCacheLineBytes();
+        int pageBytes = NativeFastPath.getNativePageBytes();
 
         int base = 4096;
         if (arch == ARCH_ARM64 || arch == ARCH_X86_64) {
@@ -140,6 +142,27 @@ public final class BareMetalProfile {
         }
         if ((caps & CAP_CRC32) != 0) {
             base += 1024;
+        }
+
+        int align = cacheLine;
+        if (align < 32) {
+            align = 32;
+        }
+        if (align > 256) {
+            align = 256;
+        }
+
+        int minPage = pageBytes;
+        if (minPage < 1024) {
+            minPage = 1024;
+        }
+        while (base < minPage) {
+            base <<= 1;
+        }
+
+        int rem = base & (align - 1);
+        if (rem != 0) {
+            base += (align - rem);
         }
 
         return base;

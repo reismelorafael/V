@@ -83,6 +83,48 @@ public final class NativeFastPath {
         return arch | os;
     }
 
+    public static int getPointerBits() {
+        if (NATIVE_AVAILABLE) {
+            int bits = nativePointerBits();
+            if (bits == 32 || bits == 64) {
+                return bits;
+            }
+        }
+        int signature = getPlatformSignature();
+        int arch = signature & 0xFF00;
+        if (arch == ARCH_ARM64 || arch == ARCH_X64 || arch == ARCH_RISCV64) {
+            return 64;
+        }
+        if (arch == ARCH_ARM32 || arch == ARCH_X86 || arch == ARCH_RISCV32) {
+            return 32;
+        }
+        String model = System.getProperty("sun.arch.data.model", "");
+        if ("64".equals(model)) {
+            return 64;
+        }
+        return 32;
+    }
+
+    public static int getNativeCacheLineBytes() {
+        if (NATIVE_AVAILABLE) {
+            int line = nativeCacheLineBytes();
+            if (line >= 32 && line <= 256) {
+                return line;
+            }
+        }
+        return 64;
+    }
+
+    public static int getNativePageBytes() {
+        if (NATIVE_AVAILABLE) {
+            int page = nativePageBytes();
+            if (page >= 1024 && page <= 65536) {
+                return page;
+            }
+        }
+        return 4096;
+    }
+
     public static int getFeatureMask() {
         if (NATIVE_AVAILABLE) {
             return nativeFeatureMask();
@@ -202,4 +244,10 @@ public final class NativeFastPath {
     private static native int nativePlatformSignature();
 
     private static native int nativeFeatureMask();
+
+    private static native int nativePointerBits();
+
+    private static native int nativeCacheLineBytes();
+
+    private static native int nativePageBytes();
 }

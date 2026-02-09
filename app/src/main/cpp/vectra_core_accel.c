@@ -284,6 +284,40 @@ Java_com_vectras_vm_core_NativeFastPath_nativePlatformSignature(JNIEnv* env, jcl
     return (jint)(vectra_arch_tag() | vectra_os_tag());
 }
 
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativePointerBits(JNIEnv* env, jclass clazz) {
+    (void)env;
+    (void)clazz;
+    return (jint)((int)(sizeof(void*) * 8));
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCacheLineBytes(JNIEnv* env, jclass clazz) {
+    (void)env;
+    (void)clazz;
+#if defined(__aarch64__) || defined(__arm__)
+    return 64;
+#elif defined(__x86_64__) || defined(__i386__)
+    return 64;
+#elif defined(__riscv)
+    return 64;
+#else
+    return 64;
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativePageBytes(JNIEnv* env, jclass clazz) {
+    (void)env;
+    (void)clazz;
+#ifdef __ANDROID__
+    return 4096;
+#else
+    return 4096;
+#endif
+}
+
 JNIEXPORT jint JNICALL
 Java_com_vectras_vm_core_NativeFastPath_nativeFeatureMask(JNIEnv* env, jclass clazz) {
     (void)env;
