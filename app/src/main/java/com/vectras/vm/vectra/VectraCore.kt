@@ -293,6 +293,123 @@ data class VectraEvent(
 }
 
 /**
+ * VectraFlowRoute: deterministic routing for CPU/Storage/Input/Output pressure.
+ */
+enum class VectraFlowRoute {
+    CPU_HEAVY,
+    STORAGE_HEAVY,
+    IO_HEAVY,
+    BALANCED
+}
+
+/**
+ * VectraFlowSnapshot: output from one orchestration step.
+ */
+data class VectraFlowSnapshot(
+    val orchestrationTag: Long,
+    val route: VectraFlowRoute,
+    val cpuPressure: Int,
+    val storagePressure: Int,
+    val ioPressure: Int,
+    val matrixDeterminant: Long
+)
+
+/**
+ * VectraDataOrchestrator: deterministic pipeline for CPU/Storage/Input/Output flow calculations.
+ *
+ * Pipeline stages:
+ * 1) Input: normalize signals and collect counters
+ * 2) Process: compute pressure vectors and matrix determinant
+ * 3) Output: generate route and orchestration tag
+ * 4) Next: persist values in ring buffer for temporal continuity
+ */
+class VectraDataOrchestrator(private val state: VectraState) {
+    private companion object {
+        private const val HISTORY_SIZE = 128
+        private const val FLOW_MIX_A = -0x61c8864680b583ebL
+        private const val FLOW_MIX_B = -0x4498517a7b3558c5L
+        private const val FLOW_MIX_C = 0x9E3779B97F4A7C15uL.toLong()
+    }
+
+    private val history = LongArray(HISTORY_SIZE)
+    private var historyIndex = 0
+    private var sequence = 0L
+
+    fun orchestrate(
+        cpuCycles: Long,
+        storageReadBytes: Long,
+        storageWriteBytes: Long,
+        inputBytes: Long,
+        outputBytes: Long,
+        m00: Long,
+        m01: Long,
+        m10: Long,
+        m11: Long
+    ): VectraFlowSnapshot {
+        val cpu = if (cpuCycles < 0) 0 else cpuCycles
+        val storageRead = if (storageReadBytes < 0) 0 else storageReadBytes
+        val storageWrite = if (storageWriteBytes < 0) 0 else storageWriteBytes
+        val input = if (inputBytes < 0) 0 else inputBytes
+        val output = if (outputBytes < 0) 0 else outputBytes
+
+        val storageTotal = storageRead + storageWrite
+        val ioDiff = if (input >= output) input - output else output - input
+        val matrixDet = (m00 * m11) - (m01 * m10)
+
+        val cpuPressure = ((cpu xor (input shl 1) xor output) and 0x7FFFFFFF).toInt()
+        val storagePressure = ((storageTotal xor (storageRead shl 2) xor (storageWrite shl 1)) and 0x7FFFFFFF).toInt()
+        val ioPressure = ((ioDiff xor (input shl 3) xor (output shl 2)) and 0x7FFFFFFF).toInt()
+
+        val route = when {
+            cpuPressure > storagePressure && cpuPressure > ioPressure -> VectraFlowRoute.CPU_HEAVY
+            storagePressure > cpuPressure && storagePressure > ioPressure -> VectraFlowRoute.STORAGE_HEAVY
+            ioPressure > cpuPressure && ioPressure > storagePressure -> VectraFlowRoute.IO_HEAVY
+            else -> VectraFlowRoute.BALANCED
+        }
+
+        val mixed = mix64(
+            cpu xor (storageTotal shl 1) xor (ioDiff shl 2) xor matrixDet xor sequence
+        )
+        val routeTagged = mixed xor route.ordinal.toLong()
+
+        pushHistory(cpu)
+        pushHistory(storageRead)
+        pushHistory(storageWrite)
+        pushHistory(input)
+        pushHistory(output)
+        pushHistory(routeTagged)
+        sequence++
+
+        state.stageCounters[0] += input
+        state.stageCounters[1] += cpu
+        state.stageCounters[2] += storageTotal
+        state.stageCounters[3] += output
+        state.stageCounters[4] = routeTagged
+
+        return VectraFlowSnapshot(
+            orchestrationTag = routeTagged,
+            route = route,
+            cpuPressure = cpuPressure,
+            storagePressure = storagePressure,
+            ioPressure = ioPressure,
+            matrixDeterminant = matrixDet
+        )
+    }
+
+    private fun pushHistory(value: Long) {
+        history[historyIndex] = value
+        historyIndex = (historyIndex + 1) and (HISTORY_SIZE - 1)
+    }
+
+    private fun mix64(value: Long): Long {
+        var x = value + FLOW_MIX_C
+        x = (x xor (x ushr 30)) * FLOW_MIX_A
+        x = (x xor (x ushr 27)) * FLOW_MIX_B
+        return x xor (x ushr 31)
+    }
+}
+
+/**
  * VectraEventBus: Priority queue for IRQ-like events.
  * Thread-safe event bus with priority handling.
  */
@@ -376,6 +493,8 @@ class VectraCycle(
     private fun executeCycle() {
         // Phase 1: Input
         val event = eventBus.poll()
+        val inputBytes = event?.payload?.size?.toLong() ?: 0L
+        state.stageCounters[0] += inputBytes
         updatePolicy(event)
 
         // Phase 2: Process
@@ -388,6 +507,7 @@ class VectraCycle(
             val payload = event?.payload ?: ByteArray(0)
             val meta = (event?.type?.ordinal ?: 0) or ((event?.priority ?: 0) shl 8)
             it.append(payload, meta)
+            state.stageCounters[3] += payload.size.toLong()
         }
 
         // Phase 4: Next
@@ -429,6 +549,7 @@ class VectraCycle(
             val entropy = CRC32C.update(state.entropyHint, event.payload)
             state.entropyHint = entropy + weight
             state.seed = state.seed xor entropy
+            state.stageCounters[1] += weight.toLong()
         }
 
         // Update flag to indicate event processed
@@ -577,6 +698,7 @@ object VectraCore {
     private val state = VectraState()
     private val triad = VectraTriad()
     private val mempool = VectraMemPool(DEFAULT_CHUNK_BYTES, DEFAULT_POOL_SIZE)
+    private val flowOrchestrator = VectraDataOrchestrator(state)
     private var eventBus: VectraEventBus? = null
     private var cycle: VectraCycle? = null
     private var logger: VectraBitStackLog? = null
@@ -780,5 +902,32 @@ object VectraCore {
      */
     fun postEvent(event: VectraEvent) {
         eventBus?.post(event)
+    }
+
+    /**
+     * Orchestrates deterministic CPU/Storage/Input/Output flow and returns routing/calc snapshot.
+     */
+    fun orchestrateFlow(
+        cpuCycles: Long,
+        storageReadBytes: Long,
+        storageWriteBytes: Long,
+        inputBytes: Long,
+        outputBytes: Long,
+        m00: Long,
+        m01: Long,
+        m10: Long,
+        m11: Long
+    ): VectraFlowSnapshot {
+        return flowOrchestrator.orchestrate(
+            cpuCycles,
+            storageReadBytes,
+            storageWriteBytes,
+            inputBytes,
+            outputBytes,
+            m00,
+            m01,
+            m10,
+            m11
+        )
     }
 }
