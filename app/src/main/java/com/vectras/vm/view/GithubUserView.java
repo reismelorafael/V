@@ -3,37 +3,34 @@ package com.vectras.vm.view;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.LayoutInflater;
-import android.view.View;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Button;
 
-import com.bumptech.glide.Glide;
 import com.vectras.vm.R;
-import com.vectras.vm.model.GithubUser;
-import com.vectras.vm.network.GithubApiService;
 
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
-import retrofit2.Retrofit;
-import retrofit2.converter.gson.GsonConverterFactory;
+import org.json.JSONObject;
+
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class GithubUserView extends LinearLayout {
-    private final String TAG = "GithubUserView";
     private LinearLayout mainView;
     private ImageView profileImage;
     private TextView userName;
     private TextView userDescription;
-    private ImageButton githubProfile;
-    private static final String BASE_URL = "https://api.github.com/";
+    private static final String BASE_URL = "https://api.github.com/users/";
     private String thisUserNameGitHub = "";
+    private final ExecutorService io = Executors.newSingleThreadExecutor();
 
     public GithubUserView(Context context) {
         super(context);
@@ -51,61 +48,105 @@ public class GithubUserView extends LinearLayout {
     }
 
     private void init(Context context) {
-        LayoutInflater inflater = LayoutInflater.from(context);
-        inflater.inflate(R.layout.github_user_view, this, true);
+        LayoutInflater.from(context).inflate(R.layout.github_user_view, this, true);
 
         mainView = findViewById(R.id.main);
         profileImage = findViewById(R.id.profile_image);
         userName = findViewById(R.id.user_name);
         userDescription = findViewById(R.id.user_description);
-        githubProfile = findViewById(R.id.githubProfile);
+        ImageButton githubProfile = findViewById(R.id.githubProfile);
 
         mainView.setOnClickListener(v -> openGithubProfile(context));
+        githubProfile.setOnClickListener(v -> openGithubProfile(context));
     }
 
     public void setUsername(String username) {
-        Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl(BASE_URL)
-                .addConverterFactory(GsonConverterFactory.create())
-                .build();
+        profileImage.setImageResource(R.drawable.account_circle_24px);
+        userName.setText(getContext().getString(R.string.unknow));
+        userDescription.setText(getContext().getString(R.string.unknow));
 
-        GithubApiService service = retrofit.create(GithubApiService.class);
-        Call<GithubUser> call = service.getUser(username);
-        call.enqueue(new Callback<GithubUser>() {
-            @Override
-            public void onResponse(Call<GithubUser> call, Response<GithubUser> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    GithubUser user = response.body();
-                    thisUserNameGitHub = user.getLogin();
-                    userName.setText(!user.getLogin().isEmpty() ? user.getLogin() : getContext().getString(R.string.unknow));
-                    userDescription.setText(!user.getBio().isEmpty() ? user.getBio() : getContext().getString(R.string.unknow));
-                    if (!user.getAvatarUrl().isEmpty()) {
-                        if (getContext() instanceof Activity activity) {
-                            if (!activity.isFinishing() && !activity.isDestroyed())
-                                Glide.with(getContext()).load(user.getAvatarUrl()).placeholder(R.drawable.account_circle_24px).error(R.drawable.account_circle_24px).into(profileImage);
-                        }
+        io.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(BASE_URL + username);
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(25000);
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("Accept", "application/json");
+
+                if (connection.getResponseCode() != 200) {
+                    return;
+                }
+
+                String response = readUtf8(connection.getInputStream());
+                JSONObject json = new JSONObject(response);
+                String login = json.optString("login", "");
+                String bio = json.optString("bio", "");
+                String avatar = json.optString("avatar_url", "");
+
+                Bitmap avatarBitmap = null;
+                if (!avatar.isEmpty()) {
+                    avatarBitmap = downloadBitmap(avatar);
+                }
+
+                Bitmap finalAvatarBitmap = avatarBitmap;
+                post(() -> {
+                    thisUserNameGitHub = login;
+                    userName.setText(login.isEmpty() ? getContext().getString(R.string.unknow) : login);
+                    userDescription.setText(bio.isEmpty() ? getContext().getString(R.string.unknow) : bio);
+                    if (finalAvatarBitmap != null) {
+                        profileImage.setImageBitmap(finalAvatarBitmap);
                     } else {
                         profileImage.setImageResource(R.drawable.account_circle_24px);
                     }
-                } else {
-                    userName.setText(getContext().getString(R.string.unknow));
-                    userDescription.setText(getContext().getString(R.string.unknow));
-                    profileImage.setImageResource(R.drawable.account_circle_24px);
+                });
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
                 }
-            }
-
-            @Override
-            public void onFailure(Call<GithubUser> call, Throwable t) {
-                userName.setText(getContext().getString(R.string.unknow));
-                userDescription.setText(getContext().getString(R.string.unknow));
-                profileImage.setImageResource(R.drawable.account_circle_24px);
             }
         });
     }
 
+    private String readUtf8(InputStream in) throws Exception {
+        byte[] buffer = new byte[4096];
+        StringBuilder out = new StringBuilder();
+        int read;
+        while ((read = in.read(buffer)) != -1) {
+            out.append(new String(buffer, 0, read));
+        }
+        return out.toString();
+    }
+
+    private Bitmap downloadBitmap(String imageUrl) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(imageUrl).openConnection();
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(25000);
+            connection.setDoInput(true);
+            try (InputStream in = connection.getInputStream()) {
+                return BitmapFactory.decodeStream(in);
+            }
+        } catch (Exception ignored) {
+            return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
     private void openGithubProfile(Context context) {
+        if (thisUserNameGitHub.isEmpty()) {
+            return;
+        }
+        if (context instanceof Activity activity && (activity.isFinishing() || activity.isDestroyed())) {
+            return;
+        }
         String url = "https://github.com/" + thisUserNameGitHub;
-        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-        context.startActivity(intent);
+        context.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
     }
 }

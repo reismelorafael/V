@@ -6,24 +6,14 @@ import android.content.res.Configuration
 import android.content.res.Resources
 import android.os.Build
 import android.os.LocaleList
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
-import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
 
-/**
- * Manages language modules for the Vectras VM app.
- * Provides functionality for:
- * - Downloading language modules on-demand
- * - Switching between languages
- * - Storing downloaded language strings
- * - Managing language preferences
- */
 class LocaleManager private constructor(private val context: Context) {
 
     companion object {
@@ -46,56 +36,31 @@ class LocaleManager private constructor(private val context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .build()
-    private val gson = Gson()
-
-    /**
-     * Get the currently selected language code
-     */
     fun getCurrentLanguage(): String {
         return prefs.getString(KEY_CURRENT_LANGUAGE, "en") ?: "en"
     }
 
-    /**
-     * Set the current language
-     */
     fun setCurrentLanguage(languageCode: String) {
         prefs.edit().putString(KEY_CURRENT_LANGUAGE, languageCode).apply()
     }
 
-    /**
-     * Get list of downloaded language codes
-     */
     fun getDownloadedLanguages(): Set<String> {
-        val defaultSet = setOf("en") // English is always available
+        val defaultSet = setOf("en")
         val downloaded = prefs.getStringSet(KEY_DOWNLOADED_LANGUAGES, defaultSet) ?: defaultSet
         return downloaded + "en"
     }
 
-    /**
-     * Mark a language as downloaded
-     */
     private fun markLanguageDownloaded(languageCode: String) {
         val current = getDownloadedLanguages().toMutableSet()
         current.add(languageCode)
         prefs.edit().putStringSet(KEY_DOWNLOADED_LANGUAGES, current).apply()
     }
 
-    /**
-     * Check if a language module is downloaded
-     */
     fun isLanguageDownloaded(languageCode: String): Boolean {
-        if (languageCode == "en") return true // English is built-in
+        if (languageCode == "en") return true
         return getDownloadedLanguages().contains(languageCode)
     }
 
-    /**
-     * Get the language module storage directory
-     */
     private fun getLangDir(): File {
         val dir = File(context.filesDir, LANG_DIR)
         if (!dir.exists()) {
@@ -104,75 +69,59 @@ class LocaleManager private constructor(private val context: Context) {
         return dir
     }
 
-    /**
-     * Get the file for a specific language module
-     */
     private fun getLangFile(languageCode: String): File {
         return File(getLangDir(), "$languageCode.json")
     }
 
-    /**
-     * Download a language module
-     * @param languageCode The language code to download
-     * @param onProgress Callback for download progress (0-100)
-     * @return true if successful, false otherwise
-     */
     suspend fun downloadLanguageModule(
         languageCode: String,
         onProgress: ((Int) -> Unit)? = null
     ): Boolean = withContext(Dispatchers.IO) {
         val module = LanguageModule.getByCode(languageCode) ?: return@withContext false
-        
+
         if (module.isBuiltIn) {
             return@withContext true
         }
 
+        var connection: HttpURLConnection? = null
         try {
             onProgress?.invoke(0)
-            
-            val request = Request.Builder()
-                .url(module.downloadUrl)
-                .build()
+            connection = (URL(module.downloadUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 30000
+                readTimeout = 30000
+                setRequestProperty("Accept", "application/json")
+            }
 
-            val response = httpClient.newCall(request).execute()
-            
-            if (!response.isSuccessful) {
+            if (connection.responseCode !in 200..299) {
                 return@withContext false
             }
 
             onProgress?.invoke(50)
 
-            val body = response.body?.string() ?: return@withContext false
-            
-            // Validate JSON
-            try {
-                val type = object : TypeToken<Map<String, String>>() {}.type
-                gson.fromJson<Map<String, String>>(body, type)
-            } catch (e: Exception) {
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val parsed = parseJsonMap(body)
+            if (parsed.isEmpty()) {
                 return@withContext false
             }
 
             onProgress?.invoke(75)
 
-            // Save to file
-            val langFile = getLangFile(languageCode)
-            langFile.writeText(body)
-
+            getLangFile(languageCode).writeText(body)
             markLanguageDownloaded(languageCode)
-            
+
             onProgress?.invoke(100)
             true
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             android.util.Log.e("LocaleManager", "Failed to download language module: $languageCode", e)
             false
+        } finally {
+            connection?.disconnect()
         }
     }
 
-    /**
-     * Delete a downloaded language module
-     */
     fun deleteLanguageModule(languageCode: String): Boolean {
-        if (languageCode == "en") return false // Can't delete built-in
+        if (languageCode == "en") return false
 
         val langFile = getLangFile(languageCode)
         if (langFile.exists()) {
@@ -183,7 +132,6 @@ class LocaleManager private constructor(private val context: Context) {
         current.remove(languageCode)
         prefs.edit().putStringSet(KEY_DOWNLOADED_LANGUAGES, current).apply()
 
-        // If current language was deleted, switch to English
         if (getCurrentLanguage() == languageCode) {
             setCurrentLanguage("en")
         }
@@ -191,27 +139,19 @@ class LocaleManager private constructor(private val context: Context) {
         return true
     }
 
-    /**
-     * Get string translations from a downloaded language module
-     */
     fun getModuleStrings(languageCode: String): Map<String, String>? {
-        if (languageCode == "en") return null // Use built-in resources for English
+        if (languageCode == "en") return null
 
         val langFile = getLangFile(languageCode)
         if (!langFile.exists()) return null
 
         return try {
-            val content = langFile.readText()
-            val type = object : TypeToken<Map<String, String>>() {}.type
-            gson.fromJson(content, type)
+            parseJsonMap(langFile.readText())
         } catch (e: Exception) {
             null
         }
     }
 
-    /**
-     * Get a list of all language modules with their download status
-     */
     fun getAllLanguageModules(): List<LanguageModule> {
         val downloaded = getDownloadedLanguages()
         return LanguageModule.getSupportedLanguages().map { module ->
@@ -219,16 +159,13 @@ class LocaleManager private constructor(private val context: Context) {
         }
     }
 
-    /**
-     * Apply the selected locale to the context
-     */
     fun applyLocale(context: Context): Context {
         val languageCode = getCurrentLanguage()
         val locale = Locale(languageCode)
         Locale.setDefault(locale)
 
         val config = Configuration(context.resources.configuration)
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             config.setLocales(LocaleList(locale))
         } else {
@@ -239,9 +176,6 @@ class LocaleManager private constructor(private val context: Context) {
         return context.createConfigurationContext(config)
     }
 
-    /**
-     * Update the resources configuration with the selected locale
-     */
     @Suppress("DEPRECATION")
     fun updateConfiguration(resources: Resources) {
         val languageCode = getCurrentLanguage()
@@ -249,7 +183,7 @@ class LocaleManager private constructor(private val context: Context) {
         Locale.setDefault(locale)
 
         val config = resources.configuration
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             config.setLocales(LocaleList(locale))
         } else {
@@ -259,21 +193,26 @@ class LocaleManager private constructor(private val context: Context) {
         resources.updateConfiguration(config, resources.displayMetrics)
     }
 
-    /**
-     * Get the storage size used by downloaded language modules
-     */
     fun getDownloadedModulesSize(): Long {
         return getLangDir().listFiles()?.sumOf { it.length() } ?: 0L
     }
 
-    /**
-     * Clear all downloaded language modules
-     */
     fun clearAllModules() {
         getLangDir().listFiles()?.forEach { it.delete() }
         prefs.edit()
             .putStringSet(KEY_DOWNLOADED_LANGUAGES, setOf("en"))
             .putString(KEY_CURRENT_LANGUAGE, "en")
             .apply()
+    }
+
+    private fun parseJsonMap(content: String): Map<String, String> {
+        val json = JSONObject(content)
+        val out = LinkedHashMap<String, String>()
+        val iterator = json.keys()
+        while (iterator.hasNext()) {
+            val key = iterator.next()
+            out[key] = json.optString(key, "")
+        }
+        return out
     }
 }

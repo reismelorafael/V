@@ -2,31 +2,31 @@ package com.vectras.vm.network;
 
 import androidx.annotation.NonNull;
 
-import com.google.gson.Gson;
+import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
-import java.util.Objects;
-import java.util.concurrent.TimeUnit;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
-
-import okhttp3.CacheControl;
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.FormBody;
-import okhttp3.Headers;
-import okhttp3.HttpUrl;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
 
 public class RequestNetworkController {
     public static final String GET = "GET";
@@ -40,141 +40,171 @@ public class RequestNetworkController {
     private static final int SOCKET_TIMEOUT = 15000;
     private static final int READ_TIMEOUT = 25000;
 
-    protected OkHttpClient client;
-
     private static RequestNetworkController mInstance;
+    private final ExecutorService ioPool = Executors.newCachedThreadPool();
+    private SSLSocketFactory trustAllFactory;
 
     public static synchronized RequestNetworkController getInstance() {
-        if(mInstance == null) {
+        if (mInstance == null) {
             mInstance = new RequestNetworkController();
         }
         return mInstance;
     }
 
-    private OkHttpClient getClient() {
-        if (client == null) {
-            OkHttpClient.Builder builder = new OkHttpClient.Builder();
-
-            try {
-                final TrustManager[] trustAllCerts = new TrustManager[]{
-                        new X509TrustManager() {
-                            @Override
-                            public void checkClientTrusted(X509Certificate[] chain, String authType) {
-                            }
-
-                            @Override
-                            public void checkServerTrusted(X509Certificate[] chain, String authType) {
-                            }
-
-                            @Override
-                            public X509Certificate[] getAcceptedIssuers() {
-                                return new X509Certificate[]{};
-                            }
-                        }
-                };
-
-                final SSLContext sslContext = SSLContext.getInstance("TLS");
-                sslContext.init(null, trustAllCerts, new SecureRandom());
-                final SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
-                builder.sslSocketFactory(sslSocketFactory, (X509TrustManager) trustAllCerts[0]);
-                builder.connectTimeout(SOCKET_TIMEOUT, TimeUnit.MILLISECONDS);
-                builder.readTimeout(READ_TIMEOUT, TimeUnit.MILLISECONDS);
-                builder.writeTimeout(READ_TIMEOUT, TimeUnit.MILLISECONDS);
-                builder.cache(null);
-                builder.hostnameVerifier((hostname, session) -> true);
-            } catch (Exception ignored) {
-            }
-
-            client = builder.build();
+    private void ensureTrustAllFactory() {
+        if (trustAllFactory != null) {
+            return;
         }
+        try {
+            final TrustManager[] trustAllCerts = new TrustManager[]{
+                    new X509TrustManager() {
+                        @Override public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+                        @Override public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+                        @NonNull @Override public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[]{}; }
+                    }
+            };
 
-        return client;
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new SecureRandom());
+            trustAllFactory = sslContext.getSocketFactory();
+        } catch (Exception ignored) {
+            trustAllFactory = null;
+        }
     }
 
     public void execute(final RequestNetwork requestNetwork, String method, String url, final String tag, final RequestNetwork.RequestListener requestListener) {
-        Request.Builder reqBuilder = new Request.Builder();
-        Headers.Builder headerBuilder = new Headers.Builder();
-        CacheControl.Builder cacheControlBuilder = new CacheControl.Builder()
-                .noCache()
-                .noStore();
+        ioPool.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                String finalUrl = buildFinalUrl(url, requestNetwork, method);
+                URL target = new URL(finalUrl);
+                connection = (HttpURLConnection) target.openConnection();
+                connection.setConnectTimeout(SOCKET_TIMEOUT);
+                connection.setReadTimeout(READ_TIMEOUT);
+                connection.setUseCaches(false);
+                connection.setRequestMethod(method);
+                connection.setRequestProperty("Cache-Control", "no-cache, no-store");
 
-        if (!requestNetwork.getHeaders().isEmpty()) {
-            HashMap<String, Object> headers = requestNetwork.getHeaders();
+                if (connection instanceof HttpsURLConnection httpsConnection) {
+                    ensureTrustAllFactory();
+                    if (trustAllFactory != null) {
+                        httpsConnection.setSSLSocketFactory(trustAllFactory);
+                        httpsConnection.setHostnameVerifier((hostname, session) -> true);
+                    }
+                }
 
-            for (HashMap.Entry<String, Object> header : headers.entrySet()) {
-                headerBuilder.add(header.getKey(), String.valueOf(header.getValue()));
+                applyHeaders(connection, requestNetwork.getHeaders());
+                writeBodyIfNeeded(connection, requestNetwork, method);
+
+                int code = connection.getResponseCode();
+                InputStream source = code >= 400 ? connection.getErrorStream() : connection.getInputStream();
+                String responseBody = source == null ? "" : readUtf8(source).trim();
+                HashMap<String, Object> responseHeaders = mapHeaders(connection.getHeaderFields());
+
+                requestNetwork.getActivity().runOnUiThread(() -> requestListener.onResponse(tag, responseBody, responseHeaders));
+            } catch (Exception e) {
+                requestNetwork.getActivity().runOnUiThread(() -> requestListener.onErrorResponse(tag, e.getMessage()));
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
             }
+        });
+    }
+
+    private static String buildFinalUrl(String url, RequestNetwork requestNetwork, String method) throws IOException {
+        if (!GET.equals(method) || requestNetwork.getRequestType() != REQUEST_PARAM || requestNetwork.getParams().isEmpty()) {
+            return url;
+        }
+        StringBuilder sb = new StringBuilder(url);
+        if (!url.contains("?")) {
+            sb.append('?');
+        } else if (!url.endsWith("&") && !url.endsWith("?")) {
+            sb.append('&');
         }
 
-        try {
-            if (requestNetwork.getRequestType() == REQUEST_PARAM) {
-                if (method.equals(GET)) {
-                    HttpUrl.Builder httpBuilder;
-
-                    try {
-                        httpBuilder = Objects.requireNonNull(HttpUrl.parse(url)).newBuilder();
-                    } catch (NullPointerException ne) {
-                        throw new NullPointerException("unexpected url: " + url);
-                    }
-
-                    if (!requestNetwork.getParams().isEmpty()) {
-                        HashMap<String, Object> params = requestNetwork.getParams();
-
-                        for (HashMap.Entry<String, Object> param : params.entrySet()) {
-                            httpBuilder.addQueryParameter(param.getKey(), String.valueOf(param.getValue()));
-                        }
-                    }
-
-                    reqBuilder.url(httpBuilder.build()).headers(headerBuilder.build()).cacheControl(cacheControlBuilder.build()).get();
-                } else {
-                    FormBody.Builder formBuilder = new FormBody.Builder();
-                    if (!requestNetwork.getParams().isEmpty()) {
-                        HashMap<String, Object> params = requestNetwork.getParams();
-
-                        for (HashMap.Entry<String, Object> param : params.entrySet()) {
-                            formBuilder.add(param.getKey(), String.valueOf(param.getValue()));
-                        }
-                    }
-
-                    RequestBody reqBody = formBuilder.build();
-
-                    reqBuilder.url(url).headers(headerBuilder.build()).method(method, reqBody).cacheControl(cacheControlBuilder.build());
-                }
-            } else {
-                RequestBody reqBody = RequestBody.create(
-                        new Gson().toJson(requestNetwork.getParams()), MediaType.get("application/json; charset=utf-8")
-                );
-
-                if (method.equals(GET)) {
-                    reqBuilder.url(url).headers(headerBuilder.build()).cacheControl(cacheControlBuilder.build()).get();
-                } else {
-                    reqBuilder.url(url).headers(headerBuilder.build()).method(method, reqBody).cacheControl(cacheControlBuilder.build());
-                }
+        boolean first = true;
+        for (Map.Entry<String, Object> param : requestNetwork.getParams().entrySet()) {
+            if (!first) {
+                sb.append('&');
             }
+            first = false;
+            sb.append(URLEncoder.encode(param.getKey(), StandardCharsets.UTF_8.name()));
+            sb.append('=');
+            sb.append(URLEncoder.encode(String.valueOf(param.getValue()), StandardCharsets.UTF_8.name()));
+        }
+        return sb.toString();
+    }
 
-            Request req = reqBuilder.build();
+    private static void applyHeaders(HttpURLConnection connection, HashMap<String, Object> headers) {
+        for (Map.Entry<String, Object> header : headers.entrySet()) {
+            connection.setRequestProperty(header.getKey(), String.valueOf(header.getValue()));
+        }
+    }
 
-            getClient().newCall(req).enqueue(new Callback() {
-                @Override
-                public void onFailure(@NonNull Call call, @NonNull final IOException e) {
-                    requestNetwork.getActivity().runOnUiThread(() -> requestListener.onErrorResponse(tag, e.getMessage()));
-                }
+    private static void writeBodyIfNeeded(HttpURLConnection connection, RequestNetwork requestNetwork, String method) throws IOException {
+        if (GET.equals(method)) {
+            return;
+        }
 
-                @Override
-                public void onResponse(@NonNull Call call, @NonNull final Response response) throws IOException {
-                    final String responseBody = response.body().string().trim();
-                    requestNetwork.getActivity().runOnUiThread(() -> {
-                        Headers b = response.headers();
-                        HashMap<String, Object> map = new HashMap<>();
-                        for (String s : b.names()) {
-                            map.put(s, b.get(s) != null ? b.get(s) : "null");
-                        }
-                        requestListener.onResponse(tag, responseBody, map);
-                    });
-                }
-            });
-        } catch (Exception e) {
-            requestListener.onErrorResponse(tag, e.getMessage());
+        String body;
+        String contentType;
+        if (requestNetwork.getRequestType() == REQUEST_BODY) {
+            body = new JSONObject(requestNetwork.getParams()).toString();
+            contentType = "application/json; charset=utf-8";
+        } else {
+            body = toFormEncoded(requestNetwork.getParams());
+            contentType = "application/x-www-form-urlencoded; charset=utf-8";
+        }
+
+        byte[] payload = body.getBytes(StandardCharsets.UTF_8);
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", contentType);
+        connection.setRequestProperty("Content-Length", String.valueOf(payload.length));
+
+        try (OutputStream out = new BufferedOutputStream(connection.getOutputStream())) {
+            out.write(payload);
+            out.flush();
+        }
+    }
+
+    private static String toFormEncoded(HashMap<String, Object> params) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<String, Object> entry : params.entrySet()) {
+            if (!first) {
+                sb.append('&');
+            }
+            first = false;
+            sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8.name()));
+            sb.append('=');
+            sb.append(URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8.name()));
+        }
+        return sb.toString();
+    }
+
+    private static HashMap<String, Object> mapHeaders(Map<String, List<String>> headerFields) {
+        HashMap<String, Object> map = new HashMap<>();
+        for (Map.Entry<String, List<String>> entry : headerFields.entrySet()) {
+            String key = entry.getKey();
+            if (key == null) {
+                continue;
+            }
+            List<String> values = entry.getValue();
+            map.put(key, values == null || values.isEmpty() ? "" : values.get(0));
+        }
+        return map;
+    }
+
+    private static String readUtf8(InputStream in) throws IOException {
+        try (InputStream source = new BufferedInputStream(in);
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = source.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+            return out.toString(StandardCharsets.UTF_8.name());
         }
     }
 }

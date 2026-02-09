@@ -10,9 +10,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.google.android.material.color.DynamicColors;
-import com.google.firebase.analytics.FirebaseAnalytics;
 import com.vectras.qemu.Config;
 import com.vectras.qemu.MainSettingsManager;
+import com.vectras.vm.core.DeterministicRuntimeMatrix;
 import com.vectras.vm.utils.FileUtils;
 import com.vectras.vm.utils.PackageUtils;
 import com.vectras.vm.utils.UIUtils;
@@ -55,6 +55,8 @@ public class VectrasApp extends Application {
 //			overrideFont("DEFAULT", R.font.gilroy);
 //		}
 		setupAppConfig(getApplicationContext());
+		DeterministicRuntimeMatrix.Snapshot runtimeSnapshot = DeterministicRuntimeMatrix.capture();
+		android.util.Log.i("VectraRuntime", "arch=" + runtimeSnapshot.arch + " cores=" + runtimeSnapshot.cores + " ptr=" + runtimeSnapshot.pointerBits + " page=" + runtimeSnapshot.pageBytes + " line=" + runtimeSnapshot.cacheLineBytes + " feat=" + runtimeSnapshot.features + " ioq=" + runtimeSnapshot.ioQuantumBytes + " irqUs=" + runtimeSnapshot.irqPeriodMicros + " workers=" + runtimeSnapshot.workerParallelism + " det=" + runtimeSnapshot.deterministicProduct);
 		VectraCore.init(this);
 
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
@@ -73,7 +75,6 @@ public class VectrasApp extends Application {
             @Override public void onActivityDestroyed(@NonNull Activity activity) {}
         });
 
-        FirebaseAnalytics.getInstance(this);
 	}
 
 	@Override
