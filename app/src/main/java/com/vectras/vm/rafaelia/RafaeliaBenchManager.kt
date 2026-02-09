@@ -43,7 +43,7 @@ object RafaeliaBenchManager {
 
     private fun generateReportAsync(context: Context, vmName: String, durationMs: Long) {
         executor.execute {
-            val report = parseBenchReport(RafaeliaSettings.logFile(context), durationMs)
+            val report = parseBenchReport(context, RafaeliaSettings.logFile(context), durationMs)
             if (report != null) {
                 RafaeliaReportStorage.saveBenchReport(context, report)
                 RafaeliaEventRecorder.recordBench(context, report, vmName)
@@ -71,7 +71,7 @@ object RafaeliaBenchManager {
         dialog.show()
     }
 
-    private fun parseBenchReport(logFile: File, durationMs: Long): RafaeliaBenchReport? {
+    private fun parseBenchReport(context: Context, logFile: File, durationMs: Long): RafaeliaBenchReport? {
         if (!logFile.exists()) return null
 
         val ticksPattern = Pattern.compile("(?i)ticks?\\s*[:=]\\s*(\\d+)")

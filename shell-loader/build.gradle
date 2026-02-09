@@ -2,31 +2,49 @@
 apply plugin: 'com.android.application'
 
 android {
-
-    buildToolsVersion '35.0.0'
-    compileSdk 35
+    compileSdk compileApi
 }
 
 android.namespace 'com.vectras.vm'
 android.defaultConfig.minSdkVersion 21
 android.buildTypes.debug.signingConfig null
 android.buildFeatures.buildConfig true
-android.compileOptions.sourceCompatibility SDK_VERSION
-android.compileOptions.targetCompatibility SDK_VERSION
+android.compileOptions.sourceCompatibility JavaVersion.VERSION_17
+android.compileOptions.targetCompatibility JavaVersion.VERSION_17
 dependencies.compileOnly project(':shell-loader:stub')
 android.applicationVariants.configureEach { outputs.configureEach { outputFileName = "loader.apk" } }
 
 def signingConfig = project(':app').android.signingConfigs.debug
-def keyStore = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType())
-keyStore.load(new FileInputStream(signingConfig.storeFile), signingConfig.keyPassword.toCharArray())
+def signatureHash = 0
+if (signingConfig?.storeFile?.exists()) {
+    def keyStore = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType())
+    keyStore.load(new FileInputStream(signingConfig.storeFile), signingConfig.keyPassword.toCharArray())
+    def cert = keyStore.getCertificate(signingConfig.keyAlias)
+    if (cert != null) {
+        signatureHash = Arrays.hashCode(cert.getEncoded())
+    }
+}
+
+def commitHash = System.getenv('CURRENT_COMMIT') ?: "NO_COMMIT"
+try {
+    def proc = ["git", "rev-parse", "HEAD"].execute()
+    proc.waitFor()
+    if (proc.exitValue() == 0) {
+        def out = proc.in.text?.trim()
+        if (out) {
+            commitHash = out
+        }
+    }
+} catch (Exception ignored) {
+}
 
 android.defaultConfig.buildConfigField "String", "logTag", "\"Termux:X11 loader\""
-android.defaultConfig.buildConfigField "int", "SIGNATURE", String.valueOf(Arrays.hashCode(keyStore.getCertificate(signingConfig.keyAlias).getEncoded()))
+android.defaultConfig.buildConfigField "int", "SIGNATURE", String.valueOf(signatureHash)
 android.defaultConfig.buildConfigField "String", "CLASS_ID", "\"com.vectras.vm.x11.CmdEntryPoint\""
 android.defaultConfig.buildConfigField "String", "packageNotInstalledErrorText",
-        """\"Termux:X11 application is not found.\" +
+        "\"Termux:X11 application is not found.\" +
         \"You should choose latest successful workflow here: https://github.com/termux/termux-x11/actions/workflows/debug_build.yml\" +
-        \"After this you should download \\"termux-x11-ARCH-debug\\" or \\"termux-x11-universal-debug\\" artifact and install apk contained in this zip file.\""""
+        \"After this you should download \\\"termux-x11-ARCH-debug\\\" or \\\"termux-x11-universal-debug\\\" artifact and install apk contained in this zip file.\""
 android.defaultConfig.buildConfigField "String", "packageSignatureMismatchErrorText",
         "\"Signature verification of target application " + android.namespace + " failed.\\nPlease, reinstall both termux-x11 package and Termux:X11 application from the same source\""
-android.defaultConfig.buildConfigField "String", "COMMIT", "\"" + ("git rev-parse HEAD\n".execute().getText().trim() ?: (System.getenv('CURRENT_COMMIT') ?: "NO_COMMIT")) + "\""
+android.defaultConfig.buildConfigField "String", "COMMIT", "\"" + commitHash + "\""
