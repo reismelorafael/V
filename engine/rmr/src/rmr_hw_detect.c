@@ -12,7 +12,7 @@ static u32 RmR_ArchDetect(void){
   return 2u;
 #elif defined(__i386__) || defined(_M_IX86)
   return 1u;
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) || defined(_M_ARM64)
   return 4u;
 #elif defined(__arm__) || defined(_M_ARM)
   return 3u;
@@ -20,28 +20,32 @@ static u32 RmR_ArchDetect(void){
   return 5u;
 #elif defined(__mips__)
   return 6u;
+#elif defined(__powerpc64__) || defined(__ppc64__)
+  return 7u;
+#elif defined(__powerpc__) || defined(__ppc__)
+  return 8u;
+#elif defined(__s390x__)
+  return 9u;
 #else
   return 0u;
 #endif
 }
 
 static u32 RmR_CachelineHint(u32 arch){
-  if(arch == 2u || arch == 1u) return 64u;
-  if(arch == 4u || arch == 3u) return 64u;
-  if(arch == 5u) return 64u;
-  return 32u;
+  if(arch == 7u || arch == 9u) return 128u;
+  if(arch == 2u || arch == 1u || arch == 4u || arch == 3u || arch == 5u || arch == 8u) return 64u;
+  return 64u;
 }
 
 static u32 RmR_PageHint(u32 arch){
-  if(arch == 5u) return 4096u;
+  if(arch == 7u) return 65536u;
   return 4096u;
 }
 
 static u32 RmR_MemBusHint(u32 arch){
-  if(arch == 2u || arch == 1u) return 64u;
-  if(arch == 4u || arch == 3u) return 64u;
-  if(arch == 5u) return 64u;
-  return 32u;
+  if(arch == 2u || arch == 4u || arch == 7u || arch == 9u) return 128u;
+  if(arch == 1u || arch == 3u || arch == 5u || arch == 6u || arch == 8u) return 64u;
+  return 64u;
 }
 
 void RmR_HW_Detect(RmR_HW_Info *out){

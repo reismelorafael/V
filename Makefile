@@ -3,6 +3,14 @@ AR ?= ar
 CFLAGS ?= -O3 -std=c11 -Wall -Wextra -pedantic -Iengine/rmr/include
 LDFLAGS ?=
 
+UNAME_S := $(shell uname -s 2>/dev/null || echo Unknown)
+SHARED_EXT := so
+ifeq ($(OS),Windows_NT)
+  SHARED_EXT := dll
+else ifeq ($(UNAME_S),Darwin)
+  SHARED_EXT := dylib
+endif
+
 ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c
 ENGINE_OBJS := $(patsubst %.c,build/%.o,$(ENGINE_SRCS))
 BITRAF_API_SRC := engine/rmr/src/bitraf.c
@@ -11,7 +19,7 @@ BITRAF_BIN := build/demo/bitraf_core
 
 LIB_STATIC := build/engine/librmr.a
 LIB_BITRAF_STATIC := build/engine/libbitraf.a
-LIB_BITRAF_SHARED := build/engine/libbitraf.so
+LIB_BITRAF_SHARED := build/engine/libbitraf.$(SHARED_EXT)
 DEMO_BIN := build/demo/rafaelia_demo
 BENCH_BIN := build/bench/rmr_bench
 SELFTEST_BIN := build/demo/bitraf_selftest
