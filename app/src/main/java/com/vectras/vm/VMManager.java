@@ -36,6 +36,7 @@ import com.vectras.qemu.MainVNCActivity;
 import com.vectras.qemu.VNCConfig;
 import com.vectras.qemu.utils.QmpClient;
 import com.vectras.vm.main.MainActivity;
+import com.vectras.vm.core.ProcessSupervisor;
 import com.vectras.vm.main.core.MainStartVM;
 import com.vectras.vm.rafaelia.RafaeliaEventRecorder;
 import com.vectras.vm.settings.VNCSettingsActivity;
@@ -58,6 +59,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class VMManager {
 
@@ -71,6 +73,24 @@ public class VMManager {
     public static boolean isTryAgain = false;
     public static String latestUnsafeCommandReason = "";
     public static String lastQemuCommand = "";
+    private static final ConcurrentHashMap<String, ProcessSupervisor> SUPERVISORS = new ConcurrentHashMap<>();
+
+
+    public static void registerVmProcess(Context context, String vmId, Process process) {
+        if (process == null) return;
+        String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
+        ProcessSupervisor supervisor = SUPERVISORS.computeIfAbsent(key, k -> new ProcessSupervisor(context, k));
+        supervisor.bindProcess(process);
+    }
+
+    public static boolean stopVmProcess(Context context, String vmId, boolean tryQmp) {
+        String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
+        ProcessSupervisor supervisor = SUPERVISORS.get(key);
+        if (supervisor == null) {
+            return false;
+        }
+        return supervisor.stopGracefully(tryQmp);
+    }
 
     public static boolean isVMExist(String vmId) {
         String vmJsonListContent = FileUtils.readAFile(AppConfig.romsdatajson);
@@ -979,31 +999,47 @@ public class VMManager {
     }
 
     public static void killcurrentqemuprocess(Activity activity) {
-        Terminal vterm = new Terminal(activity);
-        String env = "killall -15 ";
-        switch (MainSettingsManager.getArch(activity)) {
-            case "ARM64":
-                env += "qemu-system-aarch64";
-                break;
-            case "PPC":
-                env += "qemu-system-ppc";
-                break;
-            case "I386":
-                env += "qemu-system-i386";
-                break;
-            default:
-                env += "qemu-system-x86_64";
-                break;
+        Terminal.requestStopStreaming();
+        boolean stopped = stopVmProcess(activity, com.vectras.vm.main.core.MainStartVM.lastVMID, true);
+        if (!stopped) {
+            Terminal vterm = new Terminal(activity);
+            String targetBinary;
+            switch (MainSettingsManager.getArch(activity)) {
+                case "ARM64":
+                    targetBinary = "qemu-system-aarch64";
+                    break;
+                case "PPC":
+                    targetBinary = "qemu-system-ppc";
+                    break;
+                case "I386":
+                    targetBinary = "qemu-system-i386";
+                    break;
+                default:
+                    targetBinary = "qemu-system-x86_64";
+                    break;
+            }
+            long pid = Terminal.qemuProcess != null ? Terminal.qemuProcess.pid() : -1L;
+            if (pid > 0) {
+                vterm.executeShellCommand2("kill -15 " + pid + " || pkill -15 -f " + targetBinary, false, null);
+            } else {
+                vterm.executeShellCommand2("pkill -15 -f " + targetBinary, false, null);
+            }
         }
-        vterm.executeShellCommand2(env, false, null);
     }
 
     public static void killallqemuprocesses(Context context) {
+        Terminal.requestStopStreaming();
+        for (ProcessSupervisor supervisor : SUPERVISORS.values()) {
+            supervisor.stopGracefully(true);
+        }
+        SUPERVISORS.clear();
         Terminal vterm = new Terminal(context);
-        vterm.executeShellCommand2("killall -15 qemu-system-i386", false, null);
-        vterm.executeShellCommand2("killall -15 qemu-system-x86_64", false, null);
-        vterm.executeShellCommand2("killall -15 qemu-system-aarch64", false, null);
-        vterm.executeShellCommand2("killall -15 qemu-system-ppc", false, null);
+        if (Terminal.qemuProcess != null) {
+            long pid = Terminal.qemuProcess.pid();
+            if (pid > 0) {
+                vterm.executeShellCommand2("kill -15 " + pid, false, null);
+            }
+        }
         if (!MainStartVM.lastVMName.isEmpty()) {
             RafaeliaEventRecorder.recordStop(context, MainStartVM.lastVMName);
         }

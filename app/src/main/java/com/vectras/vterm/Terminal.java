@@ -1,6 +1,7 @@
 package com.vectras.vterm;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -24,6 +25,10 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.Enumeration;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -34,6 +39,11 @@ import com.vectras.vm.VectrasApp;
 import com.vectras.vm.utils.ClipboardUltils;
 import com.vectras.vm.utils.DialogUtils;
 import com.vectras.vm.utils.NotificationUtils;
+import com.vectras.vm.core.BoundedStringRingBuffer;
+import com.vectras.vm.core.ProcessOutputDrainer;
+import com.vectras.vm.core.TokenBucketRateLimiter;
+import com.vectras.vm.audit.AuditEvent;
+import com.vectras.vm.audit.AuditLedger;
 
 public class Terminal {
     private static final String TAG = "Vterm";
@@ -42,6 +52,11 @@ public class Terminal {
 
     public static Process qemuProcess;
     public static String DISPLAY = ":0";
+    private static final AtomicBoolean STREAM_STOP_TOKEN = new AtomicBoolean(false);
+    private static final int MAX_LOG_LINES = 1500;
+    private static final int MAX_LOG_BYTES = 512 * 1024;
+    private static final int RATE_LINES_PER_SEC = 60;
+    private static final int RATE_BURST = 120;
 
     public Terminal(Context context) {
         this.context = context;
@@ -114,6 +129,8 @@ public class Terminal {
 
                 processBuilder.command(prootCommand);
                 qemuProcess = processBuilder.start();
+                Terminal.resetStreamingStopToken();
+                VMManager.registerVmProcess(getContext(), com.vectras.vm.main.core.MainStartVM.lastVMID, qemuProcess);
 
                 output.set(streamLog(userCommand, qemuProcess, false));
             } catch (IOException e) {
@@ -188,6 +205,8 @@ public class Terminal {
 
                 processBuilder.command(prootCommand);
                 qemuProcess = processBuilder.start();
+                Terminal.resetStreamingStopToken();
+                VMManager.registerVmProcess(getContext(), com.vectras.vm.main.core.MainStartVM.lastVMID, qemuProcess);
 
                 output.set(streamLog(userCommand, qemuProcess, false));
             } catch (IOException e) {
@@ -252,6 +271,8 @@ public class Terminal {
 
             processBuilder.command(prootCommand);
             qemuProcess = processBuilder.start();
+            Terminal.resetStreamingStopToken();
+            VMManager.registerVmProcess(context, com.vectras.vm.main.core.MainStartVM.lastVMID, qemuProcess);
 
             output = streamLog(userCommand, qemuProcess, false);
         } catch (IOException e) {
@@ -320,6 +341,8 @@ public class Terminal {
 
                 processBuilder.command(prootCommand);
                 qemuProcess = processBuilder.start();
+                Terminal.resetStreamingStopToken();
+                VMManager.registerVmProcess(getContext(), com.vectras.vm.main.core.MainStartVM.lastVMID, qemuProcess);
 
                 output.set(streamLog(userCommand, qemuProcess, true));
 
@@ -339,68 +362,127 @@ public class Terminal {
     }
 
     /**
-     * Checks if a package is installed using `apk info`.
-     *
-     * @param packageName The name of the package to check.
-     * @return True if the package is installed, otherwise false.
+     * Checks if a package is installed using PackageManager first, then optional Termux fallback.
      */
-    private static boolean isPackageInstalled(String packageName) {
+    private boolean isPackageInstalled(String packageName) {
         try {
-            Process process = new ProcessBuilder("apk", "info", packageName).start();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.equals(packageName)) {
-                    return true;
-                }
-            }
-            process.waitFor();
+            getContext().getPackageManager().getPackageInfo(packageName, 0);
+            return true;
+        } catch (PackageManager.NameNotFoundException ignored) {
+            // continue to termux fallback
         } catch (Exception e) {
-            Log.e(TAG, "Error checking package: " + packageName, e);
+            Log.e(TAG, "PackageManager lookup failed: " + packageName, e);
+        }
+
+        try {
+            Process process = new ProcessBuilder("pkg", "list-installed", packageName).start();
+            StringBuilder output = streamLog("", process, true);
+            return output.toString().contains(packageName);
+        } catch (Exception e) {
+            Log.e(TAG, "Termux fallback package check failed: " + packageName, e);
         }
         return false;
     }
 
+    public static void requestStopStreaming() {
+        STREAM_STOP_TOKEN.set(true);
+    }
+
+    public static void resetStreamingStopToken() {
+        STREAM_STOP_TOKEN.set(false);
+    }
+
     public static StringBuilder streamLog(String command, Process process, boolean isShortProcess) {
-        StringBuilder output = new StringBuilder();
+        BoundedStringRingBuffer ringBuffer = new BoundedStringRingBuffer(MAX_LOG_LINES, MAX_LOG_BYTES);
+        TokenBucketRateLimiter limiter = new TokenBucketRateLimiter(RATE_LINES_PER_SEC, RATE_BURST);
+        ProcessOutputDrainer drainer = new ProcessOutputDrainer();
+        AtomicInteger droppedLogs = new AtomicInteger(0);
+        AtomicLong bytesSeen = new AtomicLong(0);
+        AtomicBoolean degraded = new AtomicBoolean(false);
+
         try {
-            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            BufferedReader errorReader = new BufferedReader(new InputStreamReader(process.getErrorStream()));
-
-            writer.write(command);
-            writer.newLine();
-            writer.flush();
-            writer.close();
-
-            String line;
-            while ((line = reader.readLine()) != null) {
-                com.vectras.vm.logger.VectrasStatus.logError("<font color='#4db6ac'>VTERM: >" + line + "</font>");
-                output.append(line).append("\n");
+            if (command != null && !command.isEmpty()) {
+                BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+                writer.write(command);
+                writer.newLine();
+                writer.flush();
+                writer.close();
             }
 
-            while ((line = errorReader.readLine()) != null) {
-                Log.w(TAG, line);
-                com.vectras.vm.logger.VectrasStatus.logError("<font color='red'>VTERM ERROR: >" + line + "</font>");
-                output.append(line).append("\n");
-            }
+            Thread drainThread = new Thread(() -> {
+                try {
+                    drainer.drain(process, (stream, line) -> {
+                        if (STREAM_STOP_TOKEN.get()) {
+                            drainer.cancel();
+                            return;
+                        }
+                        bytesSeen.addAndGet(line.getBytes().length);
+                        if (!limiter.tryAcquire()) {
+                            int dropped = droppedLogs.incrementAndGet();
+                            if (dropped % 100 == 1) {
+                                ringBuffer.addLine("[DEGRADED] log flood active, dropped=" + dropped);
+                            }
+                            degraded.set(true);
+                            return;
+                        }
+                        if ("stderr".equals(stream)) {
+                            Log.w(TAG, line);
+                            com.vectras.vm.logger.VectrasStatus.logError("<font color='red'>VTERM ERROR: >" + line + "</font>");
+                        } else {
+                            com.vectras.vm.logger.VectrasStatus.logError("<font color='#4db6ac'>VTERM: >" + line + "</font>");
+                        }
+                        ringBuffer.addLine(line);
+                    });
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "vterm-log-drainer");
+            drainThread.start();
 
             if (isShortProcess) {
-                int exitCode = process.waitFor();
-                if (exitCode == 0) {
-                    output.append("Execution finished successfully.\n");
+                if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                    ringBuffer.addLine("Execution timed out after 30 seconds.");
+                    process.destroy();
+                    process.waitFor(2, TimeUnit.SECONDS);
                 } else {
-                    output.append("Execution finished with exit code: ").append(exitCode).append("\n");
+                    int exitCode = process.exitValue();
+                    ringBuffer.addLine(exitCode == 0
+                            ? "Execution finished successfully."
+                            : "Execution finished with exit code: " + exitCode);
+                }
+            } else {
+                while (!STREAM_STOP_TOKEN.get() && process.isAlive()) {
+                    Thread.sleep(150);
+                }
+                if (STREAM_STOP_TOKEN.get() && process.isAlive()) {
+                    process.destroy();
                 }
             }
 
-            reader.close();
-            errorReader.close();
+            drainThread.join(2000L);
+            if (degraded.get()) {
+                String vmId = com.vectras.vm.main.core.MainStartVM.lastVMID;
+                AuditLedger.record(VectrasApp.getContext(), new AuditEvent(
+                        android.os.SystemClock.elapsedRealtime(),
+                        System.currentTimeMillis(),
+                        vmId == null ? "unknown" : vmId,
+                        "RUN",
+                        "DEGRADED",
+                        "LOG_FLOOD",
+                        droppedLogs.get(),
+                        bytesSeen.get(),
+                        0,
+                        "RATE_LIMIT"
+                ));
+            }
         } catch (Exception e) {
-            output.append(e.getMessage());
+            ringBuffer.addLine(String.valueOf(e.getMessage()));
             Log.e(TAG, "streamLog: ", e);
+        } finally {
+            drainer.cancel();
+            drainer.shutdown();
         }
-        return output;
+        return new StringBuilder(ringBuffer.snapshot());
     }
 
     private Context getContext() {
