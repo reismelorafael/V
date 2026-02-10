@@ -1,0 +1,12 @@
+[package]
+name = "vectra_policy_kernel"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "vectra_policy_kernel"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vectra-policy-cli"
+path = "src/main.rs"
