@@ -26,7 +26,7 @@ Este índice resume os documentos prioritários para manutenção e evolução d
 
 - `IMPLEMENTATION_COMPLETE.md`
 - `IMPLEMENTATION_SUMMARY.md`
-- `docs/DETERMINISTIC_VM_MUTATION_LAYER.md` — policy kernel Rust para mutação determinística auditável.
+- `docs/DETERMINISTIC_VM_MUTATION_LAYER.md` — policy kernel C para mutação determinística auditável.
 
 ## 5) Licenças, terceiros e conformidade
 

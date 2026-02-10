@@ -18,6 +18,7 @@ add_library(rmr STATIC
   engine/rmr/src/rmr_bench_suite.c
   engine/rmr/src/rmr_isorf.c
   engine/rmr/src/rmr_apk_module.c
+  engine/rmr/src/rmr_policy_kernel.c
 )
 
 target_include_directories(rmr PUBLIC engine/rmr/include)
@@ -49,6 +50,15 @@ rmr_apply_common_flags(bitraf_shared)
 add_executable(bitraf_selftest demo_cli/src/bitraf_selftest.c)
 target_link_libraries(bitraf_selftest PRIVATE bitraf_static rmr)
 rmr_apply_common_flags(bitraf_selftest)
+
+
+add_executable(policy_kernel_demo demo_cli/src/policy_kernel_demo.c)
+target_link_libraries(policy_kernel_demo PRIVATE rmr)
+rmr_apply_common_flags(policy_kernel_demo)
+
+add_executable(policy_kernel_selftest demo_cli/src/policy_kernel_selftest.c)
+target_link_libraries(policy_kernel_selftest PRIVATE rmr)
+rmr_apply_common_flags(policy_kernel_selftest)
 
 add_executable(rafa_cti_scan engine/rmr/src/rafa_cti_scan.c)
 target_link_libraries(rafa_cti_scan PRIVATE m)

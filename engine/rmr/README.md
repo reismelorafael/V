@@ -16,6 +16,8 @@ make all
 - `build/demo/rafaelia_demo`
 - `build/demo/bitraf_core`
 - `build/bench/rmr_bench`
+- `build/demo/policy_kernel_demo`
+- `build/demo/policy_kernel_selftest`
 
 ## Módulo APK determinístico
 - Header: `include/rmr_apk_module.h`
@@ -34,3 +36,9 @@ Recursos do módulo:
 ## Orquestrador ponta-a-ponta
 - Script: `tools/apk/rmr_termux_release_orchestrator.sh`
 - Executa checklist de ambiente (java/gradle/sdkmanager), build release, métricas de artefato, verificação de assinatura (`apksigner`/`jarsigner`) e salva rastros em `build/reports/rmr/`.
+
+## Deterministic VM Mutation Layer (C)
+- Header: `include/rmr_policy_kernel.h`
+- Fonte: `src/rmr_policy_kernel.c`
+- CLI: `build/demo/policy_kernel_demo`
+- Selftest: `build/demo/policy_kernel_selftest`
