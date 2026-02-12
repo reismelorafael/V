@@ -5,7 +5,7 @@ Automação de verificação e utilitários operacionais.
 
 ## Camada 2 — Estrutura (até 3 níveis)
 - Nível 1: `tools/`
-- Nível 2: `apk/`, `baremetal/`
+- Nível 2: `apk/`, `baremetal/`, `termux-arm64-orchestrator/`
 - Nível 3: detalhamento por arquivo em [`FILES_MAP.md`](FILES_MAP.md).
 
 ## Camada 3 — Arquivos e vínculos
