@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #if defined(__aarch64__) && defined(__ARM_FEATURE_CRC32)
 #include <arm_acle.h>
@@ -159,12 +160,22 @@ static void apply_mutation(uint8_t *buf, size_t len, uint64_t base_off, uint8_t 
   }
 }
 
+static int paths_refer_same_file(const char *a, const char *b) {
+  if (strcmp(a, b) == 0) return 1;
+
+  struct stat sa;
+  struct stat sb;
+  if (stat(a, &sa) != 0 || stat(b, &sb) != 0) return 0;
+  return (sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino) ? 1 : 0;
+}
+
 int RmR_RunPolicyPipeline(const char *input_path,
                           const char *output_path,
                           const char *audit_log_path,
                           const RmR_PipelineConfig *config,
-                          RmR_AuditSummary *summary) {
+  RmR_AuditSummary *summary) {
   if (!input_path || !output_path || !audit_log_path || !config || config->chunk_size == 0) return -1;
+  if (paths_refer_same_file(input_path, output_path)) return -7;
 
   RmR_AuditSummary local_summary;
   memset(&local_summary, 0, sizeof(local_summary));

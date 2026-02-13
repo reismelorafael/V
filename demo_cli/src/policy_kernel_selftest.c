@@ -55,6 +55,13 @@ int main(void) {
   cfg.triad.disk_ok = 1;
 
   RmR_AuditSummary s1, s2;
+  RmR_AuditSummary s_same;
+  int rc_same = RmR_RunPolicyPipeline("build/policy_in.bin", "build/policy_in.bin", "build/policy_log_same.log", &cfg, &s_same);
+  if (rc_same != -7) {
+    printf("FAIL same input/output path should be rejected rc=%d\n", rc_same);
+    return 1;
+  }
+
   int rc1 = RmR_RunPolicyPipeline("build/policy_in.bin", "build/policy_out1.bin", "build/policy_log1.log", &cfg, &s1);
   int rc2 = RmR_RunPolicyPipeline("build/policy_in.bin", "build/policy_out2.bin", "build/policy_log2.log", &cfg, &s2);
   if (rc1 != 0 || rc2 != 0) {
