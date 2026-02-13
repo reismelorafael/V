@@ -42,15 +42,16 @@ public class BenchmarkManager {
     private static final double MAX_CPU_TEMP_C = 85.0;
     private static final int MIN_FREE_MEMORY_MB = 256;
     private static final double MAX_VARIANCE_PERCENT = 25.0;
-    private static final int CONSISTENCY_SAMPLES = 3;
+    private static final int CONSISTENCY_SAMPLES = 21;
     private static final double MIN_CONFIDENCE_THRESHOLD = 0.7;
     private static final double CPU_FREQ_VARIANCE_THRESHOLD_HOMOGENEOUS = 0.5;
     private static final double CPU_FREQ_VARIANCE_THRESHOLD_HETEROGENEOUS = 0.7;
     private static final double MAX_TIME_DRIFT_PERCENT = 10.0;
     private static final double MAX_TIMER_JITTER_PERCENT = 500.0;
     private static final double MAX_STABILITY_VARIANCE_PERCENT = 30.0;
+    private static final double MAX_STORAGE_REAL_MBPS = 5000.0;
     private static final int DIAGNOSTIC_DECIMALS = 2;
-    private static final boolean ENABLE_STABILITY_PROBE = false;
+    private static final boolean ENABLE_STABILITY_PROBE = true;
     private static final long TIMER_DIAGNOSTIC_CACHE_MS = 5 * 60 * 1000L;
     private static final long TIMER_DRIFT_TARGET_NS = 20_000_000L;
     private static final int TIMER_JITTER_SAMPLES = 64;
@@ -66,6 +67,12 @@ public class BenchmarkManager {
     private static final int DIAGNOSTIC_INDEX_EMULATOR_SIGNALS = 3;
     private static final int DIAGNOSTIC_INDEX_ABI_CPU_MISMATCH = 4;
     private static final int DIAGNOSTIC_COUNT = 5;
+    private static final int PROGRESS_SCALE = 100;
+    private static final int STAGE_PREFLIGHT = 8;
+    private static final int STAGE_OPTIMIZE = 18;
+    private static final int STAGE_EXECUTION_START = 24;
+    private static final int STAGE_EXECUTION_END = 86;
+    private static final int STAGE_VALIDATION = 94;
     private static final String[] DIAGNOSTIC_NAMES = {
         "Timer Drift",
         "Timer Jitter",
@@ -374,7 +381,7 @@ public class BenchmarkManager {
 
         try {
             // Step 1: Pre-flight checks
-            notifyProgress(0, VectraBenchmark.METRIC_COUNT, "Performing pre-flight checks...");
+            notifyProgress(STAGE_PREFLIGHT, PROGRESS_SCALE, "Performing pre-flight checks...");
             EnvironmentSnapshot envBefore = captureEnvironment();
             PreflightReport preflight = performPreflightChecks(envBefore);
 
@@ -387,18 +394,18 @@ public class BenchmarkManager {
                 " | stripe=" + tuningProfile.copyStripeBytes + "B");
 
             // Step 2: Optimize environment
-            notifyProgress(0, VectraBenchmark.METRIC_COUNT, "Optimizing environment...");
+            notifyProgress(STAGE_OPTIMIZE, PROGRESS_SCALE, "Optimizing environment...");
             optimizeEnvironment(tuningProfile);
 
             // Step 3: Run benchmarks with progress tracking
-            notifyProgress(0, VectraBenchmark.METRIC_COUNT, "Running benchmarks...");
+            notifyProgress(STAGE_EXECUTION_START, PROGRESS_SCALE, "Running benchmarks...");
             VectraBenchmark.BenchmarkResult[] results = runBenchmarksWithProgress(tuningProfile);
             
             // Step 4: Capture post-benchmark environment
             EnvironmentSnapshot envAfter = captureEnvironment();
             
             // Step 5: Validate results
-            notifyProgress(VectraBenchmark.METRIC_COUNT, VectraBenchmark.METRIC_COUNT, 
+            notifyProgress(STAGE_VALIDATION, PROGRESS_SCALE,
                          "Validating results...");
             ValidationReport validation = validateResults(results, envBefore, envAfter);
             
@@ -410,6 +417,7 @@ public class BenchmarkManager {
             DiagnosticMetrics diagnostics = buildDiagnostics(envBefore, preflight);
             BenchmarkResult result = new BenchmarkResult(
                 results, validation, envAfter, diagnostics, duration, isValid);
+            notifyProgress(PROGRESS_SCALE, PROGRESS_SCALE, "Benchmark complete");
             
             notifyComplete(result);
             return result;
@@ -431,7 +439,9 @@ public class BenchmarkManager {
         // Note: Ideally we'd modify VectraBenchmark.runAllBenchmarks() to accept
         // a progress callback, but for minimal changes, we run it as-is
         VectraBenchmark.setCopyStripeBytes(profile.copyStripeBytes);
+        notifyProgress(STAGE_EXECUTION_START, PROGRESS_SCALE, "Executing metric suite...");
         VectraBenchmark.BenchmarkResult[] results = VectraBenchmark.runAllBenchmarks();
+        notifyProgress(STAGE_EXECUTION_END, PROGRESS_SCALE, "Collecting benchmark outputs...");
         
         return results;
     }
@@ -649,6 +659,12 @@ public class BenchmarkManager {
         List<String> warnings = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         int interferenceCount = 0;
+
+        if (results == null || results.length == 0) {
+            errors.add("Benchmark returned no metrics");
+            return new ValidationReport(warnings, errors, 0.0,
+                false, false, false, 100.0, 1);
+        }
         
         // Check for thermal changes
         boolean thermalDetected = false;
@@ -671,7 +687,7 @@ public class BenchmarkManager {
         
         // Check for memory pressure
         boolean memoryPressure = false;
-        if (envAfter.freeMemoryMb < envBefore.freeMemoryMb * 0.7) {
+        if (envBefore.freeMemoryMb > 0 && envAfter.freeMemoryMb < envBefore.freeMemoryMb * 0.7) {
             warnings.add("Memory consumption increased during benchmark");
             memoryPressure = true;
             interferenceCount++;
@@ -694,6 +710,24 @@ public class BenchmarkManager {
         if (nullCount > 0) {
             errors.add(nullCount + " metrics failed to complete");
             interferenceCount++;
+        }
+
+        // Plausibility validator (storage-real throughput limits, short tests)
+        for (VectraBenchmark.BenchmarkResult r : results) {
+            if (r == null) continue;
+            if (r.rawValue() < 200_000_000L) {
+                warnings.add("Metric too short for stable timing: " + r.name());
+                interferenceCount++;
+            }
+            if (("StorageReal Seq Read".equals(r.name()) || "StorageReal Seq Write".equals(r.name()))
+                && r.rawValue() > 0) {
+                double mbps = (128.0 * 1024.0 * 1024.0 * 1_000_000_000.0) / r.rawValue() / 1_000_000.0;
+                if (mbps > MAX_STORAGE_REAL_MBPS) {
+                    warnings.add("StorageReal throughput over plausibility threshold: "
+                        + formatOneDecimal(mbps) + " MB/s");
+                    interferenceCount++;
+                }
+            }
         }
         
         // Calculate confidence score (0.0 - 1.0)

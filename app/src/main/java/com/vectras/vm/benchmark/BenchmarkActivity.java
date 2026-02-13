@@ -139,11 +139,23 @@ public class BenchmarkActivity extends AppCompatActivity {
     
     private BenchmarkManager.BenchmarkResult lastBenchmarkResult;
     private BenchmarkManager.ExecutionProfile selectedProfile = BenchmarkManager.ExecutionProfile.AUTO_ADAPTIVE;
+    private volatile boolean benchmarkRunning = false;
     
     private void runBenchmark() {
+        if (benchmarkRunning) {
+            Toast.makeText(this, R.string.benchmark_already_running, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        benchmarkRunning = true;
+
         // Show progress
         layoutProgress.setVisibility(View.VISIBLE);
         btnRunBenchmark.setEnabled(false);
+        btnTuningProfile.setEnabled(false);
+        btnViewDetails.setVisibility(View.GONE);
+        btnExportResults.setVisibility(View.GONE);
+        btnShareResults.setVisibility(View.GONE);
+        layoutCategoryScores.setVisibility(View.GONE);
         tvScoreStatus.setText(getString(R.string.running_benchmark));
         tvProgressText.setText(getString(R.string.preparing_benchmark));
         
@@ -160,8 +172,9 @@ public class BenchmarkActivity extends AppCompatActivity {
                             mainHandler.post(() -> {
                                 tvProgressText.setText(currentMetric);
                                 if (totalMetrics > 0) {
-                                    int percent = (metricIndex * 100) / totalMetrics;
-                                    tvScoreStatus.setText("Running: " + percent + "%");
+                                    int percent = Math.max(0, Math.min(100,
+                                        (metricIndex * 100) / totalMetrics));
+                                    tvScoreStatus.setText(getString(R.string.benchmark_progress_percent, percent));
                                 }
                             });
                         }
@@ -189,6 +202,8 @@ public class BenchmarkActivity extends AppCompatActivity {
                                 updateScoreDisplay(benchResult.metrics, deviceSpec);
                                 layoutProgress.setVisibility(View.GONE);
                                 btnRunBenchmark.setEnabled(true);
+                                btnTuningProfile.setEnabled(true);
+                                benchmarkRunning = false;
                                 
                                 // Show validation status
                                 String status = benchResult.isValid ? 
@@ -215,6 +230,8 @@ public class BenchmarkActivity extends AppCompatActivity {
                             mainHandler.post(() -> {
                                 layoutProgress.setVisibility(View.GONE);
                                 btnRunBenchmark.setEnabled(true);
+                                btnTuningProfile.setEnabled(true);
+                                benchmarkRunning = false;
                                 tvScoreStatus.setText(getString(R.string.benchmark_failed));
                                 // Null-safe error message
                                 String errorMsg = (error != null && !error.isEmpty()) ? 
@@ -229,6 +246,8 @@ public class BenchmarkActivity extends AppCompatActivity {
                 mainHandler.post(() -> {
                     layoutProgress.setVisibility(View.GONE);
                     btnRunBenchmark.setEnabled(true);
+                    btnTuningProfile.setEnabled(true);
+                    benchmarkRunning = false;
                     tvScoreStatus.setText(getString(R.string.benchmark_failed));
                     // Null-safe error message
                     String errorMsg = (e.getMessage() != null && !e.getMessage().isEmpty()) ? 
@@ -241,6 +260,10 @@ public class BenchmarkActivity extends AppCompatActivity {
     }
     
     private void showTuningProfileDialog() {
+        if (benchmarkRunning) {
+            Toast.makeText(this, R.string.benchmark_tuning_locked_running, Toast.LENGTH_SHORT).show();
+            return;
+        }
         final BenchmarkManager.ExecutionProfile[] modes = new BenchmarkManager.ExecutionProfile[] {
             BenchmarkManager.ExecutionProfile.AUTO_ADAPTIVE,
             BenchmarkManager.ExecutionProfile.DETERMINISTIC,

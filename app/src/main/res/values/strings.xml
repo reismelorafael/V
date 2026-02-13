@@ -32,6 +32,9 @@
     <string name="benchmark_tuning_auto">Auto-adaptive / hardware-aware</string>
     <string name="benchmark_tuning_auto_desc">Determines stripe, priority and warmup from hardware and thermal state.</string>
     <string name="benchmark_tuning_summary_template">Stripe: %1$d B · Priority: %2$d · Warmup: %3$d ms</string>
+    <string name="benchmark_progress_percent">Running: %1$d%%</string>
+    <string name="benchmark_already_running">Benchmark already running</string>
+    <string name="benchmark_tuning_locked_running">Wait for the benchmark to finish before changing the tuning profile</string>
     <string name="pts">metrics</string>
     <string name="detailed_results">Detailed Engineering Report</string>
     <string name="results_exported">Results exported to: %s</string>
