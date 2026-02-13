@@ -2,15 +2,16 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdk compileApi
+    compileSdk rootProject.ext.compileApi
+    buildToolsVersion rootProject.ext.toolsVersion
 }
 
 android.namespace 'com.vectras.vm'
-android.defaultConfig.minSdkVersion 21
+android.defaultConfig.minSdkVersion rootProject.ext.minApi
 android.buildTypes.debug.signingConfig null
 android.buildFeatures.buildConfig true
-android.compileOptions.sourceCompatibility JavaVersion.VERSION_17
-android.compileOptions.targetCompatibility JavaVersion.VERSION_17
+android.compileOptions.sourceCompatibility JavaVersion.toVersion(rootProject.ext.javaLanguageVersion)
+android.compileOptions.targetCompatibility JavaVersion.toVersion(rootProject.ext.javaLanguageVersion)
 dependencies.compileOnly project(':shell-loader:stub')
 android.applicationVariants.configureEach { outputs.configureEach { outputFileName = "loader.apk" } }
 

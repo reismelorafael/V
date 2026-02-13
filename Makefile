@@ -29,8 +29,10 @@ POLICY_DEMO_BIN := build/demo/policy_kernel_demo
 POLICY_SELFTEST_BIN := build/demo/policy_kernel_selftest
 QEMU_BRIDGE_DEMO_BIN := build/demo/rmr_qemu_bridge_demo
 QEMU_BRIDGE_SELFTEST_BIN := build/demo/rmr_qemu_bridge_selftest
+MATH_FABRIC_SELFTEST_BIN := build/demo/math_fabric_selftest
+RMR_REQUIRED_SYMBOLS := RmR_MathFabric_AutodetectPlan RmR_MathFabric_VectorMix
 
-all: $(LIB_STATIC) $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
+all: $(LIB_STATIC) verify-librmr-symbols $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
 
 build/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -48,7 +50,7 @@ $(LIB_BITRAF_SHARED): $(BITRAF_API_SRC)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -fPIC -shared $< $(LDFLAGS) -o $@
 
-$(DEMO_BIN): demo_cli/src/main.c $(LIB_STATIC)
+$(DEMO_BIN): demo_cli/src/main.c $(LIB_STATIC) verify-librmr-symbols
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
 
@@ -67,6 +69,20 @@ $(BITRAF_BIN): engine/rmr/src/rafaelia_bitraf_core.c $(LIB_STATIC)
 $(APK_MODULE_BIN): demo_cli/src/apk_module_demo.c $(LIB_STATIC)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
+
+
+$(MATH_FABRIC_SELFTEST_BIN): demo_cli/src/math_fabric_selftest.c $(LIB_STATIC) verify-librmr-symbols
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
+
+verify-librmr-symbols: $(LIB_STATIC)
+	@for sym in $(RMR_REQUIRED_SYMBOLS); do \
+		if ! nm -g --defined-only $(LIB_STATIC) | awk '{print $$3}' | rg -x "$$sym" >/dev/null; then \
+			echo "[link-contract] missing symbol in $(LIB_STATIC): $$sym" >&2; \
+			exit 1; \
+		fi; \
+	done
+	@echo "[link-contract] verified required symbols in $(LIB_STATIC)"
 
 $(CTI_SCAN_BIN): engine/rmr/src/rafa_cti_scan.c
 	@mkdir -p $(dir $@)
@@ -91,8 +107,9 @@ $(QEMU_BRIDGE_SELFTEST_BIN): demo_cli/src/rmr_qemu_bridge_selftest.c $(LIB_STATI
 run-demo: $(DEMO_BIN)
 	./$(DEMO_BIN)
 
-run-selftest: $(SELFTEST_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
+run-selftest: $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
 	./$(SELFTEST_BIN)
+	./$(MATH_FABRIC_SELFTEST_BIN)
 	./$(POLICY_SELFTEST_BIN)
 	./$(QEMU_BRIDGE_SELFTEST_BIN)
 
@@ -109,4 +126,4 @@ run-release-gate: run-selftest run-bench run-baremetal-gate
 clean:
 	rm -rf build
 
-.PHONY: all clean run-demo run-selftest run-bench run-baremetal-gate run-release-gate
+.PHONY: all clean verify-librmr-symbols run-demo run-selftest run-bench run-baremetal-gate run-release-gate

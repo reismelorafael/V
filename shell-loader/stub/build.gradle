@@ -4,12 +4,12 @@ plugins {
 
 android {
     namespace 'com.termux.x11.stub'
-    buildToolsVersion "35.0.0"
-    compileSdkVersion 35
+    buildToolsVersion rootProject.ext.toolsVersion
+    compileSdkVersion rootProject.ext.compileApi
     defaultConfig {
-        minSdkVersion 24
+        minSdkVersion rootProject.ext.minApi
         //noinspection ExpiredTargetSdkVersion
-        targetSdkVersion 28
+        targetSdkVersion rootProject.ext.targetApi
     }
     buildFeatures {
         buildConfig false
@@ -20,8 +20,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.toVersion(rootProject.ext.javaLanguageVersion)
+        targetCompatibility JavaVersion.toVersion(rootProject.ext.javaLanguageVersion)
     }
 }
 

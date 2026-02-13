@@ -1,7 +1,8 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 buildscript {
     ext {
-        kotlin_version = '2.0.21'
+        kotlin_version = properties.get('KOTLIN_VERSION', '2.0.21')
+        agp_version = properties.get('AGP_VERSION', '8.5.2')
     }
     repositories {
         mavenCentral()
@@ -9,7 +10,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.5.2'
+        classpath "com.android.tools.build:gradle:$agp_version"
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -26,9 +27,12 @@ allprojects {
 
 ext {
     toolsVersion = properties.get('TOOLS_VERSION', '35.0.0')
-    compileApi = properties.get('COMPILE_API', 35)
-    targetApi = properties.get('TARGET_API', 28)
-    minApi = properties.get('MIN_API', 23)
+    compileApi = Integer.parseInt(properties.get('COMPILE_API', '35').toString())
+    targetApi = Integer.parseInt(properties.get('TARGET_API', '28').toString())
+    minApi = Integer.parseInt(properties.get('MIN_API', '23').toString())
+    javaLanguageVersion = Integer.parseInt(properties.get('JAVA_LANGUAGE_VERSION', '17').toString())
+    ndkVersion = properties.get('NDK_VERSION', '27.2.12479018')
+    cmakeVersion = properties.get('CMAKE_VERSION', '3.22.1')
 }
 
 

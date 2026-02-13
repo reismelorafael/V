@@ -7,12 +7,14 @@ plugins {
 
 android {
     namespace = 'com.vectras.vm'
-    compileSdk = compileApi
+    compileSdk = rootProject.ext.compileApi
+    buildToolsVersion = rootProject.ext.toolsVersion
+    ndkVersion = rootProject.ext.ndkVersion
 
     defaultConfig {
         applicationId "com.vectras.vm"
-        minSdk = minApi
-        targetSdk = targetApi
+        minSdk = rootProject.ext.minApi
+        targetSdk = rootProject.ext.targetApi
         versionCode = 69
         versionName = "3.6.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -85,21 +87,21 @@ android {
     // GitHub Actions runners currently support Java 17 by default
     // If using Java 21 features locally, consider updating CI to Java 21
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.toVersion(rootProject.ext.javaLanguageVersion)
+        targetCompatibility JavaVersion.toVersion(rootProject.ext.javaLanguageVersion)
     }
 
 
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
+            version = rootProject.ext.cmakeVersion
         }
     }
 
     kotlin {
         compilerOptions {
-            jvmTarget = JvmTarget.JVM_17
+            jvmTarget = JvmTarget.fromTarget(String.valueOf(rootProject.ext.javaLanguageVersion))
         }
     }
 }

@@ -45,3 +45,8 @@ find . -maxdepth 2 -type d | sort
 ## Índices
 - [DOC_INDEX.md](DOC_INDEX.md)
 - [docs/README.md](docs/README.md)
+
+## Setup rápido de build
+- Copie `local.properties.example` para `local.properties` e ajuste `sdk.dir`.
+- Ajuste versões via `gradle.properties` (`COMPILE_API`, `TOOLS_VERSION`, `JAVA_LANGUAGE_VERSION`, `CMAKE_VERSION`, `NDK_VERSION`).
+- Para override pontual, use `-P` no comando Gradle.
