@@ -7,11 +7,14 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.CRC32C;
@@ -52,8 +55,10 @@ public class VectraBenchmark {
 
     // ========== Configuration Constants ==========
     static final int METRIC_COUNT = 79;
-    static final int WARMUP_ITERATIONS = 3;
-    static final int TEST_ITERATIONS = 5;
+    static final int WARMUP_ITERATIONS = 7;
+    static final int TEST_ITERATIONS = 21;
+    static final long MIN_TEST_DURATION_NS = 500_000_000L;
+    static final int MAX_TEST_REPEAT = 256;
     static final long MMAP_BYTES = 16L * 1024 * 1024; // 16MB segment
     static final int RECORD_BYTES = 8 + 4 + 4; // u64 value + u32 meta + u32 crc
     static final int CPU_WORKLOAD_SIZE = 1_000_000;
@@ -68,6 +73,7 @@ public class VectraBenchmark {
     static final long GOLDEN_GAMMA = 0x9E3779B97F4A7C15L;
     static final long MIX_A = 0xBF58476D1CE4E5B9L;
     static final long MIX_B = 0x94D049BB133111EBL;
+    static final long BENCH_AUDIT_SEED = 0xC0DEC0DEF00DBA5EL;
     
     // CRC32C thread-local pool
     private static final ThreadLocal<CRC32C> CRC32C_POOL = ThreadLocal.withInitial(CRC32C::new);
@@ -77,6 +83,7 @@ public class VectraBenchmark {
     private static volatile int copyStripeBytes = BareMetalProfile.recommendedWorkBlockBytes();
     private static final ThreadLocal<byte[]> COPY_SCRATCH_POOL =
             ThreadLocal.withInitial(() -> new byte[M4_BYTES]);
+    private static volatile long SINK = 0L;
 
     
 
@@ -701,6 +708,78 @@ public class VectraBenchmark {
         long t1 = System.nanoTime();
         return t1 - t0 + (v0 & 0);
     }
+
+    static long benchMemRandomWrite(byte[] b0, int[] idx) {
+        int n0 = idx.length;
+        int n1 = M4.length;
+        int n2 = M4[0].length;
+        int v0 = 0;
+        long t0 = System.nanoTime();
+        for (int k = 0; k < n0; k++) {
+            int i = idx[k] & 0x3FF;
+            int j = (idx[k] >>> 10) & 0xFFF;
+            if (i >= n1) i = i % n1;
+            if (j >= n2) j = j % n2;
+            int nv = (i + j + k + v0) & 0xFF;
+            M4[i][j] = (byte) nv;
+            v0 ^= nv;
+        }
+        long t1 = System.nanoTime();
+        return t1 - t0 + (v0 & 0);
+    }
+
+    private static long repeatUntilDuration(BenchOp op, long minDurationNs) throws Exception {
+        int repeat = 1;
+        long total = 0L;
+        long checksum = 0L;
+        while (true) {
+            total = 0L;
+            checksum = 0L;
+            for (int i = 0; i < repeat; i++) {
+                long raw = op.run();
+                total += raw;
+                checksum ^= raw + (i * 0x9E3779B97F4A7C15L);
+            }
+            if (total >= minDurationNs || repeat >= MAX_TEST_REPEAT) {
+                break;
+            }
+            repeat <<= 1;
+        }
+        SINK ^= checksum;
+        return total;
+    }
+
+    private static long benchmarkMedian(BenchOp op) throws Exception {
+        for (int i = 0; i < WARMUP_ITERATIONS; i++) {
+            long w = repeatUntilDuration(op, MIN_TEST_DURATION_NS);
+            SINK ^= (w + i);
+        }
+        long[] samples = new long[TEST_ITERATIONS];
+        for (int i = 0; i < TEST_ITERATIONS; i++) {
+            samples[i] = repeatUntilDuration(op, MIN_TEST_DURATION_NS);
+        }
+        for (int i = 0; i < samples.length - 1; i++) {
+            int minIdx = i;
+            for (int j = i + 1; j < samples.length; j++) {
+                if (samples[j] < samples[minIdx]) {
+                    minIdx = j;
+                }
+            }
+            if (minIdx != i) {
+                long tmp = samples[i];
+                samples[i] = samples[minIdx];
+                samples[minIdx] = tmp;
+            }
+        }
+        long median = samples[samples.length / 2];
+        SINK ^= median;
+        return median;
+    }
+
+    @FunctionalInterface
+    private interface BenchOp {
+        long run() throws Exception;
+    }
     
     static long benchMemCopyBandwidth(byte[] s0, byte[] d0) {
         // Low-level manual copy with thread-local arena (no per-call allocations)
@@ -996,15 +1075,115 @@ public class VectraBenchmark {
     public static String formatBandwidth(long bytes, long nanoseconds) {
         if (nanoseconds <= 0) return "N/A";
         double bytesPerSec = (bytes * 1_000_000_000.0) / nanoseconds;
-        if (bytesPerSec >= 1_000_000_000.0) {
-            return String.format(java.util.Locale.US, "%.2f GB/s", bytesPerSec / 1_000_000_000.0);
-        } else if (bytesPerSec >= 1_000_000.0) {
-            return String.format(java.util.Locale.US, "%.2f MB/s", bytesPerSec / 1_000_000.0);
-        } else if (bytesPerSec >= 1_000.0) {
-            return String.format(java.util.Locale.US, "%.2f KB/s", bytesPerSec / 1_000.0);
-        } else {
-            return String.format(java.util.Locale.US, "%.2f B/s", bytesPerSec);
+        double mbPerSec = bytesPerSec / 1_000_000.0;
+        return String.format(java.util.Locale.US, "%.2f MB/s", mbPerSec);
+    }
+
+    private static File ensureStorageFixture() throws IOException {
+        File dir = new File(System.getProperty("java.io.tmpdir", "."), "vectras-bench");
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IOException("Unable to create benchmark directory");
         }
+        File fixture = new File(dir, "storage-real.bin");
+        long targetBytes = 128L * 1024L * 1024L;
+        if (!fixture.exists() || fixture.length() < targetBytes) {
+            try (RandomAccessFile raf = new RandomAccessFile(fixture, "rw")) {
+                raf.setLength(targetBytes);
+                byte[] block = new byte[1 << 20];
+                for (int i = 0; i < block.length; i++) {
+                    block[i] = (byte) (i * 131 + 17);
+                }
+                raf.seek(0);
+                long written = 0;
+                while (written < targetBytes) {
+                    raf.write(block);
+                    written += block.length;
+                }
+            }
+        }
+        return fixture;
+    }
+
+    static long benchStorageRealSequentialRead() throws IOException {
+        File fixture = ensureStorageFixture();
+        byte[] block = new byte[1 << 20];
+        long checksum = 0;
+        long t0 = System.nanoTime();
+        try (RandomAccessFile raf = new RandomAccessFile(fixture, "r")) {
+            int read;
+            while ((read = raf.read(block)) > 0) {
+                checksum ^= block[read - 1] & 0xFFL;
+            }
+        }
+        long t1 = System.nanoTime();
+        SINK ^= checksum;
+        return t1 - t0;
+    }
+
+    static long benchStorageRealSequentialWrite() throws IOException {
+        File fixture = ensureStorageFixture();
+        byte[] block = new byte[1 << 20];
+        for (int i = 0; i < block.length; i++) {
+            block[i] = (byte) ((i * 7) ^ 0x5A);
+        }
+        long t0 = System.nanoTime();
+        try (RandomAccessFile raf = new RandomAccessFile(fixture, "rw")) {
+            raf.seek(0);
+            long remaining = fixture.length();
+            while (remaining > 0) {
+                raf.write(block, 0, (int) Math.min(block.length, remaining));
+                remaining -= block.length;
+            }
+            raf.getFD().sync();
+        }
+        long t1 = System.nanoTime();
+        SINK ^= fixture.length();
+        return t1 - t0;
+    }
+
+    static long benchStorageRealRandomRead4K() throws IOException {
+        File fixture = ensureStorageFixture();
+        byte[] block = new byte[4096];
+        int ops = 32768;
+        long seed = 0x1234ABCD5678EEFFL;
+        long checksum = 0;
+        long t0 = System.nanoTime();
+        try (RandomAccessFile raf = new RandomAccessFile(fixture, "r")) {
+            long maxBlock = fixture.length() / 4096;
+            for (int i = 0; i < ops; i++) {
+                seed = mix64(seed + GOLDEN_GAMMA + i);
+                long posBlock = (seed & Long.MAX_VALUE) % maxBlock;
+                raf.seek(posBlock * 4096L);
+                raf.readFully(block);
+                checksum ^= block[0] & 0xFFL;
+            }
+        }
+        long t1 = System.nanoTime();
+        SINK ^= checksum;
+        return t1 - t0;
+    }
+
+    static long benchStorageRealRandomWrite4K() throws IOException {
+        File fixture = ensureStorageFixture();
+        byte[] block = new byte[4096];
+        int ops = 16384;
+        long seed = 0x9988AABBCCDDEEFFL;
+        long t0 = System.nanoTime();
+        try (RandomAccessFile raf = new RandomAccessFile(fixture, "rw")) {
+            long maxBlock = fixture.length() / 4096;
+            for (int i = 0; i < ops; i++) {
+                seed = mix64(seed + GOLDEN_GAMMA + i);
+                long posBlock = (seed & Long.MAX_VALUE) % maxBlock;
+                block[0] = (byte) (seed & 0xFF);
+                block[1] = (byte) ((seed >>> 8) & 0xFF);
+                raf.seek(posBlock * 4096L);
+                raf.write(block);
+            }
+            raf.getFD().sync();
+        }
+        long t1 = System.nanoTime();
+        SINK ^= seed;
+        return t1 - t0;
     }
     
     /**
@@ -1052,12 +1231,7 @@ public class VectraBenchmark {
             Arrays.fill(stripeChunks[i], (byte) (i * 0x11));
         }
         
-        // Warmup
-        for (int w = 0; w < WARMUP_ITERATIONS; w++) {
-            benchCpuIntegerAdd(CPU_WORKLOAD_SIZE / 10);
-            benchCpuLongMix(CPU_WORKLOAD_SIZE / 10);
-            benchMemSequentialRead(memBuffer);
-        }
+        // Global warmup is intentionally minimal; detailed warmup/repeat is metric-local.
         
         // CPU Single-threaded - Integer operations
         long rawVal = benchCpuIntegerAdd(CPU_WORKLOAD_SIZE);
@@ -1231,7 +1405,7 @@ public class VectraBenchmark {
             rawVal, formatLatency(rawVal, MEMORY_BLOCKS), "ns/access", CAT_MEMORY,
             String.format("%d random reads", MEMORY_BLOCKS));
         
-        rawVal = benchMemSequentialWrite(memBuffer);
+        rawVal = benchmarkMedian(() -> benchMemRandomWrite(memBuffer, randomIndices));
         results[MEM_RANDOM_WRITE] = new BenchmarkResult(MEM_RANDOM_WRITE, "Memory Random Write",
             rawVal, formatBandwidth(memBytes, rawVal), "MB/s", CAT_MEMORY,
             "Random write pattern");
@@ -1292,36 +1466,36 @@ public class VectraBenchmark {
             rawVal, formatLatency(rawVal, MEMORY_BLOCKS), "ns/access", CAT_MEMORY,
             "Strided memory access pattern");
         
-        // Storage (simulated with memory for non-intrusive testing)
-        rawVal = benchMemSequentialRead(memBuffer);
-        results[STORAGE_SEQ_READ] = new BenchmarkResult(STORAGE_SEQ_READ, "Storage Seq Read",
+        // StorageSim (memory path)
+        rawVal = benchmarkMedian(() -> benchMemSequentialRead(memBuffer));
+        results[STORAGE_SEQ_READ] = new BenchmarkResult(STORAGE_SEQ_READ, "StorageSim Seq Read",
             rawVal, formatBandwidth(memBytes, rawVal), "MB/s", CAT_STORAGE,
-            "Sequential read throughput");
+            "Memory-backed sequential read throughput");
         
-        rawVal = benchMemSequentialWrite(memBuffer);
-        results[STORAGE_SEQ_WRITE] = new BenchmarkResult(STORAGE_SEQ_WRITE, "Storage Seq Write",
+        rawVal = benchmarkMedian(() -> benchMemSequentialWrite(memBuffer));
+        results[STORAGE_SEQ_WRITE] = new BenchmarkResult(STORAGE_SEQ_WRITE, "StorageSim Seq Write",
             rawVal, formatBandwidth(memBytes, rawVal), "MB/s", CAT_STORAGE,
-            "Sequential write throughput");
+            "Memory-backed sequential write throughput");
         
-        rawVal = benchMemRandomRead(memBuffer, randomIndices);
-        results[STORAGE_RANDOM_READ] = new BenchmarkResult(STORAGE_RANDOM_READ, "Storage Random Read",
+        rawVal = benchmarkMedian(() -> benchMemRandomRead(memBuffer, randomIndices));
+        results[STORAGE_RANDOM_READ] = new BenchmarkResult(STORAGE_RANDOM_READ, "StorageSim Random Read",
             rawVal, formatOpsPerSec(MEMORY_BLOCKS, rawVal), "IOPS", CAT_STORAGE,
-            "Random read IOPS");
+            "Memory-backed random read IOPS");
         
-        rawVal = benchMemSequentialWrite(memBuffer);
-        results[STORAGE_RANDOM_WRITE] = new BenchmarkResult(STORAGE_RANDOM_WRITE, "Storage Random Write",
+        rawVal = benchmarkMedian(() -> benchMemRandomWrite(memBuffer, randomIndices));
+        results[STORAGE_RANDOM_WRITE] = new BenchmarkResult(STORAGE_RANDOM_WRITE, "StorageSim Random Write",
             rawVal, formatOpsPerSec(MEMORY_BLOCKS, rawVal), "IOPS", CAT_STORAGE,
-            "Random write IOPS");
+            "Memory-backed random write IOPS");
         
-        rawVal = benchMemSequentialRead(memBuffer);
-        results[STORAGE_MMAP_READ] = new BenchmarkResult(STORAGE_MMAP_READ, "Storage Mmap Read",
-            rawVal, formatBandwidth(memBytes, rawVal), "MB/s", CAT_STORAGE,
-            "Memory-mapped read throughput");
+        rawVal = benchmarkMedian(VectraBenchmark::benchStorageRealSequentialRead);
+        results[STORAGE_MMAP_READ] = new BenchmarkResult(STORAGE_MMAP_READ, "StorageReal Seq Read",
+            rawVal, formatBandwidth(128L * 1024L * 1024L, rawVal), "MB/s", CAT_STORAGE,
+            "File-backed sequential read throughput");
         
-        rawVal = benchMemSequentialWrite(memBuffer);
-        results[STORAGE_MMAP_WRITE] = new BenchmarkResult(STORAGE_MMAP_WRITE, "Storage Mmap Write",
-            rawVal, formatBandwidth(memBytes, rawVal), "MB/s", CAT_STORAGE,
-            "Memory-mapped write throughput");
+        rawVal = benchmarkMedian(VectraBenchmark::benchStorageRealSequentialWrite);
+        results[STORAGE_MMAP_WRITE] = new BenchmarkResult(STORAGE_MMAP_WRITE, "StorageReal Seq Write",
+            rawVal, formatBandwidth(128L * 1024L * 1024L, rawVal), "MB/s", CAT_STORAGE,
+            "File-backed sequential write throughput");
         
         rawVal = benchEmuTimerPrecision(1000);
         results[STORAGE_SYNC_LATENCY] = new BenchmarkResult(STORAGE_SYNC_LATENCY, "Storage Sync Latency",
@@ -1338,35 +1512,35 @@ public class VectraBenchmark {
             rawVal, formatLatency(rawVal, 100), "μs/op", CAT_STORAGE,
             "File truncate operation");
         
-        rawVal = benchMemRandomRead(memBuffer, randomIndices);
-        results[STORAGE_SEEK] = new BenchmarkResult(STORAGE_SEEK, "Storage Seek",
-            rawVal, formatOpsPerSec(MEMORY_BLOCKS, rawVal), "seeks/s", CAT_STORAGE,
-            "Random seek operations");
+        rawVal = benchmarkMedian(VectraBenchmark::benchStorageRealRandomRead4K);
+        results[STORAGE_SEEK] = new BenchmarkResult(STORAGE_SEEK, "StorageReal Random 4K Read",
+            rawVal, formatOpsPerSec(32768, rawVal), "IOPS", CAT_STORAGE,
+            "File-backed random seek/read operations");
         
-        rawVal = benchMemSequentialRead(new byte[4096]);
-        results[STORAGE_4K_READ] = new BenchmarkResult(STORAGE_4K_READ, "Storage 4K Read",
-            rawVal, formatBandwidth(4096, rawVal), "MB/s", CAT_STORAGE,
-            "4KB block read throughput");
+        rawVal = benchmarkMedian(VectraBenchmark::benchStorageRealRandomRead4K);
+        results[STORAGE_4K_READ] = new BenchmarkResult(STORAGE_4K_READ, "StorageReal 4K Read",
+            rawVal, formatOpsPerSec(32768, rawVal), "IOPS", CAT_STORAGE,
+            "File-backed random 4KB read throughput");
         
-        rawVal = benchMemSequentialWrite(new byte[4096]);
-        results[STORAGE_4K_WRITE] = new BenchmarkResult(STORAGE_4K_WRITE, "Storage 4K Write",
-            rawVal, formatBandwidth(4096, rawVal), "MB/s", CAT_STORAGE,
-            "4KB block write throughput");
+        rawVal = benchmarkMedian(VectraBenchmark::benchStorageRealRandomWrite4K);
+        results[STORAGE_4K_WRITE] = new BenchmarkResult(STORAGE_4K_WRITE, "StorageReal 4K Write",
+            rawVal, formatOpsPerSec(16384, rawVal), "IOPS", CAT_STORAGE,
+            "File-backed random 4KB write throughput");
         
-        rawVal = benchMemSequentialRead(new byte[65536]);
-        results[STORAGE_64K_READ] = new BenchmarkResult(STORAGE_64K_READ, "Storage 64K Read",
-            rawVal, formatBandwidth(65536, rawVal), "MB/s", CAT_STORAGE,
-            "64KB block read throughput");
+        rawVal = benchmarkMedian(VectraBenchmark::benchStorageRealSequentialRead);
+        results[STORAGE_64K_READ] = new BenchmarkResult(STORAGE_64K_READ, "StorageReal 64K Read",
+            rawVal, formatBandwidth(128L * 1024L * 1024L, rawVal), "MB/s", CAT_STORAGE,
+            "File-backed 64KB-equivalent read throughput");
         
-        rawVal = benchMemSequentialWrite(new byte[65536]);
-        results[STORAGE_64K_WRITE] = new BenchmarkResult(STORAGE_64K_WRITE, "Storage 64K Write",
-            rawVal, formatBandwidth(65536, rawVal), "MB/s", CAT_STORAGE,
-            "64KB block write throughput");
+        rawVal = benchmarkMedian(VectraBenchmark::benchStorageRealSequentialWrite);
+        results[STORAGE_64K_WRITE] = new BenchmarkResult(STORAGE_64K_WRITE, "StorageReal 64K Write",
+            rawVal, formatBandwidth(128L * 1024L * 1024L, rawVal), "MB/s", CAT_STORAGE,
+            "File-backed 64KB-equivalent write throughput");
         
-        rawVal = benchMemSequentialRead(new byte[1048576]);
-        results[STORAGE_1M_READ] = new BenchmarkResult(STORAGE_1M_READ, "Storage 1M Read",
-            rawVal, formatBandwidth(1048576, rawVal), "MB/s", CAT_STORAGE,
-            "1MB block read throughput");
+        rawVal = benchmarkMedian(VectraBenchmark::benchStorageRealSequentialRead);
+        results[STORAGE_1M_READ] = new BenchmarkResult(STORAGE_1M_READ, "StorageReal 1M Read",
+            rawVal, formatBandwidth(128L * 1024L * 1024L, rawVal), "MB/s", CAT_STORAGE,
+            "File-backed 1MB block read throughput");
         
         // Integrity benchmarks
         rawVal = benchIntegrityCrc32c(memBuffer, 1000);
@@ -1465,6 +1639,16 @@ public class VectraBenchmark {
             rawVal, formatOpsPerSec(CPU_WORKLOAD_SIZE, rawVal), "Mops/s", CAT_EMULATION,
             "2-of-3 consensus algorithm");
         
+        HashSet<Integer> seenMetricIds = new HashSet<>(METRIC_COUNT);
+        for (BenchmarkResult r : results) {
+            if (r == null) {
+                throw new IllegalStateException("Null metric result detected");
+            }
+            if (!seenMetricIds.add(r.metricId())) {
+                throw new IllegalStateException("Duplicate metricId detected: " + r.metricId());
+            }
+            SINK ^= r.rawValue();
+        }
         return results;
     }
     
@@ -1583,10 +1767,11 @@ public class VectraBenchmark {
         sb.append("╠════════════════════════════════════════════════════════════════════════════════╣\n");
         sb.append("║ • All time measurements in SI units (ns, μs, ms, s)                            ║\n");
         sb.append("║ • Throughput in ops/s, Kops/s, Mops/s, Gops/s or MFLOPS/GFLOPS                 ║\n");
-        sb.append("║ • Bandwidth in B/s, KB/s, MB/s, GB/s                                           ║\n");
+        sb.append("║ • Bandwidth normalized to MB/s for comparable reporting                         ║\n");
         sb.append("║ • Latency expressed as time per operation (ns/op, μs/op, ms/op)               ║\n");
-        sb.append("║ • Storage IOPS based on simulated memory operations                            ║\n");
+        sb.append("║ • Storage includes StorageSim (memory) and StorageReal (file-backed)          ║\n");
         sb.append("║ • Results are reproducible using fixed PRNG seeds                              ║\n");
+        sb.append(String.format("║ • Anti-optimization sink checksum: 0x%016X                              ║\n", SINK));
         sb.append("╚════════════════════════════════════════════════════════════════════════════════╝\n");
         
         return sb.toString();
@@ -1595,6 +1780,84 @@ public class VectraBenchmark {
     private static String truncate(String s, int maxLen) {
         if (s == null) return "";
         return s.length() <= maxLen ? s : s.substring(0, maxLen - 3) + "...";
+    }
+
+    private static String csvEscape(String v) {
+        if (v == null) return "";
+        boolean needsQuote = v.indexOf(',') >= 0 || v.indexOf('"') >= 0 || v.indexOf('\n') >= 0;
+        if (!needsQuote) return v;
+        return '"' + v.replace("\"", "\"\"") + '"';
+    }
+
+    private static String jsonEscape(String v) {
+        if (v == null) return "";
+        StringBuilder out = new StringBuilder(v.length() + 16);
+        for (int i = 0; i < v.length(); i++) {
+            char c = v.charAt(i);
+            if (c == '\\') out.append("\\\\");
+            else if (c == '"') out.append("\\\"");
+            else if (c == '\n') out.append("\\n");
+            else if (c == '\r') out.append("\\r");
+            else if (c == '\t') out.append("\\t");
+            else out.append(c);
+        }
+        return out.toString();
+    }
+
+    public static void exportCsvAndAudit(BenchmarkResult[] results, File csvFile, File auditJsonlFile)
+            throws IOException {
+        File csvParent = csvFile.getAbsoluteFile().getParentFile();
+        if (csvParent != null && !csvParent.exists()) {
+            csvParent.mkdirs();
+        }
+        File auditParent = auditJsonlFile.getAbsoluteFile().getParentFile();
+        if (auditParent != null && !auditParent.exists()) {
+            auditParent.mkdirs();
+        }
+
+        DeviceSpecification spec = getDeviceSpecification();
+        long ts = System.currentTimeMillis();
+
+        try (BufferedWriter csv = new BufferedWriter(new FileWriter(csvFile, false))) {
+            csv.write("metric_id,name,category,raw_ns,formatted_value,unit,description\n");
+            for (BenchmarkResult r : results) {
+                if (r == null) continue;
+                csv.write(r.metricId() + ","
+                    + csvEscape(r.name()) + ","
+                    + csvEscape(r.category()) + ","
+                    + r.rawValue() + ","
+                    + csvEscape(r.formattedValue()) + ","
+                    + csvEscape(r.unit()) + ","
+                    + csvEscape(r.description()) + "\n");
+            }
+        }
+
+        try (BufferedWriter audit = new BufferedWriter(new FileWriter(auditJsonlFile, false))) {
+            audit.write("{\"type\":\"run\","
+                + "\"timestamp_ms\":" + ts + ","
+                + "\"seed\":" + BENCH_AUDIT_SEED + ","
+                + "\"warmup\":" + WARMUP_ITERATIONS + ","
+                + "\"samples\":" + TEST_ITERATIONS + ","
+                + "\"min_test_duration_ns\":" + MIN_TEST_DURATION_NS + ","
+                + "\"sink\":" + SINK + ","
+                + "\"cpu_model\":\"" + jsonEscape(spec.cpuModel) + "\","
+                + "\"cpu_arch\":\"" + jsonEscape(spec.cpuArchitecture) + "\","
+                + "\"cpu_cores\":" + spec.cpuCores + ","
+                + "\"ram_bytes\":" + spec.totalRamBytes
+                + "}\n");
+            for (BenchmarkResult r : results) {
+                if (r == null) continue;
+                audit.write("{\"type\":\"metric\","
+                    + "\"timestamp_ms\":" + ts + ","
+                    + "\"metric_id\":" + r.metricId() + ","
+                    + "\"name\":\"" + jsonEscape(r.name()) + "\","
+                    + "\"category\":\"" + jsonEscape(r.category()) + "\","
+                    + "\"raw_ns\":" + r.rawValue() + ","
+                    + "\"formatted\":\"" + jsonEscape(r.formattedValue()) + "\","
+                    + "\"unit\":\"" + jsonEscape(r.unit()) + "\""
+                    + "}\n");
+            }
+        }
     }
     
     /**
@@ -1664,6 +1927,15 @@ public class VectraBenchmark {
                 bs.flush();
                 System.out.println("\nResults saved to: " + outputFile.getAbsolutePath());
             }
+        }
+
+        if (args.length > 1) {
+            File outDir = new File(args[1]);
+            File csvFile = new File(outDir, "bench.csv");
+            File auditJsonl = new File(outDir, "audit.jsonl");
+            exportCsvAndAudit(results, csvFile, auditJsonl);
+            System.out.println("CSV exported to: " + csvFile.getAbsolutePath());
+            System.out.println("JSONL audit exported to: " + auditJsonl.getAbsolutePath());
         }
     }
 }

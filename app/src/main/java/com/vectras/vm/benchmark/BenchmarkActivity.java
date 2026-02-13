@@ -73,6 +73,8 @@ public class BenchmarkActivity extends AppCompatActivity {
     private LinearLayout btnShareResults;
     private TextView tvTuningMode;
     private TextView tvTuningSummary;
+    private TextView tvReliabilityLevel;
+    private TextView tvReliabilityDescription;
     
     // Data
     private VectraBenchmark.BenchmarkResult[] lastResults;
@@ -117,6 +119,8 @@ public class BenchmarkActivity extends AppCompatActivity {
         btnShareResults = findViewById(R.id.btnShareResults);
         tvTuningMode = findViewById(R.id.tvTuningMode);
         tvTuningSummary = findViewById(R.id.tvTuningSummary);
+        tvReliabilityLevel = findViewById(R.id.tvReliabilityLevel);
+        tvReliabilityDescription = findViewById(R.id.tvReliabilityDescription);
         updateTuningProfileViews();
     }
     
@@ -139,11 +143,23 @@ public class BenchmarkActivity extends AppCompatActivity {
     
     private BenchmarkManager.BenchmarkResult lastBenchmarkResult;
     private BenchmarkManager.ExecutionProfile selectedProfile = BenchmarkManager.ExecutionProfile.AUTO_ADAPTIVE;
+    private volatile boolean benchmarkRunning = false;
     
     private void runBenchmark() {
+        if (benchmarkRunning) {
+            Toast.makeText(this, R.string.benchmark_already_running, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        benchmarkRunning = true;
+
         // Show progress
         layoutProgress.setVisibility(View.VISIBLE);
         btnRunBenchmark.setEnabled(false);
+        btnTuningProfile.setEnabled(false);
+        btnViewDetails.setVisibility(View.GONE);
+        btnExportResults.setVisibility(View.GONE);
+        btnShareResults.setVisibility(View.GONE);
+        layoutCategoryScores.setVisibility(View.GONE);
         tvScoreStatus.setText(getString(R.string.running_benchmark));
         tvProgressText.setText(getString(R.string.preparing_benchmark));
         
@@ -160,8 +176,9 @@ public class BenchmarkActivity extends AppCompatActivity {
                             mainHandler.post(() -> {
                                 tvProgressText.setText(currentMetric);
                                 if (totalMetrics > 0) {
-                                    int percent = (metricIndex * 100) / totalMetrics;
-                                    tvScoreStatus.setText("Running: " + percent + "%");
+                                    int percent = Math.max(0, Math.min(100,
+                                        (metricIndex * 100) / totalMetrics));
+                                    tvScoreStatus.setText(getString(R.string.benchmark_progress_percent, percent));
                                 }
                             });
                         }
@@ -189,12 +206,15 @@ public class BenchmarkActivity extends AppCompatActivity {
                                 updateScoreDisplay(benchResult.metrics, deviceSpec);
                                 layoutProgress.setVisibility(View.GONE);
                                 btnRunBenchmark.setEnabled(true);
+                                btnTuningProfile.setEnabled(true);
+                                benchmarkRunning = false;
                                 
                                 // Show validation status
                                 String status = benchResult.isValid ? 
                                     getString(R.string.benchmark_complete) + " ✓" : 
                                     getString(R.string.benchmark_complete) + " ⚠";
                                 tvScoreStatus.setText(status);
+                                updateReliabilityViews(benchResult.validation);
                                 
                                 // Show result buttons
                                 btnViewDetails.setVisibility(View.VISIBLE);
@@ -215,6 +235,8 @@ public class BenchmarkActivity extends AppCompatActivity {
                             mainHandler.post(() -> {
                                 layoutProgress.setVisibility(View.GONE);
                                 btnRunBenchmark.setEnabled(true);
+                                btnTuningProfile.setEnabled(true);
+                                benchmarkRunning = false;
                                 tvScoreStatus.setText(getString(R.string.benchmark_failed));
                                 // Null-safe error message
                                 String errorMsg = (error != null && !error.isEmpty()) ? 
@@ -229,6 +251,8 @@ public class BenchmarkActivity extends AppCompatActivity {
                 mainHandler.post(() -> {
                     layoutProgress.setVisibility(View.GONE);
                     btnRunBenchmark.setEnabled(true);
+                    btnTuningProfile.setEnabled(true);
+                    benchmarkRunning = false;
                     tvScoreStatus.setText(getString(R.string.benchmark_failed));
                     // Null-safe error message
                     String errorMsg = (e.getMessage() != null && !e.getMessage().isEmpty()) ? 
@@ -241,6 +265,10 @@ public class BenchmarkActivity extends AppCompatActivity {
     }
     
     private void showTuningProfileDialog() {
+        if (benchmarkRunning) {
+            Toast.makeText(this, R.string.benchmark_tuning_locked_running, Toast.LENGTH_SHORT).show();
+            return;
+        }
         final BenchmarkManager.ExecutionProfile[] modes = new BenchmarkManager.ExecutionProfile[] {
             BenchmarkManager.ExecutionProfile.AUTO_ADAPTIVE,
             BenchmarkManager.ExecutionProfile.DETERMINISTIC,
@@ -275,6 +303,55 @@ public class BenchmarkActivity extends AppCompatActivity {
             profile.threadPriority,
             profile.warmupDelayMs);
         tvTuningSummary.setText(summary);
+    }
+
+    private void updateReliabilityViews(BenchmarkManager.ValidationReport validation) {
+        if (validation == null) {
+            tvReliabilityLevel.setText(R.string.benchmark_reliability_level_pending);
+            tvReliabilityDescription.setText(R.string.benchmark_reliability_description_pending);
+            return;
+        }
+
+        int confidence = (int) Math.round(validation.confidenceScore * 100);
+        int level;
+        if (confidence >= 90 && validation.interferenceCount <= 1) {
+            level = 5;
+        } else if (confidence >= 80 && validation.interferenceCount <= 2) {
+            level = 4;
+        } else if (confidence >= 65 && validation.interferenceCount <= 4) {
+            level = 3;
+        } else if (confidence >= 45) {
+            level = 2;
+        } else {
+            level = 1;
+        }
+
+        int levelLabel;
+        switch (level) {
+            case 5:
+                levelLabel = R.string.benchmark_reliability_level_5;
+                break;
+            case 4:
+                levelLabel = R.string.benchmark_reliability_level_4;
+                break;
+            case 3:
+                levelLabel = R.string.benchmark_reliability_level_3;
+                break;
+            case 2:
+                levelLabel = R.string.benchmark_reliability_level_2;
+                break;
+            default:
+                levelLabel = R.string.benchmark_reliability_level_1;
+                break;
+        }
+
+        tvReliabilityLevel.setText(levelLabel);
+        tvReliabilityDescription.setText(getString(
+            R.string.benchmark_reliability_template,
+            confidence,
+            validation.interferenceCount,
+            formatOneDecimal(validation.resultVariance)
+        ));
     }
 
     private void updateScoreDisplay(VectraBenchmark.BenchmarkResult[] results, 
