@@ -18,6 +18,8 @@ make all
 - `build/bench/rmr_bench`
 - `build/demo/policy_kernel_demo`
 - `build/demo/policy_kernel_selftest`
+- `build/demo/rmr_qemu_bridge_demo`
+- `build/demo/rmr_qemu_bridge_selftest`
 
 ## Módulo APK determinístico
 - Header: `include/rmr_apk_module.h`
@@ -42,3 +44,15 @@ Recursos do módulo:
 - Fonte: `src/rmr_policy_kernel.c`
 - CLI: `build/demo/policy_kernel_demo`
 - Selftest: `build/demo/policy_kernel_selftest`
+
+
+## Ponte QEMU + AndroidX (RMR)
+- Header: `include/rmr_qemu_bridge.h`
+- Fonte: `src/rmr_qemu_bridge.c`
+- Demo: `build/demo/rmr_qemu_bridge_demo`
+- Selftest: `build/demo/rmr_qemu_bridge_selftest`
+
+Recursos:
+- autotuning determinístico de preset (balanced/performance/compatibility) com base em `RmR_HW_Detect`.
+- builder de argumentos QEMU para CPU/Memória/IO (`-smp`, `-drive cache/aio`, `iothread`, `virtio`).
+- parser low-level de telemetria QMP (`status`, `query-cpus-fast`) sem dependências externas.

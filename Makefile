@@ -11,7 +11,7 @@ else ifeq ($(UNAME_S),Darwin)
   SHARED_EXT := dylib
 endif
 
-ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c engine/rmr/src/rmr_policy_kernel.c
+ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c engine/rmr/src/rmr_policy_kernel.c engine/rmr/src/rmr_qemu_bridge.c
 ENGINE_OBJS := $(patsubst %.c,build/%.o,$(ENGINE_SRCS))
 BITRAF_API_SRC := engine/rmr/src/bitraf.c
 BITRAF_API_OBJ := $(patsubst %.c,build/%.o,$(BITRAF_API_SRC))
@@ -27,8 +27,10 @@ APK_MODULE_BIN := build/demo/apk_module_demo
 CTI_SCAN_BIN := build/demo/rafa_cti_scan
 POLICY_DEMO_BIN := build/demo/policy_kernel_demo
 POLICY_SELFTEST_BIN := build/demo/policy_kernel_selftest
+QEMU_BRIDGE_DEMO_BIN := build/demo/rmr_qemu_bridge_demo
+QEMU_BRIDGE_SELFTEST_BIN := build/demo/rmr_qemu_bridge_selftest
 
-all: $(LIB_STATIC) $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN)
+all: $(LIB_STATIC) $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
 
 build/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -78,12 +80,21 @@ $(POLICY_DEMO_BIN): demo_cli/src/policy_kernel_demo.c $(LIB_STATIC)
 $(POLICY_SELFTEST_BIN): demo_cli/src/policy_kernel_selftest.c $(LIB_STATIC)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
+
+$(QEMU_BRIDGE_DEMO_BIN): demo_cli/src/rmr_qemu_bridge_demo.c $(LIB_STATIC)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
+
+$(QEMU_BRIDGE_SELFTEST_BIN): demo_cli/src/rmr_qemu_bridge_selftest.c $(LIB_STATIC)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
 run-demo: $(DEMO_BIN)
 	./$(DEMO_BIN)
 
 run-selftest: $(SELFTEST_BIN) $(POLICY_SELFTEST_BIN)
 	./$(SELFTEST_BIN)
 	./$(POLICY_SELFTEST_BIN)
+	./$(QEMU_BRIDGE_SELFTEST_BIN)
 
 run-bench: $(BENCH_BIN)
 	./$(BENCH_BIN) bench/results/latest.csv bench/results/latest.json

@@ -121,3 +121,17 @@ Complemento recomendado: manter também o salmo técnico em
 2. Expandir o índice de imagens (`docs/IMAGES_INDEX.md`).
 3. Criar checklist de refatoração por módulo.
 4. Iniciar migração incremental para AndroidX (ViewModel/ActivityResult).
+
+
+## 8. Entregáveis implementados no Vectras (RMR)
+
+Implementação aplicada em `engine/rmr/` para consolidar pontos de `qemu_rafaelia` e metodologia `androidx_RmR` em código executável:
+
+- `include/rmr_qemu_bridge.h` + `src/rmr_qemu_bridge.c`
+  - catálogo determinístico de presets (`BALANCED`, `PERFORMANCE`, `COMPATIBILITY`) orientado por hardware (`RmR_HW_Detect`).
+  - geração real de argumentos QEMU com tuning de I/O (`cache`, `aio`, `iothread`, `virtio`, `kvm`).
+  - parser de telemetria QMP (`status` e `query-cpus-fast`) sem libs externas.
+- `demo_cli/src/rmr_qemu_bridge_demo.c` e `demo_cli/src/rmr_qemu_bridge_selftest.c`
+  - validação executável de planejamento e leitura de telemetria.
+
+Esses entregáveis colocam em produção local os pilares de presets + observabilidade QMP do eixo `qemu_rafaelia` com abordagem determinística e baixo overhead alinhada ao RMR.
