@@ -707,3 +707,15 @@ Total_Documentation: 80%+
 *Hash: ∫Φ963Hz↔Ω999∆πφ*
 
 **"Código excelente sem documentação = Conhecimento aprisionado"** 🔒→🔓
+
+
+## 🔄 Atualização pós-aplicação
+
+Evidência aplicada no código:
+- `app/src/main/java/com/vectras/vm/VMManager.java`: recebeu documentação de contrato operacional para registro/parada de processo.
+- `app/src/main/java/com/vectras/vm/core/ProcessSupervisor.java`: recebeu documentação de máquina de estados e failover.
+
+Evidência aplicada na documentação:
+- `docs/API.md`: nova seção de API Java/Android para supervisão de processo e estados.
+
+Status atualizado: gap crítico de documentação no fluxo de supervisão foi mitigado para cobertura funcional mínima com contrato explícito.

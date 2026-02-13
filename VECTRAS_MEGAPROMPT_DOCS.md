@@ -1197,3 +1197,13 @@ Maintainability: Good  ✅
 **Last Updated**: 2026-02-13  
 **Version**: 1.0  
 **Author**: RAFAELIA System
+
+
+## ✅ Complemento aplicado na arquitetura
+
+Aplicado complemento de documentação técnica diretamente na arquitetura implementada:
+- JavaDoc de classe e métodos críticos em `VMManager` e `ProcessSupervisor`;
+- alinhamento explícito da política de parada QMP → TERM → KILL;
+- consolidação da API operacional de supervisão em `docs/API.md`.
+
+Resultado: redução imediata do gap entre código e documentação técnica nas rotas de maior criticidade operacional.

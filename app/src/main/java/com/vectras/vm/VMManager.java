@@ -61,6 +61,14 @@ import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * VMManager concentra o ciclo de vida de VMs, persistência de configuração
+ * e supervisão de processos QEMU em ambiente Android.
+ *
+ * <p>Este ponto de entrada mantém operações de cadastro/edição de VMs,
+ * serialização de metadados em JSON e integração com {@link ProcessSupervisor}
+ * para parada previsível com fallback controlado.</p>
+ */
 public class VMManager {
 
     public static final String TAG = "VMManager";
@@ -76,6 +84,13 @@ public class VMManager {
     private static final ConcurrentHashMap<String, ProcessSupervisor> SUPERVISORS = new ConcurrentHashMap<>();
 
 
+    /**
+     * Registra o processo da VM no supervisor associado ao identificador.
+     *
+     * @param context contexto Android para trilha de auditoria
+     * @param vmId identificador da VM (nulo/vazio cai para {@code unknown})
+     * @param process processo QEMU ativo
+     */
     public static void registerVmProcess(Context context, String vmId, Process process) {
         if (process == null) return;
         String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
@@ -83,6 +98,14 @@ public class VMManager {
         supervisor.bindProcess(process);
     }
 
+    /**
+     * Solicita parada do processo da VM com tentativa opcional de desligamento via QMP.
+     *
+     * @param context contexto Android para trilha de auditoria
+     * @param vmId identificador da VM
+     * @param tryQmp quando true, tenta desligamento limpo antes de TERM/KILL
+     * @return true quando a VM é finalizada dentro dos timeouts de failover
+     */
     public static boolean stopVmProcess(Context context, String vmId, boolean tryQmp) {
         String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
         ProcessSupervisor supervisor = SUPERVISORS.get(key);

@@ -687,3 +687,13 @@ public class ClassName {
 
 ### E. Documentação Existente
 [96 arquivos markdown catalogados]
+
+
+## ✅ Atualização de status (pós-complemento total aplicado)
+
+Complemento total aplicado ao núcleo arquitetural priorizado:
+1. Contrato técnico de `VMManager` documentado para operações críticas de supervisão.
+2. Máquina de estados `ProcessSupervisor` documentada com semântica e garantias.
+3. `docs/API.md` expandido com superfície Java/Android e garantias de execução determinística.
+
+Impacto: elevação de legibilidade técnica imediata no path crítico de lifecycle/process supervision, mantendo aderência ao comportamento real do código.

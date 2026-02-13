@@ -9,13 +9,32 @@ import com.vectras.vm.audit.AuditLedger;
 
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Supervisiona o processo principal da VM com uma máquina de estados determinística.
+ *
+ * <p>Fluxo nominal: {@code START -> VERIFY -> RUN -> STOP}.
+ * Em cenários de degradação/falha, o fluxo avança por {@code DEGRADED} e
+ * {@code FAILOVER}, mantendo trilha auditável em {@link AuditLedger} para
+ * análise operacional e pós-morte.</p>
+ *
+ * <p>A política de parada é escalonada: tenta QMP (quando habilitado),
+ * depois {@code destroy()} (TERM), e por fim {@code destroyForcibly()} (KILL),
+ * sempre com timeout explícito para preservar previsibilidade.</p>
+ */
 public class ProcessSupervisor {
+    /** Estados operacionais suportados pelo supervisor. */
     public enum State {
+        /** Supervisor criado e ainda sem processo vinculado. */
         START,
+        /** Processo vinculado e em verificação inicial. */
         VERIFY,
+        /** Execução estável do processo da VM. */
         RUN,
+        /** Execução degradada por flood/pressão de saída. */
         DEGRADED,
+        /** Sequência de fallback de parada em progresso. */
         FAILOVER,
+        /** Processo finalizado com sucesso, timeout ou ausência. */
         STOP
     }
 
@@ -31,6 +50,11 @@ public class ProcessSupervisor {
         this.vmId = vmId == null ? "unknown" : vmId;
     }
 
+    /**
+     * Vincula um processo ao supervisor e realiza as transições iniciais.
+     *
+     * @param process processo principal da VM
+     */
     public synchronized void bindProcess(Process process) {
         this.process = process;
         this.startMonoMs = SystemClock.elapsedRealtime();
@@ -39,10 +63,22 @@ public class ProcessSupervisor {
         transition(State.VERIFY, State.RUN, "verified", 0, 0, 0, "run");
     }
 
+    /**
+     * Marca o supervisor em estado degradado por pressão de logs.
+     *
+     * @param droppedLogs quantidade de linhas descartadas por backpressure
+     * @param bytes bytes envolvidos no período degradado
+     */
     public void onDegraded(int droppedLogs, long bytes) {
         transition(state, State.DEGRADED, "log_flood", droppedLogs, bytes, 0, "degrade_logs");
     }
 
+    /**
+     * Para o processo com estratégia escalonada e deterministicamente auditável.
+     *
+     * @param tryQmp quando true, tenta desligamento limpo via QMP antes de TERM/KILL
+     * @return true se o processo foi finalizado durante a janela de timeout
+     */
     public synchronized boolean stopGracefully(boolean tryQmp) {
         if (process == null) {
             transition(state, State.STOP, "missing_process", 0, 0, 0, "no_op");
