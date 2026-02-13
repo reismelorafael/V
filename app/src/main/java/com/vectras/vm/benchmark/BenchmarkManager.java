@@ -42,15 +42,16 @@ public class BenchmarkManager {
     private static final double MAX_CPU_TEMP_C = 85.0;
     private static final int MIN_FREE_MEMORY_MB = 256;
     private static final double MAX_VARIANCE_PERCENT = 25.0;
-    private static final int CONSISTENCY_SAMPLES = 3;
+    private static final int CONSISTENCY_SAMPLES = 21;
     private static final double MIN_CONFIDENCE_THRESHOLD = 0.7;
     private static final double CPU_FREQ_VARIANCE_THRESHOLD_HOMOGENEOUS = 0.5;
     private static final double CPU_FREQ_VARIANCE_THRESHOLD_HETEROGENEOUS = 0.7;
     private static final double MAX_TIME_DRIFT_PERCENT = 10.0;
     private static final double MAX_TIMER_JITTER_PERCENT = 500.0;
     private static final double MAX_STABILITY_VARIANCE_PERCENT = 30.0;
+    private static final double MAX_STORAGE_REAL_MBPS = 5000.0;
     private static final int DIAGNOSTIC_DECIMALS = 2;
-    private static final boolean ENABLE_STABILITY_PROBE = false;
+    private static final boolean ENABLE_STABILITY_PROBE = true;
     private static final long TIMER_DIAGNOSTIC_CACHE_MS = 5 * 60 * 1000L;
     private static final long TIMER_DRIFT_TARGET_NS = 20_000_000L;
     private static final int TIMER_JITTER_SAMPLES = 64;
@@ -709,6 +710,24 @@ public class BenchmarkManager {
         if (nullCount > 0) {
             errors.add(nullCount + " metrics failed to complete");
             interferenceCount++;
+        }
+
+        // Plausibility validator (storage-real throughput limits, short tests)
+        for (VectraBenchmark.BenchmarkResult r : results) {
+            if (r == null) continue;
+            if (r.rawValue() < 200_000_000L) {
+                warnings.add("Metric too short for stable timing: " + r.name());
+                interferenceCount++;
+            }
+            if (("StorageReal Seq Read".equals(r.name()) || "StorageReal Seq Write".equals(r.name()))
+                && r.rawValue() > 0) {
+                double mbps = (128.0 * 1024.0 * 1024.0 * 1_000_000_000.0) / r.rawValue() / 1_000_000.0;
+                if (mbps > MAX_STORAGE_REAL_MBPS) {
+                    warnings.add("StorageReal throughput over plausibility threshold: "
+                        + formatOneDecimal(mbps) + " MB/s");
+                    interferenceCount++;
+                }
+            }
         }
         
         // Calculate confidence score (0.0 - 1.0)
