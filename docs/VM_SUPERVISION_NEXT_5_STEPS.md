@@ -3,6 +3,10 @@
 ## Objetivo
 Fechar o ciclo do complemento arquitetural com validação técnica, rastreabilidade e estabilidade operacional no path de supervisão de VM.
 
+## Status de execução atual
+- ✅ Passo 2 iniciado com teste `VMManagerStopVmProcessTest` cobrindo ausência de supervisor, remoção em sucesso e retenção em falha.
+- ⚠️ Passo 1 ainda bloqueado por incompatibilidade de toolchain (`major version 69`) no ambiente atual.
+
 ## Passo 1 — Validar toolchain e build determinístico
 - Fixar JDK/Gradle compatíveis para eliminar erro `Unsupported class file major version 69`.
 - Rodar:
