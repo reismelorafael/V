@@ -1,4 +1,6 @@
 #include "rmr_policy_kernel.h"
+#include "rmr_hw_detect.h"
+#include "rmr_math_fabric.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,7 +61,7 @@ static int vec_push(ChunkVec *vec, const RmR_ChunkMeta *m) {
 
 static int append_event(FILE *logf, uint64_t event_idx, RmR_Stage stage, const RmR_ChunkMeta *m) {
   int written = fprintf(logf,
-                        "event=%llu stage=%u off=%llu size=%u route=%u target=%s crc32c=%08x hash64=%016llx entropy_milli=%u flags=%u:%u:%u\n",
+                        "event=%llu stage=%u off=%llu size=%u route=%u target=%s crc32c=%08x hash64=%016llx entropy_milli=%u math_sig=%08x domain=%u flags=%u:%u:%u\n",
                         (unsigned long long)event_idx,
                         (unsigned int)stage,
                         (unsigned long long)m->offset,
@@ -69,6 +71,8 @@ static int append_event(FILE *logf, uint64_t event_idx, RmR_Stage stage, const R
                         m->crc32c,
                         (unsigned long long)m->hash64,
                         m->entropy_milli,
+                        m->math_signature,
+                        (unsigned int)m->domain_hint,
                         (unsigned int)m->flags.bad_event,
                         (unsigned int)m->flags.miss,
                         (unsigned int)m->flags.temp_hint);
@@ -149,6 +153,37 @@ uint32_t RmR_EntropyEstimateMilli(const uint8_t *buf, size_t len) {
   return uniq_component + trans_component;
 }
 
+static void build_math_signature(const RmR_MathFabricPlan *plan,
+                                 const uint8_t *buf,
+                                 size_t len,
+                                 uint64_t chunk_offset,
+                                 RmR_ChunkMeta *m) {
+  uint32_t points[RMR_MATH_POINTS];
+  uint32_t domains[RMR_MATH_DOMAINS];
+  uint32_t rolling = 0xC001D00Du ^ (uint32_t)chunk_offset;
+
+  for (uint32_t p = 0; p < RMR_MATH_POINTS; ++p) {
+    uint32_t stride = (uint32_t)len / RMR_MATH_POINTS;
+    uint32_t idx = (stride * p) + p;
+    if (len == 0) idx = 0;
+    else idx %= (uint32_t)len;
+    rolling = (rolling << 5) | (rolling >> 27);
+    rolling ^= (len > 0) ? (uint32_t)buf[idx] : 0u;
+    rolling ^= (m->crc32c >> ((p & 3u) * 8u));
+    points[p] = rolling ^ (m->entropy_milli << (p & 7u));
+  }
+
+  RmR_MathFabric_VectorMix(plan, points, domains);
+  m->math_signature = 0u;
+  m->domain_hint = 0u;
+  for (uint32_t d = 0; d < RMR_MATH_DOMAINS; ++d) {
+    m->math_signature ^= domains[d] + (d * 0x9E37u);
+    if ((domains[d] & 0xFFu) > (domains[m->domain_hint] & 0xFFu)) {
+      m->domain_hint = (uint8_t)d;
+    }
+  }
+}
+
 static void apply_mutation(uint8_t *buf, size_t len, uint64_t base_off, uint8_t xor_mask, uint32_t stride) {
   if (stride == 0) return;
   for (size_t i = 0; i < len; ++i) {
@@ -167,7 +202,13 @@ int RmR_RunPolicyPipeline(const char *input_path,
   if (!input_path || !output_path || !audit_log_path || !config || config->chunk_size == 0) return -1;
 
   RmR_AuditSummary local_summary;
+  RmR_HW_Info hw;
+  RmR_MathFabricPlan math_plan;
   memset(&local_summary, 0, sizeof(local_summary));
+  memset(&hw, 0, sizeof(hw));
+  memset(&math_plan, 0, sizeof(math_plan));
+  RmR_HW_Detect(&hw);
+  RmR_MathFabric_AutodetectPlan(&hw, &math_plan);
 
   FILE *in = fopen(input_path, "rb");
   if (!in) return -2;
@@ -195,6 +236,7 @@ int RmR_RunPolicyPipeline(const char *input_path,
     m.hash64 = RmR_Hash64_FNV1a(buf, rd);
     m.entropy_milli = RmR_EntropyEstimateMilli(buf, rd);
     m.flags.temp_hint = (m.entropy_milli > 5500u) ? 1u : 0u;
+    build_math_signature(&math_plan, buf, rd, offset, &m);
     choose_route(&config->triad, local_summary.chunks_planned, &m);
     if (append_event(logf, event_idx++, RMR_STAGE_PLAN, &m) != 0 || vec_push(&plan, &m) != 0) goto fail;
     local_summary.chunks_planned++;
@@ -206,6 +248,7 @@ int RmR_RunPolicyPipeline(const char *input_path,
     am.hash64 = RmR_Hash64_FNV1a(buf, rd);
     am.entropy_milli = RmR_EntropyEstimateMilli(buf, rd);
     am.flags.temp_hint = (am.entropy_milli > 5500u) ? 1u : 0u;
+    build_math_signature(&math_plan, buf, rd, offset, &am);
 
     if (append_event(logf, event_idx++, RMR_STAGE_APPLY, &am) != 0 || vec_push(&applied, &am) != 0) goto fail;
     local_summary.chunks_applied++;
@@ -236,6 +279,7 @@ int RmR_RunPolicyPipeline(const char *input_path,
     vm.crc32c = RmR_CRC32C(buf, rd);
     vm.hash64 = RmR_Hash64_FNV1a(buf, rd);
     vm.entropy_milli = RmR_EntropyEstimateMilli(buf, rd);
+    build_math_signature(&math_plan, buf, rd, offset, &vm);
     vm.flags.miss = (vm.crc32c != applied.v[idx].crc32c) ? 1u : 0u;
     if (vm.flags.miss) {
       vm.flags.bad_event = 1u;
@@ -256,6 +300,8 @@ int RmR_RunPolicyPipeline(const char *input_path,
     memset(&final_meta, 0, sizeof(final_meta));
     final_meta.route_id = RMR_ROUTE_FALLBACK;
     final_meta.route_target = route_target_from_id(RMR_ROUTE_FALLBACK);
+    final_meta.math_signature = math_plan.matrix_seed ^ hw.arch;
+    final_meta.domain_hint = (uint8_t)(math_plan.lane_count & 0x7u);
     final_meta.flags.bad_event = (local_summary.verify_failures > 0) ? 1u : 0u;
     if (append_event(logf, event_idx++, RMR_STAGE_AUDIT, &final_meta) != 0) goto fail;
   }

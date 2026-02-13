@@ -41,7 +41,9 @@ typedef struct {
   uint32_t crc32c;
   uint64_t hash64;
   uint32_t entropy_milli;
+  uint32_t math_signature;
   uint8_t route_id;
+  uint8_t domain_hint;
   const char *route_target;
   RmR_ChunkFlags flags;
 } RmR_ChunkMeta;
