@@ -50,3 +50,29 @@ flowchart TD
 3. Fallback para `TERM`.
 4. Fallback final para `KILL`.
 5. Confirmar morte com `waitFor(timeout)`.
+
+
+## 6) Interface operacional VMManager ↔ ProcessSupervisor
+- `VMManager.registerVmProcess(...)` cria/recupera supervisor por `vmId` e vincula processo.
+- `VMManager.stopVmProcess(...)` executa parada escalonada e remove supervisor do mapa ativo quando a parada confirma `true`.
+- `ProcessSupervisor` preserva trilha de transição em `AuditLedger` para auditoria determinística.
+
+```mermaid
+sequenceDiagram
+    participant V as VMManager
+    participant S as ProcessSupervisor
+    participant Q as QmpClient
+    participant A as AuditLedger
+
+    V->>S: bindProcess(process)
+    S->>A: START->VERIFY
+    S->>A: VERIFY->RUN
+
+    V->>S: stopGracefully(tryQmp)
+    alt tryQmp
+      S->>Q: system_powerdown
+      Q-->>S: return/timeout
+    end
+    S->>A: RUN/DEGRADED->STOP or FAILOVER->STOP
+    V->>V: remove supervisor ativo (on success)
+```

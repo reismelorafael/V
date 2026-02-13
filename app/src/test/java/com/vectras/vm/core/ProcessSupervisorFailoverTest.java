@@ -1,0 +1,223 @@
+package com.vectras.vm.core;
+
+import com.vectras.vm.AppConfig;
+
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+public class ProcessSupervisorFailoverTest {
+
+
+    @Before
+    public void configureAuditPath() {
+        AppConfig.internalDataDirPath = System.getProperty("java.io.tmpdir") + "/vectras-test-audit/";
+    }
+
+    @Test
+    public void stopGracefully_qmpSuccess_transitionsToStopWithoutTermKill() {
+        RecordingTransitionSink sink = new RecordingTransitionSink();
+        FakeProcess process = new FakeProcess(true);
+        ProcessSupervisor supervisor = new ProcessSupervisor(
+                null,
+                "vm-qmp",
+                () -> "{\"return\": {}}",
+                sink,
+                new ProcessSupervisor.Clock() {
+                    private long mono = 1000L;
+                    private long wall = 1_700_000_000_000L;
+
+                    @Override
+                    public long monoMs() {
+                        return mono++;
+                    }
+
+                    @Override
+                    public long wallMs() {
+                        return wall++;
+                    }
+                }
+        );
+
+        supervisor.bindProcess(process);
+        boolean stopped = supervisor.stopGracefully(true);
+
+        Assert.assertTrue(stopped);
+        Assert.assertEquals(ProcessSupervisor.State.STOP, supervisor.getState());
+        Assert.assertEquals(0, process.destroyCount);
+        Assert.assertEquals(0, process.destroyForciblyCount);
+        Assert.assertTrue(sink.containsPrefix("RUN->STOP:qmp_shutdown:qmp"));
+        Assert.assertTrue(sink.hasNonNegativeStall("RUN->STOP:qmp_shutdown:qmp"));
+    }
+
+    @Test
+    public void stopGracefully_qmpTimeout_thenTermSuccess() {
+        RecordingTransitionSink sink = new RecordingTransitionSink();
+        FakeProcess process = new FakeProcess(false, true);
+        ProcessSupervisor supervisor = new ProcessSupervisor(
+                null,
+                "vm-term",
+                () -> "{\"return\": {}}",
+                sink,
+                new ProcessSupervisor.Clock() {
+                    private long mono = 1000L;
+                    private long wall = 1_700_000_000_000L;
+
+                    @Override
+                    public long monoMs() {
+                        return mono++;
+                    }
+
+                    @Override
+                    public long wallMs() {
+                        return wall++;
+                    }
+                }
+        );
+
+        supervisor.bindProcess(process);
+        boolean stopped = supervisor.stopGracefully(true);
+
+        Assert.assertTrue(stopped);
+        Assert.assertEquals(ProcessSupervisor.State.STOP, supervisor.getState());
+        Assert.assertEquals(1, process.destroyCount);
+        Assert.assertEquals(0, process.destroyForciblyCount);
+        Assert.assertTrue(sink.containsPrefix("RUN->FAILOVER:qmp_timeout:term_kill"));
+        Assert.assertTrue(sink.containsPrefix("FAILOVER->STOP:term_success:term"));
+        Assert.assertTrue(sink.hasNonNegativeStall("FAILOVER->STOP:term_success:term"));
+    }
+
+    @Test
+    public void stopGracefully_termTimeout_thenKill() {
+        RecordingTransitionSink sink = new RecordingTransitionSink();
+        FakeProcess process = new FakeProcess(false, true);
+        ProcessSupervisor supervisor = new ProcessSupervisor(
+                null,
+                "vm-kill",
+                () -> null,
+                sink,
+                new ProcessSupervisor.Clock() {
+                    private long mono = 1000L;
+                    private long wall = 1_700_000_000_000L;
+
+                    @Override
+                    public long monoMs() {
+                        return mono++;
+                    }
+
+                    @Override
+                    public long wallMs() {
+                        return wall++;
+                    }
+                }
+        );
+
+        supervisor.bindProcess(process);
+        boolean stopped = supervisor.stopGracefully(false);
+
+        Assert.assertTrue(stopped);
+        Assert.assertEquals(1, process.destroyCount);
+        Assert.assertEquals(1, process.destroyForciblyCount);
+        Assert.assertTrue(sink.containsPrefix("RUN->FAILOVER:no_qmp:term_kill"));
+        Assert.assertTrue(sink.containsPrefix("FAILOVER->STOP:kill_success:kill"));
+        Assert.assertTrue(sink.hasNonNegativeStall("FAILOVER->STOP:kill_success:kill"));
+    }
+
+    private static final class RecordingTransitionSink implements ProcessSupervisor.TransitionSink {
+        private final List<String> transitions = new ArrayList<>();
+
+        @Override
+        public void onTransition(ProcessSupervisor.State from,
+                                 ProcessSupervisor.State to,
+                                 String cause,
+                                 String action,
+                                 long stallMs,
+                                 int droppedLogs,
+                                 long bytes) {
+            transitions.add(from.name() + "->" + to.name() + ":" + cause + ":" + action + ":" + stallMs);
+        }
+
+        boolean containsPrefix(String prefix) {
+            for (String t : transitions) {
+                if (t.startsWith(prefix + ":")) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        boolean hasNonNegativeStall(String prefix) {
+            for (String t : transitions) {
+                if (t.startsWith(prefix + ":")) {
+                    String[] parts = t.split(":");
+                    if (parts.length >= 4) {
+                        return Long.parseLong(parts[3]) >= 0L;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
+    private static final class FakeProcess extends Process {
+        private final List<Boolean> waitResults;
+        private int waitIndex = 0;
+        int destroyCount = 0;
+        int destroyForciblyCount = 0;
+
+        FakeProcess(Boolean... waitResults) {
+            this.waitResults = Arrays.asList(waitResults);
+        }
+
+        @Override
+        public OutputStream getOutputStream() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public InputStream getErrorStream() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int waitFor() {
+            return 0;
+        }
+
+        @Override
+        public boolean waitFor(long timeout, TimeUnit unit) {
+            if (waitIndex < waitResults.size()) {
+                return waitResults.get(waitIndex++);
+            }
+            return false;
+        }
+
+        @Override
+        public int exitValue() {
+            return 0;
+        }
+
+        @Override
+        public void destroy() {
+            destroyCount++;
+        }
+
+        @Override
+        public Process destroyForcibly() {
+            destroyForciblyCount++;
+            return this;
+        }
+    }
+}

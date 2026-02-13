@@ -20,11 +20,21 @@
     </style>
 
     <style name="App.CollapsingMaterialToolbar" parent="Widget.Material3.Toolbar">
-        <item name="theme">@style/ThemeOverlay.Material3.Toolbar.CircleNavigationButton</item>
+        <item name="theme">@style/ThemeOverlay.AppCompat.ActionBar</item>
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">?attr/actionBarSize</item>
         <item name="android:elevation">0dp</item>
         <item name="layout_collapseMode">pin</item>
         <item name="navigationIcon">@drawable/arrow_back_rounded_24px</item>
     </style>
+
+
+    <!-- Compat aliases when expressive Material3 styles are unavailable in current artifact set -->
+    <style name="Widget.Material3Expressive.Button" parent="Widget.Material3.Button" />
+    <style name="Widget.Material3Expressive.Button.OutlinedButton" parent="Widget.Material3.Button.OutlinedButton" />
+    <style name="Widget.Material3Expressive.Button.IconButton" parent="Widget.Material3.Button" />
+    <style name="Widget.Material3Expressive.Button.TonalButton" parent="Widget.Material3.Button.TonalButton" />
+    <style name="ThemeOverlay.Material3Expressive.AppBarWithSearch" parent="ThemeOverlay.Material3.ActionBar" />
+    <style name="MaterialAlertDialog.Material3Expressive.Title.Text" parent="TextAppearance.Material3.TitleLarge" />
+
 </resources>

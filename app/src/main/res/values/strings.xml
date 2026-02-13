@@ -229,7 +229,7 @@
     <string name="rafaelia_tick_ms">Tick interval (ms)</string>
     <string name="rafaelia_debug">Enable Rafaelia debug</string>
     <string name="rafaelia_bench_duration">Bench duration (seconds)</string>
-    <string name="rafaelia_autotune">Autotuning & Bench Control</string>
+    <string name="rafaelia_autotune">Autotuning &amp; Bench Control</string>
     <string name="rafaelia_autotune_enabled">Enable autotuning</string>
     <string name="rafaelia_autotune_enabled_desc">Apply adaptive tuning when Rafaelia is enabled.</string>
     <string name="rafaelia_tcg_tb_size">TCG translation block size</string>

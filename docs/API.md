@@ -64,3 +64,34 @@ cmake -S . -B build-cmake
 cmake --build build-cmake -j
 # alvo: bitraf_static (libbitraf.a) e bitraf_shared (libbitraf.so)
 ```
+
+
+## API de Supervisão de Processo (Java/Android)
+
+Classes de alto impacto para ciclo de vida de VM e parada determinística:
+
+### `com.vectras.vm.VMManager`
+- `registerVmProcess(Context, String, Process)`
+  - vincula processo QEMU ao supervisor da VM.
+- `stopVmProcess(Context, String, boolean)`
+  - aplica parada escalonada (QMP → TERM → KILL) via supervisor.
+
+### `com.vectras.vm.core.ProcessSupervisor`
+- `bindProcess(Process)`
+  - inicia transições `START -> VERIFY -> RUN`.
+- `onDegraded(int, long)`
+  - marca estado `DEGRADED` sob flood/backpressure.
+- `stopGracefully(boolean)`
+  - executa failover determinístico e registra auditoria de transições.
+
+### Estados
+`START`, `VERIFY`, `RUN`, `DEGRADED`, `FAILOVER`, `STOP`.
+
+### Garantias operacionais
+- transições auditáveis com `AuditLedger`;
+- timeouts explícitos em cada etapa de parada;
+- compatibilidade com cenário sem QMP (fallback direto para TERM/KILL).
+
+
+## Roadmap imediato
+- Ver sequência de execução técnica: `docs/VM_SUPERVISION_NEXT_5_STEPS.md`.

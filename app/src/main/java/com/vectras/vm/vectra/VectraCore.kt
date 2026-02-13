@@ -328,7 +328,7 @@ class VectraDataOrchestrator(private val state: VectraState) {
         private const val HISTORY_SIZE = 128
         private const val FLOW_MIX_A = -0x61c8864680b583ebL
         private const val FLOW_MIX_B = -0x4498517a7b3558c5L
-        private const val FLOW_MIX_C = 0x9E3779B97F4A7C15uL.toLong()
+        private const val FLOW_MIX_C = -7046029254386353131L
     }
 
     private val history = LongArray(HISTORY_SIZE)

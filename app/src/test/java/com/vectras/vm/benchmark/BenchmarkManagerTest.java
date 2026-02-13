@@ -1,15 +1,12 @@
 package com.vectras.vm.benchmark;
 
 import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
 
 import android.content.Context;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
@@ -33,7 +30,6 @@ public class BenchmarkManagerTest {
     
     @Before
     public void setUp() {
-        MockitoAnnotations.openMocks(this);
         context = RuntimeEnvironment.getApplication();
         manager = new BenchmarkManager(context);
     }
@@ -122,7 +118,7 @@ public class BenchmarkManagerTest {
         );
         
         BenchmarkManager.BenchmarkResult result = new BenchmarkManager.BenchmarkResult(
-            metrics, validation, env, new ArrayList<>(), 5000, true
+            metrics, validation, env, null, 5000, true
         );
         
         assertNotNull(result);
@@ -273,7 +269,7 @@ public class BenchmarkManagerTest {
         );
         
         BenchmarkManager.BenchmarkResult result = new BenchmarkManager.BenchmarkResult(
-            metrics, validation, env, new ArrayList<>(), 5000, false
+            metrics, validation, env, null, 5000, false
         );
         
         assertFalse(result.isValid);
