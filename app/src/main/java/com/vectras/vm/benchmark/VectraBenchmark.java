@@ -694,20 +694,26 @@ public class VectraBenchmark {
     
     static long benchMemRandomRead(byte[] b0, int[] idx) {
         // Low-level random read using pre-computed indices on caller-provided byte buffer
-        if (b0 == null || b0.length < M4_BYTES) {
-            throw new IllegalArgumentException("Source buffer too small for random read");
+        if (b0 == null || b0.length == 0) {
+            throw new IllegalArgumentException("Source buffer must not be null/empty for random read");
         }
         long v0 = 0;
         int n0 = idx.length;
         int n1 = b0.length;
+        int m0 = n1 - 1;
+        boolean p2 = (n1 & m0) == 0;
         long t0 = System.nanoTime();
         for (int k = 0; k < n0; k++) {
             int i = idx[k];
-            if (i >= n1) {
-                i = i % n1;
-            }
-            if (i < 0) {
-                i = (i + n1) % n1;
+            if (p2) {
+                i = i & m0;
+            } else {
+                if (i >= n1) {
+                    i = i % n1;
+                }
+                if (i < 0) {
+                    i = (i + n1) % n1;
+                }
             }
             v0 = v0 + b0[i];
         }
@@ -716,20 +722,26 @@ public class VectraBenchmark {
     }
 
     static long benchMemRandomWrite(byte[] b0, int[] idx) {
-        if (b0 == null || b0.length < M4_BYTES) {
-            throw new IllegalArgumentException("Destination buffer too small for random write");
+        if (b0 == null || b0.length == 0) {
+            throw new IllegalArgumentException("Destination buffer must not be null/empty for random write");
         }
         int n0 = idx.length;
         int n1 = b0.length;
+        int m0 = n1 - 1;
+        boolean p2 = (n1 & m0) == 0;
         int v0 = 0;
         long t0 = System.nanoTime();
         for (int k = 0; k < n0; k++) {
             int i = idx[k];
-            if (i >= n1) {
-                i = i % n1;
-            }
-            if (i < 0) {
-                i = (i + n1) % n1;
+            if (p2) {
+                i = i & m0;
+            } else {
+                if (i >= n1) {
+                    i = i % n1;
+                }
+                if (i < 0) {
+                    i = (i + n1) % n1;
+                }
             }
             int nv = (i + k + v0) & 0xFF;
             b0[i] = (byte) nv;
