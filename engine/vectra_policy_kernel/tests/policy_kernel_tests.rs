@@ -2,7 +2,8 @@ use std::fs;
 use std::io::Cursor;
 
 use vectra_policy_kernel::{
-    canonize, commit_tick, crc32c, deterministic_mutate, exec_bucket, Event, Key, Op, Output,
+    canonize, commit_tick, crc32c, deterministic_mutate, entropy_hint, entropy_milli, exec_bucket,
+    Event, Key, Op, Output,
     PipelineConfig, PolicyKernel, Stage, StageEvent, TriadStatus,
 };
 
@@ -14,6 +15,24 @@ fn golden_crc32c_vectors_are_stable() {
         crc32c(b"The quick brown fox jumps over the lazy dog"),
         0x22620404
     );
+}
+
+
+#[test]
+fn entropy_metric_is_bit_stable() {
+    let zero = vec![0u8; 4096];
+    let ramp = (0..=255u8).cycle().take(4096).collect::<Vec<_>>();
+    let striped = (0..4096)
+        .map(|i| if (i & 1) == 0 { 0x00 } else { 0xFF })
+        .collect::<Vec<_>>();
+
+    assert_eq!(entropy_milli(&[]), 0);
+    assert_eq!(entropy_milli(&zero), 0);
+    assert_eq!(entropy_milli(&striped), 1000);
+    assert_eq!(entropy_milli(&ramp), 8000);
+
+    assert!(!entropy_hint(&zero));
+    assert!(entropy_hint(&ramp));
 }
 
 #[test]

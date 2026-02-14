@@ -584,27 +584,55 @@ pub fn fnv1a64(data: &[u8]) -> u64 {
     hash
 }
 
+const LOG2_FRAC_Q12_LUT: [u16; 33] = [
+    0, 182, 358, 530, 696, 858, 1016, 1169, 1319, 1465, 1607, 1746, 1882, 2015, 2145, 2272,
+    2396, 2518, 2637, 2754, 2869, 2982, 3092, 3200, 3307, 3412, 3514, 3615, 3715, 3812, 3908,
+    4003, 4096,
+];
+
+const LOG2_Q12_SHIFT: u32 = 12;
+
+#[inline]
+fn log2_q12(value: usize) -> u32 {
+    if value <= 1 {
+        return 0;
+    }
+
+    let v = value as u32;
+    let exp = 31 - v.leading_zeros();
+    let base = 1u32 << exp;
+    let frac = ((v - base) << 5) / base;
+    let idx = frac as usize;
+    (exp << LOG2_Q12_SHIFT) + LOG2_FRAC_Q12_LUT[idx] as u32
+}
+
 pub fn entropy_milli(data: &[u8]) -> u16 {
     if data.is_empty() {
         return 0;
     }
-    let mut freq = [0usize; 256];
+
+    let mut freq = [0u16; 256];
     for &b in data {
-        freq[b as usize] += 1;
+        freq[b as usize] = freq[b as usize].saturating_add(1);
     }
-    let len = data.len() as f64;
-    let mut entropy = 0.0f64;
+
+    let len = data.len();
+    let len_q12 = log2_q12(len);
+    let mut weighted_log_sum = 0u64;
     for count in freq {
         if count == 0 {
             continue;
         }
-        let p = count as f64 / len;
-        entropy -= p * p.log2();
+        let c = count as usize;
+        weighted_log_sum = weighted_log_sum.saturating_add((c as u64) * (log2_q12(c) as u64));
     }
-    let milli = (entropy * 1000.0).round();
-    milli.clamp(0.0, 16000.0) as u16
+
+    let correction_q12 = (weighted_log_sum / len as u64) as u32;
+    let entropy_q12 = len_q12.saturating_sub(correction_q12);
+    let milli = ((entropy_q12 as u64) * 1000) >> LOG2_Q12_SHIFT;
+    milli.min(16000) as u16
 }
 
 pub fn entropy_hint(data: &[u8]) -> bool {
-    entropy_milli(data) > 7800
+    entropy_milli(data) >= 7750
 }
