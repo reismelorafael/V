@@ -33,6 +33,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -41,6 +43,12 @@ import java.util.logging.Logger;
  * @author dev
  */
 public class FileInstaller {
+
+    private static final Map<String, Object> FILE_LOCKS = new ConcurrentHashMap<>();
+
+    private static Object lockForPath(String path) {
+        return FILE_LOCKS.computeIfAbsent(path, key -> new Object());
+    }
 
     public static void installFiles(Context context, boolean force) {
 
@@ -122,26 +130,28 @@ public class FileInstaller {
     public static boolean installAssetFile(Context context, String srcFile,
                                            String destDir, String assetsDir, String destFile) {
         try {
-            AssetManager am = context.getResources().getAssets(); // get the local asset manager
-            InputStream is = am.open(assetsDir + "/" + srcFile); // open the input stream for reading
             File destDirF = new File(destDir);
             if (!destDirF.exists()) {
                 boolean res = destDirF.mkdirs();
-                if(!res){
-                    if (context instanceof Activity activity) UIUtils.toastShort(activity, "Could not create directory for image");
+                if (!res && context instanceof Activity activity) {
+                    UIUtils.toastShort(activity, "Could not create directory for image");
                 }
             }
-            
-            if(destFile==null)
-            	destFile=srcFile;
-            OutputStream os = new FileOutputStream(destDir + "/" + destFile);
-            byte[] buf = new byte[8092];
-            int n;
-            while ((n = is.read(buf)) > 0) {
-                os.write(buf, 0, n);
+
+            String resolvedDestFile = destFile == null ? srcFile : destFile;
+            File outputFile = new File(destDirF, resolvedDestFile);
+            Object lock = lockForPath(outputFile.getAbsolutePath());
+            synchronized (lock) {
+                AssetManager am = context.getResources().getAssets();
+                try (InputStream is = am.open(assetsDir + "/" + srcFile);
+                     OutputStream os = new FileOutputStream(outputFile)) {
+                    byte[] buf = new byte[8092];
+                    int n;
+                    while ((n = is.read(buf)) > 0) {
+                        os.write(buf, 0, n);
+                    }
+                }
             }
-            os.close();
-            is.close();
             return true;
         } catch (Exception ex) {
             Log.e("Installer", "failed to install file: " + destFile + ", Error:" + ex.getMessage());

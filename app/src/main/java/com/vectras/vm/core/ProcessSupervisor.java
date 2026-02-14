@@ -127,7 +127,7 @@ public class ProcessSupervisor {
      * @param droppedLogs quantidade de linhas descartadas por backpressure
      * @param bytes bytes envolvidos no período degradado
      */
-    public void onDegraded(int droppedLogs, long bytes) {
+    public synchronized void onDegraded(int droppedLogs, long bytes) {
         transition(state, State.DEGRADED, "log_flood", droppedLogs, bytes, 0, "degrade_logs");
     }
 
@@ -184,7 +184,7 @@ public class ProcessSupervisor {
         }
     }
 
-    private void transition(State from,
+    private synchronized void transition(State from,
                             State to,
                             String cause,
                             int droppedLogs,

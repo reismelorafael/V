@@ -53,6 +53,12 @@ public class ShellExecutor {
         processFuture = localFuture;
         try {
             return callable.await();
+        } catch (TimeoutException e) {
+            localFuture.cancel(true);
+            callable.cancel();
+            Log.e(TAG, "exec timeout", e);
+            VectrasStatus.logInfo(TAG + " > " + e);
+            return new ExecResult(-1, "", "timeout", true);
         } catch (Exception e) {
             localFuture.cancel(true);
             Log.e(TAG, "exec failed", e);
@@ -160,6 +166,20 @@ public class ShellExecutor {
                 result = new ExecResult(exitCode, outBuffer.snapshot(), errBuffer.snapshot(), timedOut);
                 synchronized (monitor) {
                     monitor.notifyAll();
+                }
+            }
+        }
+
+        void cancel() {
+            Process process = shellExecutorProcess;
+            if (process != null && process.isAlive()) {
+                process.destroy();
+                try {
+                    if (!process.waitFor(2, TimeUnit.SECONDS)) {
+                        process.destroyForcibly();
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 }
             }
         }
