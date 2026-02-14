@@ -46,9 +46,9 @@ static pthread_once_t g_hw_contract_once = PTHREAD_ONCE_INIT;
 
 #define VECTRA_ARENA_CAPACITY_BYTES (64u * 1024u * 1024u)
 #define VECTRA_ARENA_MAX_SLOTS 4096u
-#define VECTRA_ARENA_HANDLE_INDEX_MASK 0x0FFFu
-#define VECTRA_ARENA_HANDLE_GEN_SHIFT 12u
-#define VECTRA_ARENA_HANDLE_GEN_MASK 0x0007FFFFu
+#define VECTRA_ARENA_HANDLE_INDEX_MASK 0x1FFFu
+#define VECTRA_ARENA_HANDLE_GEN_SHIFT 13u
+#define VECTRA_ARENA_HANDLE_GEN_MASK 0x0003FFFFu
 
 #define VECTRA_ARENA_OK 0
 #define VECTRA_ARENA_ERR_INVALID_ARG -1
@@ -679,6 +679,7 @@ Java_com_vectras_vm_core_NativeFastPath_nativeAllocArena(JNIEnv* env, jclass cla
     slot->size = request;
     slot->generation = next_gen;
     slot->in_use = 1u;
+    memset(g_arena_base + offset, 0, (size_t)request);
     atomic_fetch_add(&g_arena_active_slots, 1u);
 
     jint handle = vectra_arena_make_handle(slot_index, slot->generation);
