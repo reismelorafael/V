@@ -314,6 +314,62 @@ Java_com_vectras_vm_core_NativeFastPath_nativePopcount32(JNIEnv* env, jclass cla
 }
 
 JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeByteSwap32(JNIEnv* env, jclass clazz, jint value) {
+    (void)env;
+    (void)clazz;
+#if defined(__GNUC__) || defined(__clang__)
+    return (jint)__builtin_bswap32((uint32_t)value);
+#else
+    uint32_t v = (uint32_t)value;
+    return (jint)((v >> 24) | ((v >> 8) & 0x0000FF00u) | ((v << 8) & 0x00FF0000u) | (v << 24));
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeRotateLeft32(JNIEnv* env, jclass clazz, jint value, jint distance) {
+    (void)env;
+    (void)clazz;
+    uint32_t v = (uint32_t)value;
+    uint32_t d = (uint32_t)distance & 31u;
+    if (d == 0u) {
+        return (jint)v;
+    }
+#if defined(__aarch64__)
+    uint32_t out;
+    __asm__ volatile("ror %w0, %w1, %w2" : "=r"(out) : "r"(v), "r"((uint32_t)(32u - d)));
+    return (jint)out;
+#elif defined(__arm__)
+    uint32_t out;
+    __asm__ volatile("ror %0, %1, %2" : "=r"(out) : "r"(v), "r"((uint32_t)(32u - d)));
+    return (jint)out;
+#else
+    return (jint)((v << d) | (v >> ((32u - d) & 31u)));
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeRotateRight32(JNIEnv* env, jclass clazz, jint value, jint distance) {
+    (void)env;
+    (void)clazz;
+    uint32_t v = (uint32_t)value;
+    uint32_t d = (uint32_t)distance & 31u;
+    if (d == 0u) {
+        return (jint)v;
+    }
+#if defined(__aarch64__)
+    uint32_t out;
+    __asm__ volatile("ror %w0, %w1, %w2" : "=r"(out) : "r"(v), "r"(d));
+    return (jint)out;
+#elif defined(__arm__)
+    uint32_t out;
+    __asm__ volatile("ror %0, %1, %2" : "=r"(out) : "r"(v), "r"(d));
+    return (jint)out;
+#else
+    return (jint)((v >> d) | (v << ((32u - d) & 31u)));
+#endif
+}
+
+JNIEXPORT jint JNICALL
 Java_com_vectras_vm_core_NativeFastPath_nativePlatformSignature(JNIEnv* env, jclass clazz) {
     (void)env;
     (void)clazz;

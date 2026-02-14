@@ -154,6 +154,13 @@ public final class NativeFastPath {
             return;
         }
 
+        if (src == dst && dstOffset > srcOffset && dstOffset < srcOffset + length) {
+            for (int i = length - 1; i >= 0; i--) {
+                dst[dstOffset + i] = src[srcOffset + i];
+            }
+            return;
+        }
+
         int i = 0;
         int end = length & ~15;
         while (i < end) {
@@ -216,6 +223,32 @@ public final class NativeFastPath {
     }
 
 
+    public static int byteSwap32(int x) {
+        if (NATIVE_AVAILABLE) {
+            return nativeByteSwap32(x);
+        }
+        return (x >>> 24)
+                | ((x >>> 8) & 0x0000FF00)
+                | ((x << 8) & 0x00FF0000)
+                | (x << 24);
+    }
+
+    public static int rotateLeft32(int x, int distance) {
+        if (NATIVE_AVAILABLE) {
+            return nativeRotateLeft32(x, distance);
+        }
+        int d = distance & 31;
+        return (x << d) | (x >>> ((32 - d) & 31));
+    }
+
+    public static int rotateRight32(int x, int distance) {
+        if (NATIVE_AVAILABLE) {
+            return nativeRotateRight32(x, distance);
+        }
+        int d = distance & 31;
+        return (x >>> d) | (x << ((32 - d) & 31));
+    }
+
     public static int popcount32(int x) {
         if (NATIVE_AVAILABLE) {
             int value = nativePopcount32(x);
@@ -240,6 +273,12 @@ public final class NativeFastPath {
     private static native int nativeXorChecksum(byte[] data, int offset, int length);
 
     private static native int nativePopcount32(int value);
+
+    private static native int nativeByteSwap32(int value);
+
+    private static native int nativeRotateLeft32(int value, int distance);
+
+    private static native int nativeRotateRight32(int value, int distance);
 
     private static native int nativePlatformSignature();
 

@@ -21,7 +21,6 @@ public class NativeFastPathTest {
     }
 
 
-
     @Test
     public void copyBytesHandlesOverlapDeterministically() {
         byte[] data = new byte[32];
@@ -60,13 +59,36 @@ public class NativeFastPathTest {
 
 
     @Test
+    public void byteSwap32MatchesExpected() {
+        assertEquals(0x78563412, NativeFastPath.byteSwap32(0x12345678));
+        assertEquals(0xFFFFFFFF, NativeFastPath.byteSwap32(0xFFFFFFFF));
+        assertEquals(0x00000000, NativeFastPath.byteSwap32(0x00000000));
+    }
+
+    @Test
+    public void rotateOpsMatchRoundTrip() {
+        int value = 0x12345678;
+        int left = NativeFastPath.rotateLeft32(value, 7);
+        int roundTrip = NativeFastPath.rotateRight32(left, 7);
+        assertEquals(value, roundTrip);
+    }
+
+    @Test
+    public void rotateOpsNormalizeDistance() {
+        int value = 0x13579BDF;
+        assertEquals(value, NativeFastPath.rotateLeft32(value, 32));
+        assertEquals(value, NativeFastPath.rotateRight32(value, 64));
+        assertEquals(NativeFastPath.rotateLeft32(value, 5), NativeFastPath.rotateLeft32(value, 37));
+        assertEquals(NativeFastPath.rotateRight32(value, 11), NativeFastPath.rotateRight32(value, 43));
+    }
+
+    @Test
     public void popcountMatchesKnownValues() {
         assertEquals(0, NativeFastPath.popcount32(0));
         assertEquals(32, NativeFastPath.popcount32(-1));
         assertEquals(16, NativeFastPath.popcount32(0xF0F0F0F0));
         assertEquals(13, NativeFastPath.popcount32(0x12345678));
     }
-
 
 
     @Test
