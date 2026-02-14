@@ -1,5 +1,6 @@
 #include "rmr_policy_kernel.h"
 #include "rmr_hw_detect.h"
+#include "rmr_ll_ops.h"
 #include "rmr_math_fabric.h"
 #include "rmr_ll_ops.h"
 
@@ -30,7 +31,20 @@ static const char *route_target_from_id(uint8_t id) {
   }
 }
 
-static void choose_route(const RmR_TriadStatus *triad, uint32_t chunk_idx, RmR_ChunkMeta *m) {
+static const char *decision_mode_label(uint8_t mode) {
+  return (mode == RMR_DECISION_MODE_FALLBACK) ? "fallback" : "branchless";
+}
+
+static uint8_t resolve_decision_mode(void) {
+  const char *env = getenv("RMR_DECISION_MODE");
+  if (!env) return RMR_DECISION_MODE_BRANCHLESS;
+  if (strcmp(env, "fallback") == 0 || strcmp(env, "FALLBACK") == 0) {
+    return RMR_DECISION_MODE_FALLBACK;
+  }
+  return RMR_DECISION_MODE_BRANCHLESS;
+}
+
+static void choose_route_fallback(const RmR_TriadStatus *triad, uint32_t chunk_idx, RmR_ChunkMeta *m) {
   uint8_t options[3];
   uint32_t n = 0;
   if (triad->cpu_ok) options[n++] = RMR_ROUTE_CPU;
@@ -49,6 +63,66 @@ static void choose_route(const RmR_TriadStatus *triad, uint32_t chunk_idx, RmR_C
   m->route_target = route_target_from_id(m->route_id);
 }
 
+static void choose_route_branchless(const RmR_TriadStatus *triad, uint32_t chunk_idx, RmR_ChunkMeta *m) {
+  uint32_t cpu = rmr_mask_u32((uint32_t)triad->cpu_ok);
+  uint32_t ram = rmr_mask_u32((uint32_t)triad->ram_ok);
+  uint32_t disk = rmr_mask_u32((uint32_t)triad->disk_ok);
+
+  uint32_t n = ((cpu & 1u) + (ram & 1u) + (disk & 1u));
+  uint32_t idx = (n > 0u) ? (chunk_idx % n) : 0u;
+
+  uint32_t has_cpu_slot = cpu;
+  uint32_t cpu_slot = 0u;
+  uint32_t has_ram_slot = ram & rmr_mask_u32(idx >= ((has_cpu_slot & 1u) ? 1u : 0u));
+  uint32_t ram_slot = ((has_cpu_slot & 1u) ? 1u : 0u);
+  uint32_t has_disk_slot = disk & rmr_mask_u32(idx >= (ram_slot + ((has_ram_slot & 1u) ? 1u : 0u)));
+
+  uint32_t route = RMR_ROUTE_FALLBACK;
+  route = select_u32(has_cpu_slot & rmr_mask_u32(idx == cpu_slot), RMR_ROUTE_CPU, route);
+  route = select_u32(has_ram_slot & rmr_mask_u32(idx == ram_slot), RMR_ROUTE_RAM, route);
+  route = select_u32(has_disk_slot, RMR_ROUTE_DISK, route);
+
+  uint32_t has_quorum = rmr_mask_u32(n >= 2u);
+  m->route_id = select_u8(has_quorum, (uint8_t)route, (uint8_t)RMR_ROUTE_FALLBACK);
+  m->flags.bad_event = select_u8(has_quorum, 0u, 1u);
+  m->flags.miss = select_u8(has_quorum, 0u, 1u);
+  m->route_target = route_target_from_id(m->route_id);
+}
+
+static void choose_route(const RmR_TriadStatus *triad,
+                         uint32_t chunk_idx,
+                         uint8_t decision_mode,
+                         RmR_ChunkMeta *m) {
+  RmR_ChunkMeta fallback_meta = *m;
+  choose_route_fallback(triad, chunk_idx, &fallback_meta);
+
+  if (decision_mode == RMR_DECISION_MODE_FALLBACK) {
+    *m = fallback_meta;
+    m->decision_mode = RMR_DECISION_MODE_FALLBACK;
+    return;
+  }
+
+  RmR_ChunkMeta branchless_meta = *m;
+  choose_route_branchless(triad, chunk_idx, &branchless_meta);
+
+  uint32_t fallback_sig = (uint32_t)fallback_meta.route_id
+                        ^ ((uint32_t)fallback_meta.flags.bad_event << 8)
+                        ^ ((uint32_t)fallback_meta.flags.miss << 9);
+  uint32_t branchless_sig = (uint32_t)branchless_meta.route_id
+                          ^ ((uint32_t)branchless_meta.flags.bad_event << 8)
+                          ^ ((uint32_t)branchless_meta.flags.miss << 9);
+
+  if (branchless_sig != fallback_sig) {
+    branchless_meta.route_id = fallback_meta.route_id;
+    branchless_meta.flags.bad_event = fallback_meta.flags.bad_event;
+    branchless_meta.flags.miss = fallback_meta.flags.miss;
+    branchless_meta.route_target = fallback_meta.route_target;
+  }
+
+  *m = branchless_meta;
+  m->decision_mode = RMR_DECISION_MODE_BRANCHLESS;
+}
+
 static int vec_push(ChunkVec *vec, const RmR_ChunkMeta *m) {
   if (vec->n == vec->cap) {
     size_t next = vec->cap ? vec->cap * 2u : 64u;
@@ -63,7 +137,7 @@ static int vec_push(ChunkVec *vec, const RmR_ChunkMeta *m) {
 
 static int append_event(FILE *logf, uint64_t event_idx, RmR_Stage stage, const RmR_ChunkMeta *m) {
   int written = fprintf(logf,
-                        "event=%llu stage=%u off=%llu size=%u route=%u target=%s crc32c=%08x hash64=%016llx entropy_milli=%u math_sig=%08x domain=%u flags=%u:%u:%u\n",
+                        "event=%llu stage=%u off=%llu size=%u route=%u target=%s crc32c=%08x hash64=%016llx entropy_milli=%u math_sig=%08x domain=%u decision_mode=%u flags=%u:%u:%u\n",
                         (unsigned long long)event_idx,
                         (unsigned int)stage,
                         (unsigned long long)m->offset,
@@ -75,6 +149,7 @@ static int append_event(FILE *logf, uint64_t event_idx, RmR_Stage stage, const R
                         m->entropy_milli,
                         m->math_signature,
                         (unsigned int)m->domain_hint,
+                        (unsigned int)m->decision_mode,
                         (unsigned int)m->flags.bad_event,
                         (unsigned int)m->flags.miss,
                         (unsigned int)m->flags.temp_hint);
@@ -221,6 +296,7 @@ int RmR_RunPolicyPipeline(const char *input_path,
   memset(&math_plan, 0, sizeof(math_plan));
   RmR_HW_Detect(&hw);
   RmR_MathFabric_AutodetectPlan(&hw, &math_plan);
+  uint8_t decision_mode = resolve_decision_mode();
 
   FILE *in = fopen(input_path, "rb");
   if (!in) return -2;
@@ -249,7 +325,7 @@ int RmR_RunPolicyPipeline(const char *input_path,
     m.entropy_milli = RmR_EntropyEstimateMilli(buf, rd);
     m.flags.temp_hint = (m.entropy_milli > 5500u) ? 1u : 0u;
     build_math_signature(&math_plan, buf, rd, offset, &m);
-    choose_route(&config->triad, local_summary.chunks_planned, &m);
+    choose_route(&config->triad, local_summary.chunks_planned, decision_mode, &m);
     if (append_event(logf, event_idx++, RMR_STAGE_PLAN, &m) != 0 || vec_push(&plan, &m) != 0) goto fail;
     local_summary.chunks_planned++;
 
@@ -261,6 +337,7 @@ int RmR_RunPolicyPipeline(const char *input_path,
     am.entropy_milli = RmR_EntropyEstimateMilli(buf, rd);
     am.flags.temp_hint = (am.entropy_milli > 5500u) ? 1u : 0u;
     build_math_signature(&math_plan, buf, rd, offset, &am);
+    am.decision_mode = m.decision_mode;
 
     if (append_event(logf, event_idx++, RMR_STAGE_APPLY, &am) != 0 || vec_push(&applied, &am) != 0) goto fail;
     local_summary.chunks_applied++;
@@ -292,6 +369,7 @@ int RmR_RunPolicyPipeline(const char *input_path,
     vm.hash64 = RmR_Hash64_FNV1a(buf, rd);
     vm.entropy_milli = RmR_EntropyEstimateMilli(buf, rd);
     build_math_signature(&math_plan, buf, rd, offset, &vm);
+    vm.decision_mode = applied.v[idx].decision_mode;
     vm.flags.miss = (vm.crc32c != applied.v[idx].crc32c) ? 1u : 0u;
     if (vm.flags.miss) {
       vm.flags.bad_event = 1u;
@@ -314,7 +392,11 @@ int RmR_RunPolicyPipeline(const char *input_path,
     final_meta.route_target = route_target_from_id(RMR_ROUTE_FALLBACK);
     final_meta.math_signature = math_plan.matrix_seed ^ hw.arch;
     final_meta.domain_hint = (uint8_t)(math_plan.lane_count & 0x7u);
+    final_meta.decision_mode = decision_mode;
     final_meta.flags.bad_event = (local_summary.verify_failures > 0) ? 1u : 0u;
+    final_meta.flags.temp_hint = (uint8_t)(decision_mode == RMR_DECISION_MODE_BRANCHLESS ? 1u : 0u);
+    final_meta.flags.miss = 0u;
+    fprintf(logf, "decision_mode=%s\n", decision_mode_label(decision_mode));
     if (append_event(logf, event_idx++, RMR_STAGE_AUDIT, &final_meta) != 0) goto fail;
   }
 

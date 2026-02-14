@@ -23,6 +23,11 @@ typedef enum {
   RMR_ROUTE_FALLBACK = 255
 } RmR_RouteId;
 
+typedef enum {
+  RMR_DECISION_MODE_BRANCHLESS = 1,
+  RMR_DECISION_MODE_FALLBACK = 2
+} RmR_DecisionMode;
+
 typedef struct {
   uint8_t cpu_ok;
   uint8_t ram_ok;
@@ -44,6 +49,7 @@ typedef struct {
   uint32_t math_signature;
   uint8_t route_id;
   uint8_t domain_hint;
+  uint8_t decision_mode;
   const char *route_target;
   RmR_ChunkFlags flags;
 } RmR_ChunkMeta;

@@ -1,4 +1,5 @@
 #include "rmr_math_fabric.h"
+#include "rmr_ll_ops.h"
 
 static u32 rmr_rotl32(u32 x, u32 n){
   n &= 31u;
@@ -15,9 +16,11 @@ static u32 rmr_mix32(u32 x){
 }
 
 static u32 rmr_arch_lane_count(u32 arch, u32 ptr_bits){
-  if (arch == 2u || arch == 4u || arch == 9u) return 8u;
-  if (arch == 1u || arch == 3u || arch == 5u || arch == 7u || arch == 8u) return 4u;
-  return (ptr_bits >= 64u) ? 4u : 2u;
+  u32 is_wide = rmr_mask_u32((arch == 2u) || (arch == 4u) || (arch == 9u));
+  u32 is_mid = rmr_mask_u32((arch == 1u) || (arch == 3u) || (arch == 5u) || (arch == 7u) || (arch == 8u));
+  u32 ptr_fallback = select_u32(rmr_mask_u32(ptr_bits >= 64u), 4u, 2u);
+  u32 lanes = select_u32(is_mid, 4u, ptr_fallback);
+  return select_u32(is_wide, 8u, lanes);
 }
 
 void RmR_MathFabric_AutodetectPlan(const RmR_HW_Info *hw, RmR_MathFabricPlan *out){
@@ -27,7 +30,9 @@ void RmR_MathFabric_AutodetectPlan(const RmR_HW_Info *hw, RmR_MathFabricPlan *ou
   out->register_bits = hw ? hw->word_bits : 32u;
   out->cacheline_bytes = hw ? hw->cacheline_bytes : 64u;
   out->page_bytes = hw ? hw->page_bytes : 4096u;
-  out->pin_stride = (out->cacheline_bytes >= 64u) ? (out->cacheline_bytes >> 3) : 8u;
+  out->pin_stride = select_u32(rmr_mask_u32(out->cacheline_bytes >= 64u),
+                               (out->cacheline_bytes >> 3),
+                               8u);
   out->lane_count = rmr_arch_lane_count(out->arch_code, hw ? hw->ptr_bits : 32u);
 
   out->matrix_seed = 0xB16B00B5u
