@@ -9,10 +9,10 @@ import com.vectras.qemu.Config;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 
 public class QmpClient {
@@ -20,6 +20,8 @@ public class QmpClient {
 	private static final String TAG = "QmpClient";
 	private static String requestCommandMode = "{ \"execute\": \"qmp_capabilities\" }";
 	private static final int MAX_RESPONSE_LINES = 128;
+	private static final int SOCKET_CONNECT_TIMEOUT_MS = 5000;
+	private static final int SOCKET_READ_TIMEOUT_MS = 5000;
 	private static final int DEFAULT_RETRIES = 10;
 	private static final int DEFAULT_RETRY_DELAY_MS = 1000;
 	private static final int STOP_RETRIES = 1;
@@ -44,8 +46,9 @@ public class QmpClient {
 
 		try {
 		    if(allow_external) {
-                pingSocket = new Socket(Config.QMPServer, Config.QMPPort);
-                pingSocket.setSoTimeout(5000);
+                pingSocket = new Socket();
+                pingSocket.connect(new InetSocketAddress(Config.QMPServer, Config.QMPPort), SOCKET_CONNECT_TIMEOUT_MS);
+                pingSocket.setSoTimeout(SOCKET_READ_TIMEOUT_MS);
                 out = new PrintWriter(pingSocket.getOutputStream(), true);
                 in = new BufferedReader(new InputStreamReader(pingSocket.getInputStream()));
 		    } else {
@@ -53,20 +56,15 @@ public class QmpClient {
 		        String localQMPSocketPath = Config.getLocalQMPSocketPath();
                 LocalSocketAddress localSocketAddr = new LocalSocketAddress(localQMPSocketPath, LocalSocketAddress.Namespace.FILESYSTEM);
                 localSocket.connect(localSocketAddr);
-                localSocket.setSoTimeout(5000);
+                localSocket.setSoTimeout(SOCKET_READ_TIMEOUT_MS);
                 out = new PrintWriter(localSocket.getOutputStream(), true);
                 in = new BufferedReader(new InputStreamReader(localSocket.getInputStream()));
             }
 
 
-			sendRequest(out, QmpClient.requestCommandMode);
-			while (trial < maxRetries) {
-				response = getResponse(in);
-				if (response != null && !response.isEmpty()) {
-					break;
-				}
-				Thread.sleep(retryDelayMs);
-				trial++;
+			response = negotiateCapabilities(out, in, maxRetries, retryDelayMs);
+			if (!isGreetingAndCapabilitiesContractSatisfied(response)) {
+				Log.w(TAG, "QMP greeting/capabilities contract not satisfied. Raw response=" + response);
 			}
 
 			sendRequest(out, command);
@@ -80,11 +78,18 @@ public class QmpClient {
 				trial++;
 			}
 		} catch (java.net.ConnectException e) {
-			Log.w(TAG, "Could not connect to QMP: " + e);
+			Log.w(TAG, "Could not connect to QMP", e);
 			if(Config.debugQmp)
 			    e.printStackTrace();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			Log.e(TAG, "Interrupted while waiting for QMP response", e);
+		} catch (IOException e) {
+			Log.e(TAG, "I/O error while connecting to QMP", e);
+			if(Config.debugQmp)
+				e.printStackTrace();
 		} catch(Exception e) {
-            Log.e(TAG, "Error while connecting to QMP: " + e);
+            Log.e(TAG, "Error while connecting to QMP", e);
             if(Config.debugQmp)
 				e.printStackTrace();
 		} finally {
@@ -104,6 +109,47 @@ public class QmpClient {
 		}
 
 		return response;
+	}
+
+	static String negotiateCapabilities(PrintWriter out, BufferedReader in, int maxRetries, int retryDelayMs) throws Exception {
+		sendRequest(out, QmpClient.requestCommandMode);
+		String response = null;
+		for (int trial = 0; trial < maxRetries; trial++) {
+			response = getResponse(in);
+			if (response != null && !response.isEmpty()) {
+				break;
+			}
+			Thread.sleep(retryDelayMs);
+		}
+		return response;
+	}
+
+	static boolean isGreetingAndCapabilitiesContractSatisfied(String response) {
+		if (response == null || response.trim().isEmpty()) {
+			return false;
+		}
+
+		boolean hasGreeting = false;
+		boolean hasCapabilitiesAck = false;
+		String[] lines = response.split("\\n");
+		for (String line : lines) {
+			if (line == null || line.trim().isEmpty()) {
+				continue;
+			}
+			try {
+				JSONObject object = new JSONObject(line);
+				if (object.has("QMP") && !object.isNull("QMP")) {
+					hasGreeting = true;
+				}
+				if (object.has("return") && !object.isNull("return")) {
+					hasCapabilitiesAck = true;
+				}
+			} catch (Exception ignored) {
+				return false;
+			}
+		}
+
+		return hasGreeting && hasCapabilitiesAck;
 	}
 
 	private static void sendRequest(PrintWriter out, String request) {
