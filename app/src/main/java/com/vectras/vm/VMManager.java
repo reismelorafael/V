@@ -58,6 +58,7 @@ import java.io.FileWriter;
 import java.io.Writer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
@@ -105,7 +106,7 @@ public class VMManager {
             previous.stopGracefully(false);
         }
 
-        if (SUPERVISORS.size() >= MAX_SUPERVISED_VM_PROCESSES) {
+        if (!ensureSupervisorCapacity()) {
             safeTerminateDetachedProcess(process);
             Log.w(TAG, "registerVmProcess rejected: active supervisor cap reached (" + MAX_SUPERVISED_VM_PROCESSES + ")");
             return;
@@ -125,11 +126,42 @@ public class VMManager {
         for (String key : SUPERVISORS.keySet()) {
             ProcessSupervisor supervisor = SUPERVISORS.get(key);
             if (supervisor == null) continue;
-            long pid = supervisor.getPid();
-            if (pid <= 0L || supervisor.getState() == ProcessSupervisor.State.STOP) {
+            if (!supervisor.isProcessAlive() || supervisor.getState() == ProcessSupervisor.State.STOP) {
                 SUPERVISORS.remove(key, supervisor);
             }
         }
+    }
+
+    private static boolean ensureSupervisorCapacity() {
+        if (SUPERVISORS.size() < MAX_SUPERVISED_VM_PROCESSES) {
+            return true;
+        }
+
+        pruneInactiveSupervisors();
+        if (SUPERVISORS.size() < MAX_SUPERVISED_VM_PROCESSES) {
+            return true;
+        }
+
+        String oldestKey = null;
+        ProcessSupervisor oldest = null;
+        long oldestStart = Long.MAX_VALUE;
+        for (Map.Entry<String, ProcessSupervisor> entry : SUPERVISORS.entrySet()) {
+            ProcessSupervisor supervisor = entry.getValue();
+            if (supervisor == null) continue;
+            long start = supervisor.getStartMonoMs();
+            if (oldest == null || start < oldestStart) {
+                oldestKey = entry.getKey();
+                oldest = supervisor;
+                oldestStart = start;
+            }
+        }
+
+        if (oldest != null) {
+            oldest.stopGracefully(false);
+            SUPERVISORS.remove(oldestKey, oldest);
+        }
+
+        return SUPERVISORS.size() < MAX_SUPERVISED_VM_PROCESSES;
     }
 
     private static void safeTerminateDetachedProcess(Process process) {

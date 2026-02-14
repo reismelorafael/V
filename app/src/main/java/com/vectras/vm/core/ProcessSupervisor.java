@@ -211,6 +211,15 @@ public class ProcessSupervisor {
         return ProcessRuntimeOps.safePid(process);
     }
 
+    public boolean isProcessAlive() {
+        Process running = process;
+        return running != null && running.isAlive();
+    }
+
+    public long getStartMonoMs() {
+        return startMonoMs;
+    }
+
     public State getState() {
         return state;
     }
