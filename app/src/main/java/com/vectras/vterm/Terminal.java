@@ -62,6 +62,19 @@ public class Terminal {
         this.context = context;
     }
 
+    static String resolveOutputText(AtomicReference<StringBuilder> outputRef) {
+        if (outputRef == null) {
+            return "";
+        }
+        StringBuilder buffer = outputRef.get();
+        return buffer == null ? "" : buffer.toString();
+    }
+
+    static String resolveFinalOutputText(AtomicReference<StringBuilder> outputRef, String errors) {
+        String outputText = resolveOutputText(outputRef);
+        return outputText.isEmpty() ? (errors == null ? "" : errors) : outputText;
+    }
+
     private void showDialog(String message, Context context, String usercommand) {
         if (VMManager.isExecutedCommandError(usercommand, message, context))
             return;
@@ -177,10 +190,10 @@ public class Terminal {
                 VMManager.clearVmStarting(vmId);
                 new Handler(Looper.getMainLooper()).post(() -> {
                     progressDialog.dismiss(); // Dismiss ProgressDialog
-                    AppConfig.temporaryLastedTerminalOutput = output.toString();
+                    String finalErrors = errors.toString();
+                    String finalOutput = resolveOutputText(output);
+                    AppConfig.temporaryLastedTerminalOutput = resolveFinalOutputText(output, finalErrors);
                     if (showResultDialog) {
-                        String finalOutput = output.toString();
-                        String finalErrors = errors.toString();
                         showDialog(finalOutput.isEmpty() ? finalErrors : finalOutput.replace("read interrupted", "Done!"), dialogActivity, userCommand);
                     }
                 });
@@ -258,11 +271,11 @@ public class Terminal {
                 VMManager.clearVmStarting(vmId);
                 // Switch to main thread after execution
                 new Handler(Looper.getMainLooper()).post(() -> {
-                    AppConfig.temporaryLastedTerminalOutput = output.toString();
+                    String finalErrors = errors.toString();
+                    String finalOutput = resolveOutputText(output);
+                    AppConfig.temporaryLastedTerminalOutput = resolveFinalOutputText(output, finalErrors);
                     // If showResultDialog is enabled, show the dialog with the result or errors
                     if (showResultDialog) {
-                        String finalOutput = output.toString();
-                        String finalErrors = errors.toString();
                         // bcuz there is dumb users bruh
                         showDialog(finalOutput.isEmpty() ? finalErrors : finalOutput.replace("read interrupted", "Done!"), dialogActivity, userCommand);
                     }
@@ -419,7 +432,7 @@ public class Terminal {
                 new Handler(Looper.getMainLooper()).post(progressDialog::dismiss);
 
                 // Use callback to return both output and errors
-                new Handler(Looper.getMainLooper()).post(() -> callback.onCommandCompleted(output.toString(), errors.toString()));
+                new Handler(Looper.getMainLooper()).post(() -> callback.onCommandCompleted(resolveOutputText(output), errors.toString()));
             }
         }).start();
 
