@@ -850,7 +850,53 @@ Java_com_vectras_vm_core_NativeFastPath_nativeArenaFill(JNIEnv* env, jclass claz
         return rc;
     }
 
-    memset(ptr, value & 0xFF, (size_t)length);
+    uint8_t fill = (uint8_t)(value & 0xFF);
+    size_t len = (size_t)length;
+
+    if (len < 64u) {
+        memset(ptr, fill, len);
+    } else {
+#if defined(__ARM_NEON)
+        uint8x16_t vec = vdupq_n_u8(fill);
+        size_t i = 0u;
+        size_t vec_end = len & ~(size_t)15u;
+        for (; i < vec_end; i += 16u) {
+            vst1q_u8(ptr + i, vec);
+        }
+        if (i < len) {
+            memset(ptr + i, fill, len - i);
+        }
+#else
+        size_t i = 0u;
+        while (i < len && (((uintptr_t)(ptr + i)) & (sizeof(uint64_t) - 1u)) != 0u) {
+            ptr[i++] = fill;
+        }
+
+        size_t rem = len - i;
+        if (rem >= 64u) {
+            uint64_t pattern = 0x0101010101010101ULL * (uint64_t)fill;
+            uint64_t* p64 = (uint64_t*)(ptr + i);
+            size_t qwords = rem >> 3;
+            size_t qwords_unrolled = qwords & ~(size_t)7u;
+            size_t q = 0u;
+            for (; q < qwords_unrolled; q += 8u) {
+                p64[q] = pattern;
+                p64[q + 1u] = pattern;
+                p64[q + 2u] = pattern;
+                p64[q + 3u] = pattern;
+                p64[q + 4u] = pattern;
+                p64[q + 5u] = pattern;
+                p64[q + 6u] = pattern;
+                p64[q + 7u] = pattern;
+            }
+            i += qwords_unrolled << 3;
+        }
+
+        if (i < len) {
+            memset(ptr + i, fill, len - i);
+        }
+#endif
+    }
 
     pthread_mutex_unlock(&g_arena_lock);
     return VECTRA_ARENA_OK;
