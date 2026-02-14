@@ -13,6 +13,13 @@ public final class NativeFastPath {
     private static final int NATIVE_OK_MAGIC = 0x56414343;
     private static final boolean NATIVE_AVAILABLE;
 
+    private static final int HW_CONTRACT_SIGNATURE = 0;
+    private static final int HW_CONTRACT_POINTER_BITS = 1;
+    private static final int HW_CONTRACT_CACHE_LINE = 2;
+    private static final int HW_CONTRACT_PAGE_SIZE = 3;
+    private static final int HW_CONTRACT_FEATURES = 4;
+    private static final int HW_CONTRACT_SIZE = 5;
+
     public static final int ARCH_UNKNOWN = 0x0000;
     public static final int ARCH_ARM64 = 0x0100;
     public static final int ARCH_ARM32 = 0x0200;
@@ -31,6 +38,9 @@ public final class NativeFastPath {
     public static final int FEATURE_POPCNT = 1 << 3;
     public static final int FEATURE_SSE42 = 1 << 4;
     public static final int FEATURE_AVX2 = 1 << 5;
+    public static final int FEATURE_SIMD = 1 << 6;
+
+    private static final HardwareProfile BOOT_PROFILE;
 
     static {
         boolean loaded;
@@ -41,6 +51,7 @@ public final class NativeFastPath {
             loaded = false;
         }
         NATIVE_AVAILABLE = loaded;
+        BOOT_PROFILE = detectHardwareProfile();
     }
 
     private NativeFastPath() {
@@ -51,11 +62,52 @@ public final class NativeFastPath {
         return NATIVE_AVAILABLE;
     }
 
+    static HardwareProfile getHardwareProfile() {
+        return BOOT_PROFILE;
+    }
+
     public static int getPlatformSignature() {
+        return BOOT_PROFILE.signature;
+    }
+
+    public static int getPointerBits() {
+        return BOOT_PROFILE.pointerBits;
+    }
+
+    public static int getNativeCacheLineBytes() {
+        return BOOT_PROFILE.cacheLineBytes;
+    }
+
+    public static int getNativePageBytes() {
+        return BOOT_PROFILE.pageBytes;
+    }
+
+    public static int getFeatureMask() {
+        return BOOT_PROFILE.featureMask;
+    }
+
+    private static HardwareProfile detectHardwareProfile() {
         if (NATIVE_AVAILABLE) {
-            return nativePlatformSignature();
+            int[] contract = nativeReadHardwareContract();
+            if (contract != null && contract.length == HW_CONTRACT_SIZE) {
+                int signature = contract[HW_CONTRACT_SIGNATURE];
+                int pointerBits = normalizePointerBits(contract[HW_CONTRACT_POINTER_BITS], signature);
+                int cacheLine = normalizeCacheLine(contract[HW_CONTRACT_CACHE_LINE]);
+                int pageBytes = normalizePageSize(contract[HW_CONTRACT_PAGE_SIZE]);
+                int featureMask = normalizeFeatureMask(contract[HW_CONTRACT_FEATURES]);
+                return new HardwareProfile(signature, pointerBits, cacheLine, pageBytes, featureMask);
+            }
         }
 
+        int signature = javaPlatformSignature();
+        int pointerBits = normalizePointerBits(0, signature);
+        int cacheLine = 64;
+        int pageBytes = 4096;
+        int featureMask = normalizeFeatureMask(javaFeatureMask(signature));
+        return new HardwareProfile(signature, pointerBits, cacheLine, pageBytes, featureMask);
+    }
+
+    private static int javaPlatformSignature() {
         int arch = ARCH_UNKNOWN;
         String abi = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
         if (abi.contains("aarch64") || abi.contains("arm64")) {
@@ -83,14 +135,24 @@ public final class NativeFastPath {
         return arch | os;
     }
 
-    public static int getPointerBits() {
-        if (NATIVE_AVAILABLE) {
-            int bits = nativePointerBits();
-            if (bits == 32 || bits == 64) {
-                return bits;
-            }
+    private static int javaFeatureMask(int signature) {
+        int features = 0;
+        int arch = signature & 0xFF00;
+
+        if (arch == ARCH_ARM64 || arch == ARCH_ARM32) {
+            features |= FEATURE_NEON;
+            features |= FEATURE_POPCNT;
+        } else if (arch == ARCH_X64 || arch == ARCH_X86) {
+            features |= FEATURE_POPCNT;
         }
-        int signature = getPlatformSignature();
+        return features;
+    }
+
+    private static int normalizePointerBits(int pointerBits, int signature) {
+        if (pointerBits == 32 || pointerBits == 64) {
+            return pointerBits;
+        }
+
         int arch = signature & 0xFF00;
         if (arch == ARCH_ARM64 || arch == ARCH_X64 || arch == ARCH_RISCV64) {
             return 64;
@@ -105,43 +167,32 @@ public final class NativeFastPath {
         return 32;
     }
 
-    public static int getNativeCacheLineBytes() {
-        if (NATIVE_AVAILABLE) {
-            int line = nativeCacheLineBytes();
-            if (line >= 32 && line <= 256) {
-                return line;
-            }
+    private static int normalizeCacheLine(int line) {
+        if (line < 32) {
+            return 32;
         }
-        return 64;
+        if (line > 256) {
+            return 256;
+        }
+        return line;
     }
 
-    public static int getNativePageBytes() {
-        if (NATIVE_AVAILABLE) {
-            int page = nativePageBytes();
-            if (page >= 1024 && page <= 65536) {
-                return page;
-            }
+    private static int normalizePageSize(int page) {
+        if (page < 1024) {
+            return 1024;
         }
-        return 4096;
+        if (page > 65536) {
+            return 65536;
+        }
+        return page;
     }
 
-    public static int getFeatureMask() {
-        if (NATIVE_AVAILABLE) {
-            return nativeFeatureMask();
+    private static int normalizeFeatureMask(int features) {
+        int mask = features;
+        if ((mask & (FEATURE_NEON | FEATURE_SSE42 | FEATURE_AVX2)) != 0) {
+            mask |= FEATURE_SIMD;
         }
-
-        int features = 0;
-        int signature = getPlatformSignature();
-        int arch = signature & 0xFF00;
-
-        if (arch == ARCH_ARM64 || arch == ARCH_ARM32) {
-            features |= FEATURE_NEON;
-            features |= FEATURE_POPCNT;
-        } else if (arch == ARCH_X64 || arch == ARCH_X86) {
-            features |= FEATURE_POPCNT;
-        }
-
-        return features;
+        return mask;
     }
 
     public static void copyBytes(byte[] src, int srcOffset, byte[] dst, int dstOffset, int length) {
@@ -266,7 +317,25 @@ public final class NativeFastPath {
         return v & 0x3F;
     }
 
+    static final class HardwareProfile {
+        final int signature;
+        final int pointerBits;
+        final int cacheLineBytes;
+        final int pageBytes;
+        final int featureMask;
+
+        HardwareProfile(int signature, int pointerBits, int cacheLineBytes, int pageBytes, int featureMask) {
+            this.signature = signature;
+            this.pointerBits = pointerBits;
+            this.cacheLineBytes = cacheLineBytes;
+            this.pageBytes = pageBytes;
+            this.featureMask = featureMask;
+        }
+    }
+
     private static native int nativeInit();
+
+    private static native int[] nativeReadHardwareContract();
 
     private static native int nativeCopyBytes(byte[] src, int srcOffset, byte[] dst, int dstOffset, int length);
 

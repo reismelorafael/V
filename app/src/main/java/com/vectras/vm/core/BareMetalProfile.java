@@ -27,37 +27,100 @@ public final class BareMetalProfile {
     public static final int CAP_LITTLE_ENDIAN = 1 << 4;
     public static final int CAP_MULTI_CORE = 1 << 5;
     public static final int CAP_64_BIT = 1 << 6;
-    public static final int CAP_NEON_OR_SSE = 1 << 7;
+    public static final int CAP_SIMD = 1 << 7;
+    public static final int CAP_NEON_OR_SSE = CAP_SIMD;
     public static final int CAP_AES = 1 << 8;
     public static final int CAP_CRC32 = 1 << 9;
 
-    private static final String CPUINFO_PATH = "/proc/cpuinfo";
     private static final String CPU_POSSIBLE_PATH = "/sys/devices/system/cpu/possible";
 
-    private static final int CACHED_ARCH = detectArchitectureInternal();
-    private static final int CACHED_CORES = detectCoreCountInternal();
-    private static final int CACHED_CAPABILITIES = detectCapabilitiesInternal(CACHED_ARCH, CACHED_CORES);
-
+    private static final Snapshot BOOT = snapshotBoot();
 
     private BareMetalProfile() {
         throw new AssertionError("BareMetalProfile is a utility class and cannot be instantiated");
     }
 
     public static int detectArchitecture() {
-        return CACHED_ARCH;
+        return BOOT.arch;
     }
 
     public static int detectCapabilities() {
-        return CACHED_CAPABILITIES;
+        return BOOT.capabilities;
     }
 
     public static int recommendedWorkBlockBytes() {
-        int arch = detectArchitecture();
-        int cores = detectCoreCount();
-        int caps = detectCapabilities();
-        int cacheLine = NativeFastPath.getNativeCacheLineBytes();
-        int pageBytes = NativeFastPath.getNativePageBytes();
+        return BOOT.recommendedBlockBytes;
+    }
 
+    public static int recommendedParallelism() {
+        int cores = BOOT.cores;
+        if (cores <= 1) return 1;
+        if (cores <= 3) return 2;
+        return cores - 1;
+    }
+
+    public static long runtimeMemoryClassBytes() {
+        Runtime runtime = Runtime.getRuntime();
+        return runtime.maxMemory();
+    }
+
+    private static Snapshot snapshotBoot() {
+        NativeFastPath.HardwareProfile hw = NativeFastPath.getHardwareProfile();
+        int arch = mapArch(hw.signature);
+        int cores = detectCoreCountInternal();
+        int capabilities = detectCapabilitiesInternal(hw, arch, cores);
+        int recommendedBlock = computeRecommendedBlockBytes(arch, cores, capabilities, hw.cacheLineBytes, hw.pageBytes);
+        return new Snapshot(arch, cores, capabilities, recommendedBlock);
+    }
+
+    private static int mapArch(int signature) {
+        int nativeArch = signature & 0xFF00;
+        if (nativeArch == NativeFastPath.ARCH_ARM64) return ARCH_ARM64;
+        if (nativeArch == NativeFastPath.ARCH_ARM32) return ARCH_ARM32;
+        if (nativeArch == NativeFastPath.ARCH_X64) return ARCH_X86_64;
+        if (nativeArch == NativeFastPath.ARCH_X86) return ARCH_X86;
+        if (nativeArch == NativeFastPath.ARCH_RISCV64) return ARCH_RISCV64;
+        return ARCH_UNKNOWN;
+    }
+
+    private static int detectCapabilitiesInternal(NativeFastPath.HardwareProfile hw, int arch, int cores) {
+        int flags = CAP_ATOMICS;
+
+        if (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN) {
+            flags |= CAP_LITTLE_ENDIAN;
+        }
+        if (cores > 1) {
+            flags |= CAP_MULTI_CORE;
+        }
+
+        int nativeFeatures = hw.featureMask;
+        if ((nativeFeatures & NativeFastPath.FEATURE_SIMD) != 0) {
+            flags |= CAP_SIMD;
+        }
+        if ((nativeFeatures & NativeFastPath.FEATURE_AES) != 0) {
+            flags |= CAP_AES;
+        }
+        if ((nativeFeatures & NativeFastPath.FEATURE_CRC32) != 0) {
+            flags |= CAP_CRC32;
+        }
+
+        if (arch == ARCH_ARM64 || arch == ARCH_X86_64 || arch == ARCH_RISCV64 || hw.pointerBits == 64) {
+            flags |= CAP_64_BIT | CAP_VECTOR_INT | CAP_VECTOR_FP;
+        } else if (arch == ARCH_ARM32 || arch == ARCH_X86) {
+            flags |= CAP_VECTOR_INT;
+            if (arch == ARCH_ARM32) {
+                flags |= CAP_VECTOR_FP;
+            }
+        }
+
+        if (arch == ARCH_X86 || arch == ARCH_X86_64 || arch == ARCH_ARM64) {
+            flags |= CAP_UNALIGNED_FAST;
+        }
+
+        return flags;
+    }
+
+    private static int computeRecommendedBlockBytes(int arch, int cores, int caps, int cacheLine, int pageBytes) {
         int base = 4096;
         if (arch == ARCH_ARM64 || arch == ARCH_X86_64) {
             base = 16384;
@@ -73,25 +136,16 @@ public final class BareMetalProfile {
             base >>= 1;
         }
 
-        if ((caps & CAP_NEON_OR_SSE) != 0) {
+        if ((caps & CAP_SIMD) != 0) {
             base += 2048;
         }
         if ((caps & CAP_CRC32) != 0) {
             base += 1024;
         }
 
-        int align = cacheLine;
-        if (align < 32) {
-            align = 32;
-        }
-        if (align > 256) {
-            align = 256;
-        }
+        int align = clamp(cacheLine, 32, 256);
+        int minPage = clamp(pageBytes, 1024, 65536);
 
-        int minPage = pageBytes;
-        if (minPage < 1024) {
-            minPage = 1024;
-        }
         while (base < minPage) {
             base <<= 1;
         }
@@ -102,115 +156,6 @@ public final class BareMetalProfile {
         }
 
         return base;
-    }
-
-    public static int recommendedParallelism() {
-        int cores = detectCoreCount();
-        if (cores <= 1) return 1;
-        if (cores <= 3) return 2;
-        return cores - 1;
-    }
-
-    public static long runtimeMemoryClassBytes() {
-        Runtime runtime = Runtime.getRuntime();
-        return runtime.maxMemory();
-    }
-
-    private static String normalizedArch() {
-        String arch = System.getProperty("os.arch");
-        if (arch == null) return "";
-        return arch.toLowerCase();
-    }
-
-    private static String readCpuInfoLower() {
-        StringBuilder b = new StringBuilder(1024);
-        try (BufferedReader reader = new BufferedReader(new FileReader(CPUINFO_PATH))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                b.append(line).append('\n');
-                if (b.length() >= 32768) {
-                    break;
-                }
-            }
-        } catch (IOException ignored) {
-            return "";
-        }
-        return b.toString().toLowerCase();
-    }
-
-    private static int detectCoreCount() {
-        return CACHED_CORES;
-    }
-
-    private static int detectArchitectureInternal() {
-        String arch = normalizedArch();
-        String cpuInfo = readCpuInfoLower();
-        if (arch.length() == 0) {
-            arch = cpuInfo;
-        }
-
-        int nativeSignature = NativeFastPath.getPlatformSignature();
-        int nativeArch = nativeSignature & 0xFF00;
-        if (nativeArch == NativeFastPath.ARCH_ARM64) return ARCH_ARM64;
-        if (nativeArch == NativeFastPath.ARCH_ARM32) return ARCH_ARM32;
-        if (nativeArch == NativeFastPath.ARCH_X64) return ARCH_X86_64;
-        if (nativeArch == NativeFastPath.ARCH_X86) return ARCH_X86;
-        if (nativeArch == NativeFastPath.ARCH_RISCV64) return ARCH_RISCV64;
-
-        if (contains(arch, "aarch64") || contains(arch, "arm64")) return ARCH_ARM64;
-        if (contains(arch, "arm") || contains(arch, "armeabi")) return ARCH_ARM32;
-        if (contains(arch, "x86_64") || contains(arch, "amd64")) return ARCH_X86_64;
-        if (contains(arch, "x86") || contains(arch, "i386") || contains(arch, "i686")) return ARCH_X86;
-        if (contains(arch, "riscv64")) return ARCH_RISCV64;
-
-        if (contains(cpuInfo, "aarch64") || contains(cpuInfo, "armv8") || contains(cpuInfo, "arm64")) return ARCH_ARM64;
-        if (contains(cpuInfo, "armv7") || contains(cpuInfo, "armv6")) return ARCH_ARM32;
-        if (contains(cpuInfo, "genuineintel") || contains(cpuInfo, "authenticamd") || contains(cpuInfo, "x86_64")) return ARCH_X86_64;
-        if (contains(cpuInfo, "i686") || contains(cpuInfo, "i386")) return ARCH_X86;
-        if (contains(cpuInfo, "riscv")) return ARCH_RISCV64;
-        return ARCH_UNKNOWN;
-    }
-
-    private static int detectCapabilitiesInternal(int arch, int cores) {
-        int flags = CAP_ATOMICS;
-
-        if (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN) {
-            flags |= CAP_LITTLE_ENDIAN;
-        }
-        if (cores > 1) {
-            flags |= CAP_MULTI_CORE;
-        }
-
-        int nativeFeatures = NativeFastPath.getFeatureMask();
-        if ((nativeFeatures & NativeFastPath.FEATURE_NEON) != 0 || (nativeFeatures & NativeFastPath.FEATURE_SSE42) != 0 || (nativeFeatures & NativeFastPath.FEATURE_AVX2) != 0) {
-            flags |= CAP_NEON_OR_SSE;
-        }
-        if ((nativeFeatures & NativeFastPath.FEATURE_AES) != 0) {
-            flags |= CAP_AES;
-        }
-        if ((nativeFeatures & NativeFastPath.FEATURE_CRC32) != 0 || (nativeFeatures & NativeFastPath.FEATURE_SSE42) != 0) {
-            flags |= CAP_CRC32;
-        }
-
-        String cpuInfo = readCpuInfoLower();
-        if (contains(cpuInfo, " neon") || contains(cpuInfo, " asimd") || contains(cpuInfo, " sse") || contains(cpuInfo, " avx")) flags |= CAP_NEON_OR_SSE;
-        if (contains(cpuInfo, " aes")) flags |= CAP_AES;
-        if (contains(cpuInfo, " crc32") || contains(cpuInfo, " sse4_2")) flags |= CAP_CRC32;
-
-        if (arch == ARCH_ARM64 || arch == ARCH_X86_64 || arch == ARCH_RISCV64 || NativeFastPath.getPointerBits() == 64) {
-            flags |= CAP_64_BIT | CAP_VECTOR_INT | CAP_VECTOR_FP;
-        } else if (arch == ARCH_ARM32 || arch == ARCH_X86) {
-            flags |= CAP_VECTOR_INT;
-            if (arch == ARCH_ARM32) {
-                flags |= CAP_VECTOR_FP;
-            }
-        }
-
-        if (arch == ARCH_X86 || arch == ARCH_X86_64 || arch == ARCH_ARM64) {
-            flags |= CAP_UNALIGNED_FAST;
-        }
-
-        return flags;
     }
 
     private static int detectCoreCountInternal() {
@@ -243,7 +188,23 @@ public final class BareMetalProfile {
         }
     }
 
-    private static boolean contains(String text, String key) {
-        return text.indexOf(key) >= 0;
+    private static int clamp(int value, int min, int max) {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
+
+    private static final class Snapshot {
+        final int arch;
+        final int cores;
+        final int capabilities;
+        final int recommendedBlockBytes;
+
+        Snapshot(int arch, int cores, int capabilities, int recommendedBlockBytes) {
+            this.arch = arch;
+            this.cores = cores;
+            this.capabilities = capabilities;
+            this.recommendedBlockBytes = recommendedBlockBytes;
+        }
     }
 }

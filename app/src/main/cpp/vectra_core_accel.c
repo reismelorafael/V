@@ -30,6 +30,18 @@
 #define VECTRA_FEATURE_POPCNT (1u << 3)
 #define VECTRA_FEATURE_SSE42  (1u << 4)
 #define VECTRA_FEATURE_AVX2   (1u << 5)
+#define VECTRA_FEATURE_SIMD   (1u << 6)
+
+typedef struct {
+    uint32_t signature;
+    uint32_t pointer_bits;
+    uint32_t cache_line_bytes;
+    uint32_t page_bytes;
+    uint32_t feature_mask;
+} vectra_hw_contract_t;
+
+static vectra_hw_contract_t g_hw_contract;
+static pthread_once_t g_hw_contract_once = PTHREAD_ONCE_INIT;
 
 static uint32_t vectra_arch_tag(void) {
 #if defined(__aarch64__)
@@ -59,6 +71,18 @@ static uint32_t vectra_os_tag(void) {
 #endif
 }
 
+static uint32_t vectra_cacheline_hint(uint32_t arch_tag) {
+    if (arch_tag == VECTRA_ARCH_UNKNOWN) {
+        return 64u;
+    }
+    return 64u;
+}
+
+static uint32_t vectra_page_hint(uint32_t arch_tag) {
+    (void)arch_tag;
+    return 4096u;
+}
+
 #if defined(__i386__) || defined(__x86_64__)
 static void vectra_cpuid(uint32_t leaf, uint32_t subleaf, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx) {
 #if defined(__i386__) && defined(__PIC__)
@@ -81,22 +105,21 @@ static void vectra_cpuid(uint32_t leaf, uint32_t subleaf, uint32_t* eax, uint32_
 }
 #endif
 
-
-static jint vectra_page_bytes(void) {
+static uint32_t vectra_page_bytes(uint32_t arch_tag) {
 #if defined(_SC_PAGESIZE)
     long page = sysconf(_SC_PAGESIZE);
     if (page >= 1024 && page <= 65536) {
-        return (jint)page;
+        return (uint32_t)page;
     }
 #endif
-    return 4096;
+    return vectra_page_hint(arch_tag);
 }
 
-static jint vectra_cache_line_bytes(void) {
+static uint32_t vectra_cache_line_bytes(uint32_t arch_tag) {
 #if defined(_SC_LEVEL1_DCACHE_LINESIZE)
     long line = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
     if (line >= 16 && line <= 512) {
-        return (jint)line;
+        return (uint32_t)line;
     }
 #endif
 #if defined(__i386__) || defined(__x86_64__)
@@ -107,10 +130,10 @@ static jint vectra_cache_line_bytes(void) {
     vectra_cpuid(0x80000006u, 0u, &eax, &ebx, &ecx, &edx);
     uint32_t cpuid_line = ecx & 0xFFu;
     if (cpuid_line >= 16u && cpuid_line <= 512u) {
-        return (jint)cpuid_line;
+        return cpuid_line;
     }
 #endif
-    return 64;
+    return vectra_cacheline_hint(arch_tag);
 }
 
 static uint32_t vectra_feature_mask(void) {
@@ -124,8 +147,9 @@ static uint32_t vectra_feature_mask(void) {
 #endif
 #if defined(__ARM_FEATURE_CRC32)
     mask |= VECTRA_FEATURE_CRC32;
+    mask |= VECTRA_FEATURE_POPCNT;
 #endif
-#if defined(__POPCNT__) || defined(__ARM_FEATURE_CRC32)
+#if defined(__POPCNT__)
     mask |= VECTRA_FEATURE_POPCNT;
 #endif
 
@@ -142,6 +166,9 @@ static uint32_t vectra_feature_mask(void) {
     if ((ecx & (1u << 23)) != 0u) {
         mask |= VECTRA_FEATURE_POPCNT;
     }
+    if ((ecx & (1u << 25)) != 0u) {
+        mask |= VECTRA_FEATURE_AES;
+    }
 
     vectra_cpuid(7u, 0u, &eax, &ebx, &ecx, &edx);
     if ((ebx & (1u << 5)) != 0u) {
@@ -149,7 +176,25 @@ static uint32_t vectra_feature_mask(void) {
     }
 #endif
 
+    if ((mask & (VECTRA_FEATURE_NEON | VECTRA_FEATURE_SSE42 | VECTRA_FEATURE_AVX2)) != 0u) {
+        mask |= VECTRA_FEATURE_SIMD;
+    }
+
     return mask;
+}
+
+static void vectra_hw_contract_init(void) {
+    uint32_t arch = vectra_arch_tag();
+    g_hw_contract.signature = arch | vectra_os_tag();
+    g_hw_contract.pointer_bits = (uint32_t)(sizeof(void*) * 8u);
+    g_hw_contract.cache_line_bytes = vectra_cache_line_bytes(arch);
+    g_hw_contract.page_bytes = vectra_page_bytes(arch);
+    g_hw_contract.feature_mask = vectra_feature_mask();
+}
+
+static const vectra_hw_contract_t* vectra_hw_contract_get(void) {
+    pthread_once(&g_hw_contract_once, vectra_hw_contract_init);
+    return &g_hw_contract;
 }
 
 JNIEXPORT jint JNICALL
@@ -373,11 +418,30 @@ Java_com_vectras_vm_core_NativeFastPath_nativeRotateRight32(JNIEnv* env, jclass 
 #endif
 }
 
+JNIEXPORT jintArray JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeReadHardwareContract(JNIEnv* env, jclass clazz) {
+    (void)clazz;
+    const vectra_hw_contract_t* hw = vectra_hw_contract_get();
+    jint values[5];
+    values[0] = (jint)hw->signature;
+    values[1] = (jint)hw->pointer_bits;
+    values[2] = (jint)hw->cache_line_bytes;
+    values[3] = (jint)hw->page_bytes;
+    values[4] = (jint)hw->feature_mask;
+
+    jintArray out = (*env)->NewIntArray(env, 5);
+    if (!out) {
+        return NULL;
+    }
+    (*env)->SetIntArrayRegion(env, out, 0, 5, values);
+    return out;
+}
+
 JNIEXPORT jint JNICALL
 Java_com_vectras_vm_core_NativeFastPath_nativePlatformSignature(JNIEnv* env, jclass clazz) {
     (void)env;
     (void)clazz;
-    return (jint)(vectra_arch_tag() | vectra_os_tag());
+    return (jint)vectra_hw_contract_get()->signature;
 }
 
 
@@ -385,28 +449,28 @@ JNIEXPORT jint JNICALL
 Java_com_vectras_vm_core_NativeFastPath_nativePointerBits(JNIEnv* env, jclass clazz) {
     (void)env;
     (void)clazz;
-    return (jint)((int)(sizeof(void*) * 8));
+    return (jint)vectra_hw_contract_get()->pointer_bits;
 }
 
 JNIEXPORT jint JNICALL
 Java_com_vectras_vm_core_NativeFastPath_nativeCacheLineBytes(JNIEnv* env, jclass clazz) {
     (void)env;
     (void)clazz;
-    return vectra_cache_line_bytes();
+    return (jint)vectra_hw_contract_get()->cache_line_bytes;
 }
 
 JNIEXPORT jint JNICALL
 Java_com_vectras_vm_core_NativeFastPath_nativePageBytes(JNIEnv* env, jclass clazz) {
     (void)env;
     (void)clazz;
-    return vectra_page_bytes();
+    return (jint)vectra_hw_contract_get()->page_bytes;
 }
 
 JNIEXPORT jint JNICALL
 Java_com_vectras_vm_core_NativeFastPath_nativeFeatureMask(JNIEnv* env, jclass clazz) {
     (void)env;
     (void)clazz;
-    return (jint)vectra_feature_mask();
+    return (jint)vectra_hw_contract_get()->feature_mask;
 }
 
 
