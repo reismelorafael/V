@@ -850,7 +850,71 @@ Java_com_vectras_vm_core_NativeFastPath_nativeArenaFill(JNIEnv* env, jclass claz
         return rc;
     }
 
-    memset(ptr, value & 0xFF, (size_t)length);
+    uint8_t fill = (uint8_t)(value & 0xFF);
+    size_t len = (size_t)length;
+
+    if (len < 64u) {
+        memset(ptr, fill, len);
+    } else {
+#if defined(__ARM_NEON)
+        uint8x16_t vec = vdupq_n_u8(fill);
+        size_t i = 0u;
+        size_t vec64_end = len & ~(size_t)63u;
+        for (; i < vec64_end; i += 64u) {
+            vst1q_u8(ptr + i, vec);
+            vst1q_u8(ptr + i + 16u, vec);
+            vst1q_u8(ptr + i + 32u, vec);
+            vst1q_u8(ptr + i + 48u, vec);
+        }
+
+        size_t vec16_end = len & ~(size_t)15u;
+        for (; i < vec16_end; i += 16u) {
+            vst1q_u8(ptr + i, vec);
+        }
+
+        if (i < len) {
+            memset(ptr + i, fill, len - i);
+        }
+#else
+        size_t i = 0u;
+        const size_t word_bytes = sizeof(uintptr_t);
+
+        while (i < len && (((uintptr_t)(ptr + i)) & (word_bytes - 1u)) != 0u) {
+            ptr[i++] = fill;
+        }
+
+        size_t rem = len - i;
+        if (rem >= 64u) {
+            uintptr_t pattern = (uintptr_t)fill;
+            pattern |= pattern << 8u;
+            pattern |= pattern << 16u;
+#if UINTPTR_MAX > 0xFFFFFFFFu
+            pattern |= pattern << 32u;
+#endif
+
+            uintptr_t* pword = (uintptr_t*)(ptr + i);
+            size_t words = rem / word_bytes;
+            size_t words_unrolled = words & ~(size_t)7u;
+            size_t w = 0u;
+            for (; w < words_unrolled; w += 8u) {
+                pword[w] = pattern;
+                pword[w + 1u] = pattern;
+                pword[w + 2u] = pattern;
+                pword[w + 3u] = pattern;
+                pword[w + 4u] = pattern;
+                pword[w + 5u] = pattern;
+                pword[w + 6u] = pattern;
+                pword[w + 7u] = pattern;
+            }
+            i += words_unrolled * word_bytes;
+        }
+
+        if (i < len) {
+            memset(ptr + i, fill, len - i);
+        }
+#endif
+    }
+
 
     pthread_mutex_unlock(&g_arena_lock);
     return VECTRA_ARENA_OK;
