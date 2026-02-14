@@ -96,10 +96,11 @@ public class VMManager {
     }
 
     /**
-     * Android 15 tightened practical child-process pressure in app sandboxes.
-     * Keep a conservative cap to avoid hitting process spawn failures under load.
+     * Android app sandboxes can hit failures near the 32-child-process ceiling.
+     * Keep VM-owned subprocesses safely below 10 to preserve headroom for
+     * supporting services (logcat, audio, shell helpers, etc).
      */
-    private static final int MAX_SUPERVISED_VM_PROCESSES = 12;
+    private static final int MAX_SUPERVISED_VM_PROCESSES = 9;
 
 
     public static synchronized boolean tryMarkVmStarting(String vmId) {
