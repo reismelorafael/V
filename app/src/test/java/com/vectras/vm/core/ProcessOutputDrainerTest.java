@@ -26,6 +26,22 @@ public class ProcessOutputDrainerTest {
         Assert.assertEquals(2, err.get());
     }
 
+
+    @Test(expected = IllegalStateException.class)
+    public void shouldPropagateWorkerFailure() throws Exception {
+        Process fake = new FakeProcess("ok\n", "err\n");
+        ProcessOutputDrainer drainer = new ProcessOutputDrainer();
+        try {
+            drainer.drain(fake, (stream, line) -> {
+                if ("stdout".equals(stream)) {
+                    throw new IllegalStateException("boom");
+                }
+            });
+        } finally {
+            drainer.shutdown();
+        }
+    }
+
     private static class FakeProcess extends Process {
         private final InputStream stdout;
         private final InputStream stderr;

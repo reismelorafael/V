@@ -1,6 +1,11 @@
 package com.vectras.vm.core;
 
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CoderResult;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.nio.charset.CharsetEncoder;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
@@ -52,15 +57,15 @@ public class BoundedStringRingBuffer {
 
     private static String trimToBytes(String value, int maxBytes) {
         if (maxBytes <= 0) return "";
-        StringBuilder sb = new StringBuilder(value.length());
-        int bytes = 0;
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            int charBytes = String.valueOf(c).getBytes(StandardCharsets.UTF_8).length;
-            if (bytes + charBytes > maxBytes) break;
-            sb.append(c);
-            bytes += charBytes;
+        CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder()
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+        CharBuffer in = CharBuffer.wrap(value);
+        ByteBuffer out = ByteBuffer.allocate(maxBytes);
+        CoderResult result = encoder.encode(in, out, true);
+        if (result.isError()) {
+            return "";
         }
-        return sb.toString();
+        return value.substring(0, in.position());
     }
 }
