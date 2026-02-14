@@ -104,6 +104,10 @@ public class ProcessSupervisor {
         if (process == null) {
             throw new IllegalArgumentException("process == null");
         }
+        if (this.process == process) {
+            // Idempotência para callbacks duplicados no ciclo de vida Android.
+            return;
+        }
         if (this.process != null) {
             throw new IllegalStateException("process already bound");
         }
@@ -205,6 +209,10 @@ public class ProcessSupervisor {
                 stallMs,
                 action
         ));
+    }
+
+    public synchronized boolean isBoundTo(Process candidate) {
+        return candidate != null && process == candidate;
     }
 
     public long getPid() {

@@ -58,8 +58,14 @@ Checklist objetivo para resolver “não compila” por desalinhamento de SDK/JD
 ## Comandos de diagnóstico
 
 ```bash
+./tools/check_android_toolchain.sh
 java -version
 ./gradlew --version
 ./gradlew :app:tasks --all
 ./gradlew :app:assembleDebug --stacktrace --info
 ```
+
+## Wrapper JDK resiliente
+
+- `tools/gradle_with_jdk21.sh` agora tenta automaticamente JDK 21 e 17 em paths comuns antes de falhar.
+- O script também dispara uma validação rápida de toolchain (`--quick`) para antecipar erros de JNI/NDK/CMake/SDK.

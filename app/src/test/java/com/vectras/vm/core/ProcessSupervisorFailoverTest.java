@@ -131,6 +131,36 @@ public class ProcessSupervisorFailoverTest {
     }
 
 
+    @Test
+    public void bindProcess_allowsIdempotentRebindSameInstance() {
+        RecordingTransitionSink sink = new RecordingTransitionSink();
+        ProcessSupervisor supervisor = new ProcessSupervisor(
+                null,
+                "vm-bind-idempotent",
+                command -> "error:no_qmp",
+                sink,
+                new ProcessSupervisor.Clock() {
+                    @Override
+                    public long monoMs() {
+                        return 100L;
+                    }
+
+                    @Override
+                    public long wallMs() {
+                        return 200L;
+                    }
+                }
+        );
+
+        FakeProcess process = new FakeProcess(true);
+        supervisor.bindProcess(process);
+        supervisor.bindProcess(process);
+
+        Assert.assertEquals(ProcessSupervisor.State.RUN, supervisor.getState());
+        Assert.assertTrue(supervisor.isBoundTo(process));
+        Assert.assertEquals(2, sink.size());
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void bindProcess_rejectsNull() {
         ProcessSupervisor supervisor = new ProcessSupervisor(null, "vm-null");
@@ -177,6 +207,10 @@ public class ProcessSupervisorFailoverTest {
                 }
             }
             return false;
+        }
+
+        int size() {
+            return transitions.size();
         }
     }
 

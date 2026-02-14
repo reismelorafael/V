@@ -105,6 +105,11 @@ public class VMManager {
 
         pruneInactiveSupervisors();
 
+        ProcessSupervisor current = SUPERVISORS.get(key);
+        if (current != null && current.isBoundTo(process) && current.isProcessAlive()) {
+            return;
+        }
+
         ProcessSupervisor previous = SUPERVISORS.remove(key);
         if (previous != null) {
             previous.stopGracefully(false);
@@ -204,7 +209,7 @@ public class VMManager {
      * @param tryQmp quando true, tenta desligamento limpo antes de TERM/KILL
      * @return true quando a VM é finalizada dentro dos timeouts de failover e removida do registro ativo
      */
-    public static boolean stopVmProcess(Context context, String vmId, boolean tryQmp) {
+    public static synchronized boolean stopVmProcess(Context context, String vmId, boolean tryQmp) {
         String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
         ProcessSupervisor supervisor = SUPERVISORS.get(key);
         if (supervisor == null) {
