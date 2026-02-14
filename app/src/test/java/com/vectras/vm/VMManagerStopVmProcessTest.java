@@ -41,6 +41,25 @@ public class VMManagerStopVmProcessTest {
     }
 
     @Test
+    public void tryMarkVmStarting_shouldDenySecondStartFlight() {
+        boolean first = VMManager.tryMarkVmStarting("vm-flight");
+        boolean second = VMManager.tryMarkVmStarting("vm-flight");
+
+        Assert.assertTrue(first);
+        Assert.assertFalse(second);
+    }
+
+    @Test
+    public void clearVmStarting_shouldReturnStateToStopped_whenNoSupervisor() {
+        Assert.assertTrue(VMManager.tryMarkVmStarting("vm-clear"));
+        VMManager.clearVmStarting("vm-clear");
+
+        Object state = statesMap().get("vm-clear");
+        Assert.assertNotNull(state);
+        Assert.assertEquals("STOPPED", state.toString());
+    }
+
+    @Test
     public void stopVmProcess_shouldReturnFalse_whenSupervisorIsMissing() {
         boolean stopped = VMManager.stopVmProcess(null, "vm-absent", false);
         Assert.assertFalse(stopped);

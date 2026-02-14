@@ -101,6 +101,36 @@ public class VMManager {
     private static final int MAX_SUPERVISED_VM_PROCESSES = 12;
 
 
+    public static synchronized boolean tryMarkVmStarting(String vmId) {
+        String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
+        pruneInactiveSupervisors();
+
+        VmRuntimeState state = VM_STATES.getOrDefault(key, VmRuntimeState.STOPPED);
+        ProcessSupervisor supervisor = SUPERVISORS.get(key);
+
+        if (state == VmRuntimeState.STARTING || state == VmRuntimeState.STOPPING) {
+            return false;
+        }
+
+        if (supervisor != null && supervisor.isProcessAlive()) {
+            VM_STATES.put(key, VmRuntimeState.RUNNING);
+            return false;
+        }
+
+        VM_STATES.put(key, VmRuntimeState.STARTING);
+        return true;
+    }
+
+    public static synchronized void clearVmStarting(String vmId) {
+        String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
+        ProcessSupervisor supervisor = SUPERVISORS.get(key);
+        VmRuntimeState state = VM_STATES.getOrDefault(key, VmRuntimeState.STOPPED);
+
+        if (state == VmRuntimeState.STARTING && (supervisor == null || !supervisor.isProcessAlive())) {
+            VM_STATES.put(key, VmRuntimeState.STOPPED);
+        }
+    }
+
     /**
      * Registra o processo da VM no supervisor associado ao identificador.
      *

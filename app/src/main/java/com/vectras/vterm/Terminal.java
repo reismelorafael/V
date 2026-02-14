@@ -85,6 +85,23 @@ public class Terminal {
     }
 
 
+    private String currentVmId() {
+        String vmId = com.vectras.vm.main.core.MainStartVM.lastVMID;
+        return (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
+    }
+
+    private boolean acquireVmStartSlot(Context dialogContext, String vmId) {
+        if (!VMManager.tryMarkVmStarting(vmId)) {
+            String message = "VM start already in progress or VM already running for id=" + vmId;
+            Log.w(TAG, message);
+            if (dialogContext != null) {
+                new Handler(Looper.getMainLooper()).post(() -> DialogUtils.oneDialog(dialogContext, "VM busy", message, R.drawable.round_terminal_24));
+            }
+            return false;
+        }
+        return true;
+    }
+
     // Method to execute the shell command
     public void executeShellCommand(String userCommand, boolean showResultDialog, boolean showProgressDialog, Context dialogActivity) {
         executeShellCommand(userCommand, showResultDialog, showProgressDialog, dialogActivity.getString(R.string.executing_command_please_wait), dialogActivity);
@@ -92,6 +109,8 @@ public class Terminal {
 
     public void executeShellCommand(String userCommand, boolean showResultDialog, boolean showProgressDialog, String progressDialogMessage, Context dialogActivity) {
         if (!ensureVmProcessCapacity(dialogActivity)) return;
+        String vmId = currentVmId();
+        if (!acquireVmStartSlot(dialogActivity, vmId)) return;
         AtomicReference<StringBuilder> output = new AtomicReference<>(new StringBuilder());
         StringBuilder errors = new StringBuilder();
         Log.d(TAG, userCommand);
@@ -146,14 +165,16 @@ public class Terminal {
                 processBuilder.command(prootCommand);
                 qemuProcess = processBuilder.start();
                 Terminal.resetStreamingStopToken();
-                VMManager.registerVmProcess(getContext(), com.vectras.vm.main.core.MainStartVM.lastVMID, qemuProcess);
+                VMManager.registerVmProcess(getContext(), vmId, qemuProcess);
 
                 output.set(streamLog(userCommand, qemuProcess, false));
             } catch (IOException e) {
+                VMManager.clearVmStarting(vmId);
                 progressDialog.dismiss(); // Dismiss ProgressDialog
                 output.get().append(e.getMessage());
                 errors.append(Log.getStackTraceString(e));
             } finally {
+                VMManager.clearVmStarting(vmId);
                 new Handler(Looper.getMainLooper()).post(() -> {
                     progressDialog.dismiss(); // Dismiss ProgressDialog
                     AppConfig.temporaryLastedTerminalOutput = output.toString();
@@ -169,6 +190,8 @@ public class Terminal {
 
     public void executeShellCommand2(String userCommand, boolean showResultDialog, Context dialogActivity) {
         if (!ensureVmProcessCapacity(dialogActivity)) return;
+        String vmId = currentVmId();
+        if (!acquireVmStartSlot(dialogActivity, vmId)) return;
         AtomicReference<StringBuilder> output = new AtomicReference<>(new StringBuilder());
         StringBuilder errors = new StringBuilder();
         if (BuildConfig.DEBUG) {
@@ -223,14 +246,16 @@ public class Terminal {
                 processBuilder.command(prootCommand);
                 qemuProcess = processBuilder.start();
                 Terminal.resetStreamingStopToken();
-                VMManager.registerVmProcess(getContext(), com.vectras.vm.main.core.MainStartVM.lastVMID, qemuProcess);
+                VMManager.registerVmProcess(getContext(), vmId, qemuProcess);
 
                 output.set(streamLog(userCommand, qemuProcess, false));
             } catch (IOException e) {
+                VMManager.clearVmStarting(vmId);
                 output.get().append(e.getMessage());
                 errors.append(Log.getStackTraceString(e));
                 NotificationUtils.clearAll(VectrasApp.getContext());
             } finally {
+                VMManager.clearVmStarting(vmId);
                 // Switch to main thread after execution
                 new Handler(Looper.getMainLooper()).post(() -> {
                     AppConfig.temporaryLastedTerminalOutput = output.toString();
@@ -250,6 +275,11 @@ public class Terminal {
         if (!VMManager.canRegisterAnotherVmProcess()) {
             Log.w(TAG, "executeShellCommandWithResult blocked: VM process limit reached " + VMManager.getActiveSupervisedVmProcessCount() + "/" + VMManager.getMaxSupervisedVmProcesses());
             return "VM process limit reached for Android 15 compatibility.";
+        }
+        String vmId = com.vectras.vm.main.core.MainStartVM.lastVMID;
+        if (!VMManager.tryMarkVmStarting(vmId)) {
+            Log.w(TAG, "executeShellCommandWithResult blocked: VM start in-flight or already running for id=" + vmId);
+            return "VM start already in progress or VM already running.";
         }
         StringBuilder output = new StringBuilder();
         StringBuilder errors = new StringBuilder();
@@ -293,12 +323,15 @@ public class Terminal {
             processBuilder.command(prootCommand);
             qemuProcess = processBuilder.start();
             Terminal.resetStreamingStopToken();
-            VMManager.registerVmProcess(context, com.vectras.vm.main.core.MainStartVM.lastVMID, qemuProcess);
+            VMManager.registerVmProcess(context, vmId, qemuProcess);
 
             output = streamLog(userCommand, qemuProcess, false);
         } catch (IOException e) {
+            VMManager.clearVmStarting(vmId);
             output.append(e.getMessage());
             errors.append(Log.getStackTraceString(e));
+        } finally {
+            VMManager.clearVmStarting(vmId);
         }
         return output.toString();
     }
@@ -311,6 +344,11 @@ public class Terminal {
         if (!ensureVmProcessCapacity(dialogActivity)) {
             callback.onCommandCompleted("", "VM process limit reached for Android 15 compatibility.");
             return "Execution blocked: process limit reached.";
+        }
+        String vmId = currentVmId();
+        if (!acquireVmStartSlot(dialogActivity, vmId)) {
+            callback.onCommandCompleted("", "VM start already in progress or already running.");
+            return "Execution blocked: VM busy.";
         }
         AtomicReference<StringBuilder> output = new AtomicReference<>(new StringBuilder());
         StringBuilder errors = new StringBuilder();
@@ -367,14 +405,16 @@ public class Terminal {
                 processBuilder.command(prootCommand);
                 qemuProcess = processBuilder.start();
                 Terminal.resetStreamingStopToken();
-                VMManager.registerVmProcess(getContext(), com.vectras.vm.main.core.MainStartVM.lastVMID, qemuProcess);
+                VMManager.registerVmProcess(getContext(), vmId, qemuProcess);
 
                 output.set(streamLog(userCommand, qemuProcess, true));
 
             } catch (IOException e) {
+                VMManager.clearVmStarting(vmId);
                 output.get().append(e.getMessage());
                 errors.append(Log.getStackTraceString(e));
             } finally {
+                VMManager.clearVmStarting(vmId);
                 // Dismiss ProgressDialog on the main thread
                 new Handler(Looper.getMainLooper()).post(progressDialog::dismiss);
 
