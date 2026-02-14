@@ -57,19 +57,19 @@ public class StartVM {
             if (!img.isEmpty()) {
                 if (ifType.isEmpty()) {
                     hdd0 = "-hda";
-                    hdd0 += " '" + img + "'";
+                    hdd0 += " " + shellQuote(img);
                 } else {
                     hdd0 = "-drive";
                     hdd0 += " index=0";
                     hdd0 += ",media=disk";
                     hdd0 += ",if=" + ifType;
-                    hdd0 += ",file='" + img + "'";
+                    hdd0 += ",file=" + shellQuote(img);
 
                     if ((arch.equals("ARM64") && ifType.equals("ide")) || arch.equals("PPC")) {
                         hdd0 = "-drive";
                         hdd0 += " index=0";
                         hdd0 += ",media=disk";
-                        hdd0 += ",file='" + img + "'";
+                        hdd0 += ",file=" + shellQuote(img);
                     }
                 }
                 params.add(hdd0);
@@ -81,7 +81,7 @@ public class StartVM {
                 if (cdromFile.exists()) {
                     if (arch.equals("ARM64")) {
                         cdrom = " -drive";
-                        cdrom += " if=none,id=cdrom,format=raw,media=cdrom,file='" + cdromFile.getPath() + "'";
+                        cdrom += " if=none,id=cdrom,format=raw,media=cdrom,file=" + shellQuote(cdromFile.getPath());
                         cdrom += " -device";
                         cdrom += " usb-storage,drive=cdrom";
                         if (!extras.contains("-device nec-usb-xhci")) {
@@ -93,12 +93,12 @@ public class StartVM {
                     } else {
                         if (ifType.isEmpty()) {
                             cdrom = "-cdrom";
-                            cdrom += " '" + cdromFile.getPath() + "'";
+                            cdrom += " " + shellQuote(cdromFile.getPath());
                         } else {
                             cdrom = "-drive";
                             cdrom += " index=1";
                             cdrom += ",media=cdrom";
-                            cdrom += ",file='" + cdromFile.getPath() + "'";
+                            cdrom += ",file=" + shellQuote(cdromFile.getPath());
                         }
                     }
 
@@ -111,16 +111,16 @@ public class StartVM {
                     cdrom += " -device";
                     cdrom += " usb-storage,bus=defaultxhci.0,drive=cdrom";
                     cdrom += " -drive";
-                    cdrom += " if=none,id=cdrom,format=raw,media=cdrom,file='" + cdrompath + "'";
+                    cdrom += " if=none,id=cdrom,format=raw,media=cdrom,file=" + shellQuote(cdrompath);
                 } else {
                     if (ifType.isEmpty()) {
                         cdrom = "-cdrom";
-                        cdrom += " '" + cdrompath + "'";
+                        cdrom += " " + shellQuote(cdrompath);
                     } else {
                         cdrom = "-drive";
                         cdrom += " index=1";
                         cdrom += ",media=cdrom";
-                        cdrom += ",file='" + cdrompath + "'";
+                        cdrom += ",file=" + shellQuote(cdrompath);
                     }
                 }
                 params.add(cdrom);
@@ -131,13 +131,13 @@ public class StartVM {
             if (hdd1File.exists()) {
                 if (ifType.isEmpty()) {
                     hdd1 = "-hdb";
-                    hdd1 += " '" + hdd1File.getPath() + "'";
+                    hdd1 += " " + shellQuote(hdd1File.getPath());
                 } else {
                     hdd1 = "-drive";
                     hdd1 += " index=2";
                     hdd1 += ",media=disk";
                     hdd1 += ",if=" + ifType;
-                    hdd1 += ",file='" + hdd1File.getPath() + "'";
+                    hdd1 += ",file=" + shellQuote(hdd1File.getPath());
                 }
 
                 params.add(hdd1);
@@ -150,7 +150,7 @@ public class StartVM {
                     && MainSettingsManager.getUseSdl(activity)) {
                 String wrapperPath = get3dfxWrapperPath(activity);
                 if (wrapperPath != null && !finalextra.contains(wrapperPath)) {
-                    String wrapperCdrom = "-drive index=4,media=cdrom,file='" + wrapperPath + "'";
+                    String wrapperCdrom = "-drive index=4,media=cdrom,file=" + shellQuote(wrapperPath);
                     params.add(wrapperCdrom);
                 }
             }
@@ -261,7 +261,7 @@ public class StartVM {
                 params.add("-d");
                 params.add("trace");
                 params.add("-D");
-                params.add("'" + RafaeliaSettings.logFile(activity).getAbsolutePath() + "'");
+                params.add(shellQuote(RafaeliaSettings.logFile(activity).getAbsolutePath()));
             }
         }
 
@@ -364,6 +364,10 @@ public class StartVM {
             }
         }
         return wrapperFile.exists() ? wrapperFile.getPath() : null;
+    }
+
+    static String shellQuote(String value) {
+        return "'" + value.replace("'", "'\"'\"'") + "'";
     }
 
 }
