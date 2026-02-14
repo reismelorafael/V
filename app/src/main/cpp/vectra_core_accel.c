@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <stdatomic.h>
 
@@ -42,6 +43,167 @@ typedef struct {
 
 static vectra_hw_contract_t g_hw_contract;
 static pthread_once_t g_hw_contract_once = PTHREAD_ONCE_INIT;
+
+#define VECTRA_ARENA_CAPACITY_BYTES (64u * 1024u * 1024u)
+#define VECTRA_ARENA_MAX_SLOTS 4096u
+#define VECTRA_ARENA_HANDLE_INDEX_MASK 0x0FFFu
+#define VECTRA_ARENA_HANDLE_GEN_SHIFT 12u
+#define VECTRA_ARENA_HANDLE_GEN_MASK 0x0007FFFFu
+
+#define VECTRA_ARENA_OK 0
+#define VECTRA_ARENA_ERR_INVALID_ARG -1
+#define VECTRA_ARENA_ERR_NO_MEMORY -2
+#define VECTRA_ARENA_ERR_OUT_OF_RANGE -3
+#define VECTRA_ARENA_ERR_BAD_HANDLE -4
+#define VECTRA_ARENA_ERR_INTERNAL -5
+
+typedef struct {
+    uint32_t offset;
+    uint32_t size;
+    uint32_t generation;
+    uint8_t in_use;
+} vectra_arena_slot_t;
+
+static uint8_t* g_arena_base = NULL;
+static uint32_t g_arena_capacity = 0;
+static vectra_arena_slot_t g_arena_slots[VECTRA_ARENA_MAX_SLOTS];
+static pthread_mutex_t g_arena_lock = PTHREAD_MUTEX_INITIALIZER;
+static atomic_uint g_arena_active_slots = 0;
+
+static int vectra_arena_decode_handle(jint handle, uint32_t* slot_index, uint32_t* generation) {
+    if (handle <= 0 || !slot_index || !generation) {
+        return VECTRA_ARENA_ERR_BAD_HANDLE;
+    }
+
+    uint32_t raw = (uint32_t)handle;
+    uint32_t index = raw & VECTRA_ARENA_HANDLE_INDEX_MASK;
+    if (index == 0u || index > VECTRA_ARENA_MAX_SLOTS) {
+        return VECTRA_ARENA_ERR_BAD_HANDLE;
+    }
+
+    uint32_t gen = (raw >> VECTRA_ARENA_HANDLE_GEN_SHIFT) & VECTRA_ARENA_HANDLE_GEN_MASK;
+    if (gen == 0u) {
+        return VECTRA_ARENA_ERR_BAD_HANDLE;
+    }
+
+    *slot_index = index - 1u;
+    *generation = gen;
+    return VECTRA_ARENA_OK;
+}
+
+static jint vectra_arena_make_handle(uint32_t slot_index, uint32_t generation) {
+    uint32_t safe_gen = generation & VECTRA_ARENA_HANDLE_GEN_MASK;
+    if (safe_gen == 0u) {
+        safe_gen = 1u;
+    }
+    uint32_t raw = (safe_gen << VECTRA_ARENA_HANDLE_GEN_SHIFT) | (slot_index + 1u);
+    if ((raw & 0x80000000u) != 0u) {
+        raw &= 0x7FFFFFFFu;
+        if ((raw & VECTRA_ARENA_HANDLE_INDEX_MASK) == 0u) {
+            raw |= 1u;
+        }
+    }
+    return (jint)raw;
+}
+
+static int vectra_arena_ensure_initialized(void) {
+    if (g_arena_base) {
+        return VECTRA_ARENA_OK;
+    }
+
+    uint8_t* base = (uint8_t*)malloc((size_t)VECTRA_ARENA_CAPACITY_BYTES);
+    if (!base) {
+        return VECTRA_ARENA_ERR_NO_MEMORY;
+    }
+
+    g_arena_base = base;
+    g_arena_capacity = VECTRA_ARENA_CAPACITY_BYTES;
+    memset(g_arena_slots, 0, sizeof(g_arena_slots));
+    atomic_store(&g_arena_active_slots, 0u);
+    return VECTRA_ARENA_OK;
+}
+
+static int vectra_arena_find_region(uint32_t bytes, uint32_t* out_offset) {
+    if (!out_offset || bytes == 0u || bytes > g_arena_capacity) {
+        return VECTRA_ARENA_ERR_INVALID_ARG;
+    }
+
+    uint32_t cursor = 0u;
+    while (cursor <= g_arena_capacity - bytes) {
+        int next = -1;
+        uint32_t next_offset = g_arena_capacity;
+        for (uint32_t i = 0; i < VECTRA_ARENA_MAX_SLOTS; i++) {
+            if (!g_arena_slots[i].in_use) {
+                continue;
+            }
+            uint32_t off = g_arena_slots[i].offset;
+            if (off >= cursor && off < next_offset) {
+                next = (int)i;
+                next_offset = off;
+            }
+        }
+
+        if (next < 0) {
+            *out_offset = cursor;
+            return VECTRA_ARENA_OK;
+        }
+
+        if (next_offset - cursor >= bytes) {
+            *out_offset = cursor;
+            return VECTRA_ARENA_OK;
+        }
+
+        uint32_t end = g_arena_slots[next].offset + g_arena_slots[next].size;
+        if (end <= cursor) {
+            return VECTRA_ARENA_ERR_INTERNAL;
+        }
+        cursor = end;
+    }
+
+    return VECTRA_ARENA_ERR_NO_MEMORY;
+}
+
+static int vectra_arena_get_slot_for_range(jint handle, jint offset, jint length,
+                                           vectra_arena_slot_t** out_slot,
+                                           uint8_t** out_ptr) {
+    if (!out_slot || !out_ptr || offset < 0 || length < 0) {
+        return VECTRA_ARENA_ERR_INVALID_ARG;
+    }
+
+    if (!g_arena_base || g_arena_capacity == 0u) {
+        return VECTRA_ARENA_ERR_BAD_HANDLE;
+    }
+
+    uint32_t slot_index = 0u;
+    uint32_t generation = 0u;
+    int rc = vectra_arena_decode_handle(handle, &slot_index, &generation);
+    if (rc != VECTRA_ARENA_OK) {
+        return rc;
+    }
+
+    vectra_arena_slot_t* slot = &g_arena_slots[slot_index];
+    if (!slot->in_use || slot->generation != generation) {
+        return VECTRA_ARENA_ERR_BAD_HANDLE;
+    }
+
+    uint32_t uoffset = (uint32_t)offset;
+    uint32_t ulength = (uint32_t)length;
+    if (uoffset > slot->size) {
+        return VECTRA_ARENA_ERR_OUT_OF_RANGE;
+    }
+    if (ulength > (slot->size - uoffset)) {
+        return VECTRA_ARENA_ERR_OUT_OF_RANGE;
+    }
+
+    uint32_t absolute = slot->offset + uoffset;
+    if (absolute > g_arena_capacity || ulength > (g_arena_capacity - absolute)) {
+        return VECTRA_ARENA_ERR_OUT_OF_RANGE;
+    }
+
+    *out_slot = slot;
+    *out_ptr = g_arena_base + absolute;
+    return VECTRA_ARENA_OK;
+}
 
 static uint32_t vectra_arch_tag(void) {
 #if defined(__aarch64__)
@@ -471,6 +633,320 @@ Java_com_vectras_vm_core_NativeFastPath_nativeFeatureMask(JNIEnv* env, jclass cl
     (void)env;
     (void)clazz;
     return (jint)vectra_hw_contract_get()->feature_mask;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeAllocArena(JNIEnv* env, jclass clazz, jint bytes) {
+    (void)env;
+    (void)clazz;
+    if (bytes <= 0) {
+        return VECTRA_ARENA_ERR_INVALID_ARG;
+    }
+
+    pthread_mutex_lock(&g_arena_lock);
+
+    int init_rc = vectra_arena_ensure_initialized();
+    if (init_rc != VECTRA_ARENA_OK) {
+        pthread_mutex_unlock(&g_arena_lock);
+        return init_rc;
+    }
+
+    uint32_t request = (uint32_t)bytes;
+    uint32_t slot_index = VECTRA_ARENA_MAX_SLOTS;
+    for (uint32_t i = 0; i < VECTRA_ARENA_MAX_SLOTS; i++) {
+        if (!g_arena_slots[i].in_use) {
+            slot_index = i;
+            break;
+        }
+    }
+    if (slot_index == VECTRA_ARENA_MAX_SLOTS) {
+        pthread_mutex_unlock(&g_arena_lock);
+        return VECTRA_ARENA_ERR_NO_MEMORY;
+    }
+
+    uint32_t offset = 0u;
+    int rc = vectra_arena_find_region(request, &offset);
+    if (rc != VECTRA_ARENA_OK) {
+        pthread_mutex_unlock(&g_arena_lock);
+        return rc;
+    }
+
+    vectra_arena_slot_t* slot = &g_arena_slots[slot_index];
+    uint32_t next_gen = slot->generation + 1u;
+    if ((next_gen & VECTRA_ARENA_HANDLE_GEN_MASK) == 0u) {
+        next_gen = 1u;
+    }
+
+    slot->offset = offset;
+    slot->size = request;
+    slot->generation = next_gen;
+    slot->in_use = 1u;
+    atomic_fetch_add(&g_arena_active_slots, 1u);
+
+    jint handle = vectra_arena_make_handle(slot_index, slot->generation);
+    pthread_mutex_unlock(&g_arena_lock);
+    return handle;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeFreeArena(JNIEnv* env, jclass clazz, jint handle) {
+    (void)env;
+    (void)clazz;
+
+    pthread_mutex_lock(&g_arena_lock);
+
+    if (!g_arena_base || g_arena_capacity == 0u) {
+        pthread_mutex_unlock(&g_arena_lock);
+        return VECTRA_ARENA_ERR_BAD_HANDLE;
+    }
+
+    uint32_t slot_index = 0u;
+    uint32_t generation = 0u;
+    int rc = vectra_arena_decode_handle(handle, &slot_index, &generation);
+    if (rc != VECTRA_ARENA_OK) {
+        pthread_mutex_unlock(&g_arena_lock);
+        return rc;
+    }
+
+    vectra_arena_slot_t* slot = &g_arena_slots[slot_index];
+    if (!slot->in_use || slot->generation != generation) {
+        pthread_mutex_unlock(&g_arena_lock);
+        return VECTRA_ARENA_ERR_BAD_HANDLE;
+    }
+
+    slot->in_use = 0u;
+    slot->offset = 0u;
+    slot->size = 0u;
+    atomic_fetch_sub(&g_arena_active_slots, 1u);
+
+    if (atomic_load(&g_arena_active_slots) == 0u) {
+        free(g_arena_base);
+        g_arena_base = NULL;
+        g_arena_capacity = 0u;
+    }
+
+    pthread_mutex_unlock(&g_arena_lock);
+    return VECTRA_ARENA_OK;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeArenaCopy(JNIEnv* env, jclass clazz,
+                                                         jint srcHandle, jint srcOffset,
+                                                         jint dstHandle, jint dstOffset,
+                                                         jint length) {
+    (void)env;
+    (void)clazz;
+    if (length < 0 || srcOffset < 0 || dstOffset < 0) {
+        return VECTRA_ARENA_ERR_INVALID_ARG;
+    }
+    if (length == 0) {
+        return VECTRA_ARENA_OK;
+    }
+
+    pthread_mutex_lock(&g_arena_lock);
+
+    vectra_arena_slot_t* src_slot = NULL;
+    vectra_arena_slot_t* dst_slot = NULL;
+    uint8_t* src_ptr = NULL;
+    uint8_t* dst_ptr = NULL;
+
+    int rc = vectra_arena_get_slot_for_range(srcHandle, srcOffset, length, &src_slot, &src_ptr);
+    if (rc != VECTRA_ARENA_OK) {
+        pthread_mutex_unlock(&g_arena_lock);
+        return rc;
+    }
+    rc = vectra_arena_get_slot_for_range(dstHandle, dstOffset, length, &dst_slot, &dst_ptr);
+    if (rc != VECTRA_ARENA_OK) {
+        pthread_mutex_unlock(&g_arena_lock);
+        return rc;
+    }
+
+    if (dst_ptr > src_ptr && dst_ptr < src_ptr + length) {
+        for (jint i = length - 1; i >= 0; i--) {
+            dst_ptr[i] = src_ptr[i];
+        }
+    } else {
+        jint i = 0;
+        jint end = length & ~31;
+        while (i < end) {
+            dst_ptr[i] = src_ptr[i];
+            dst_ptr[i + 1] = src_ptr[i + 1];
+            dst_ptr[i + 2] = src_ptr[i + 2];
+            dst_ptr[i + 3] = src_ptr[i + 3];
+            dst_ptr[i + 4] = src_ptr[i + 4];
+            dst_ptr[i + 5] = src_ptr[i + 5];
+            dst_ptr[i + 6] = src_ptr[i + 6];
+            dst_ptr[i + 7] = src_ptr[i + 7];
+            dst_ptr[i + 8] = src_ptr[i + 8];
+            dst_ptr[i + 9] = src_ptr[i + 9];
+            dst_ptr[i + 10] = src_ptr[i + 10];
+            dst_ptr[i + 11] = src_ptr[i + 11];
+            dst_ptr[i + 12] = src_ptr[i + 12];
+            dst_ptr[i + 13] = src_ptr[i + 13];
+            dst_ptr[i + 14] = src_ptr[i + 14];
+            dst_ptr[i + 15] = src_ptr[i + 15];
+            dst_ptr[i + 16] = src_ptr[i + 16];
+            dst_ptr[i + 17] = src_ptr[i + 17];
+            dst_ptr[i + 18] = src_ptr[i + 18];
+            dst_ptr[i + 19] = src_ptr[i + 19];
+            dst_ptr[i + 20] = src_ptr[i + 20];
+            dst_ptr[i + 21] = src_ptr[i + 21];
+            dst_ptr[i + 22] = src_ptr[i + 22];
+            dst_ptr[i + 23] = src_ptr[i + 23];
+            dst_ptr[i + 24] = src_ptr[i + 24];
+            dst_ptr[i + 25] = src_ptr[i + 25];
+            dst_ptr[i + 26] = src_ptr[i + 26];
+            dst_ptr[i + 27] = src_ptr[i + 27];
+            dst_ptr[i + 28] = src_ptr[i + 28];
+            dst_ptr[i + 29] = src_ptr[i + 29];
+            dst_ptr[i + 30] = src_ptr[i + 30];
+            dst_ptr[i + 31] = src_ptr[i + 31];
+            i += 32;
+        }
+        while (i < length) {
+            dst_ptr[i] = src_ptr[i];
+            i++;
+        }
+    }
+
+    pthread_mutex_unlock(&g_arena_lock);
+    return VECTRA_ARENA_OK;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeArenaXorChecksum(JNIEnv* env, jclass clazz,
+                                                                jint handle, jint offset,
+                                                                jint length) {
+    (void)env;
+    (void)clazz;
+    if (offset < 0 || length < 0) {
+        return VECTRA_ARENA_ERR_INVALID_ARG;
+    }
+    if (length == 0) {
+        return 0;
+    }
+
+    pthread_mutex_lock(&g_arena_lock);
+
+    vectra_arena_slot_t* slot = NULL;
+    uint8_t* ptr = NULL;
+    int rc = vectra_arena_get_slot_for_range(handle, offset, length, &slot, &ptr);
+    (void)slot;
+    if (rc != VECTRA_ARENA_OK) {
+        pthread_mutex_unlock(&g_arena_lock);
+        return rc;
+    }
+
+    int x = 0;
+#if defined(__ARM_NEON)
+    int i = 0;
+    uint8x16_t acc = vdupq_n_u8(0);
+    int end = length & ~15;
+    for (; i < end; i += 16) {
+        uint8x16_t v = vld1q_u8(ptr + i);
+        acc = veorq_u8(acc, v);
+    }
+    uint8_t lane[16];
+    vst1q_u8(lane, acc);
+    for (int j = 0; j < 16; j++) {
+        x ^= lane[j];
+    }
+    for (; i < length; i++) {
+        x ^= ptr[i];
+    }
+#else
+    int i = 0;
+    int end = length & ~7;
+    while (i < end) {
+        x ^= ptr[i];
+        x ^= ptr[i + 1];
+        x ^= ptr[i + 2];
+        x ^= ptr[i + 3];
+        x ^= ptr[i + 4];
+        x ^= ptr[i + 5];
+        x ^= ptr[i + 6];
+        x ^= ptr[i + 7];
+        i += 8;
+    }
+    while (i < length) {
+        x ^= ptr[i];
+        i++;
+    }
+#endif
+
+    pthread_mutex_unlock(&g_arena_lock);
+    return x;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeArenaFill(JNIEnv* env, jclass clazz,
+                                                         jint handle, jint offset,
+                                                         jint length, jint value) {
+    (void)env;
+    (void)clazz;
+    if (offset < 0 || length < 0 || (value & ~0xFF) != 0) {
+        return VECTRA_ARENA_ERR_INVALID_ARG;
+    }
+    if (length == 0) {
+        return VECTRA_ARENA_OK;
+    }
+
+    pthread_mutex_lock(&g_arena_lock);
+
+    vectra_arena_slot_t* slot = NULL;
+    uint8_t* ptr = NULL;
+    int rc = vectra_arena_get_slot_for_range(handle, offset, length, &slot, &ptr);
+    (void)slot;
+    if (rc != VECTRA_ARENA_OK) {
+        pthread_mutex_unlock(&g_arena_lock);
+        return rc;
+    }
+
+    uint8_t b = (uint8_t)value;
+    jint i = 0;
+    jint end = length & ~31;
+    while (i < end) {
+        ptr[i] = b;
+        ptr[i + 1] = b;
+        ptr[i + 2] = b;
+        ptr[i + 3] = b;
+        ptr[i + 4] = b;
+        ptr[i + 5] = b;
+        ptr[i + 6] = b;
+        ptr[i + 7] = b;
+        ptr[i + 8] = b;
+        ptr[i + 9] = b;
+        ptr[i + 10] = b;
+        ptr[i + 11] = b;
+        ptr[i + 12] = b;
+        ptr[i + 13] = b;
+        ptr[i + 14] = b;
+        ptr[i + 15] = b;
+        ptr[i + 16] = b;
+        ptr[i + 17] = b;
+        ptr[i + 18] = b;
+        ptr[i + 19] = b;
+        ptr[i + 20] = b;
+        ptr[i + 21] = b;
+        ptr[i + 22] = b;
+        ptr[i + 23] = b;
+        ptr[i + 24] = b;
+        ptr[i + 25] = b;
+        ptr[i + 26] = b;
+        ptr[i + 27] = b;
+        ptr[i + 28] = b;
+        ptr[i + 29] = b;
+        ptr[i + 30] = b;
+        ptr[i + 31] = b;
+        i += 32;
+    }
+    while (i < length) {
+        ptr[i] = b;
+        i++;
+    }
+
+    pthread_mutex_unlock(&g_arena_lock);
+    return VECTRA_ARENA_OK;
 }
 
 
