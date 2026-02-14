@@ -5,6 +5,9 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+### Changed
+- Saneados links locais em `VECTRAS_MEGAPROMPT_DOCS.md` para apontar explicitamente para arquivos sob `docs/` (`ESFERAS_METODOLOGICAS_RAFAELIA`, `DETERMINISTIC_VM_MUTATION_LAYER`, `PERFORMANCE_INTEGRITY`).
+
 ## [3.6.6] - 2026-02-10
 ### Added
 - `TokenBucketRateLimiter` para controle de taxa de logs.

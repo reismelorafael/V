@@ -576,9 +576,9 @@ target_link_libraries(rmr
 
 ## References
 
-- [RAFAELIA Methodology](ESFERAS_METODOLOGICAS_RAFAELIA.md)
-- [Deterministic VM Layer](DETERMINISTIC_VM_MUTATION_LAYER.md)
-- [Performance Integrity](PERFORMANCE_INTEGRITY.md)
+- [RAFAELIA Methodology](docs/ESFERAS_METODOLOGICAS_RAFAELIA.md)
+- [Deterministic VM Layer](docs/DETERMINISTIC_VM_MUTATION_LAYER.md)
+- [Performance Integrity](docs/PERFORMANCE_INTEGRITY.md)
 ```
 
 **INSTRUÇÕES**:
