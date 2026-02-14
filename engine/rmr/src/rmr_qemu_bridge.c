@@ -1,4 +1,5 @@
 #include "rmr_qemu_bridge.h"
+#include "rmr_ll_tuning.h"
 
 #include <limits.h>
 #include <stdio.h>
@@ -33,9 +34,15 @@ void RmR_QemuPlan_Autotune(const RmR_HW_Info *hw,
   plan->vm_mem_mib = clamp_u32(mem_mib ? mem_mib : 2048u, 512u, 32768u);
 
   uint32_t host_cores = 2u;
+  {
+    RmR_LL_TunePlan tune;
+    RmR_LL_ApplyTuneDefaults(hw, &tune);
+    host_cores = clamp_u32(tune.qemu_smp_cpus, 2u, 16u);
+    plan->use_iothread = tune.qemu_use_iothread ? 1u : 0u;
+    plan->use_direct_io = tune.qemu_use_direct_io ? 1u : 0u;
+  }
+
   if (hw) {
-    host_cores = clamp_u32(hw->word_bits >= 64u ? 8u : 4u, 2u, 16u);
-    if (hw->arch == 4u || hw->arch == 2u) host_cores = clamp_u32(host_cores + 2u, 2u, 16u);
     plan->use_kvm = (hw->arch == 2u || hw->arch == 4u) ? 1u : 0u;
     if (hw->cache_hint_l2 >= (512u * 1024u)) {
       plan->preset = RMR_QEMU_PRESET_PERFORMANCE;
@@ -72,8 +79,6 @@ void RmR_QemuPlan_Autotune(const RmR_HW_Info *hw,
     case RMR_QEMU_PRESET_BALANCED:
     default:
       plan->vm_cpus = clamp_u32(host_cores / 2u, 2u, 8u);
-      plan->use_iothread = 1u;
-      plan->use_direct_io = 0u;
       plan->use_multifd = 0u;
       break;
   }
