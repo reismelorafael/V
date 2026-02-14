@@ -31,31 +31,34 @@ android {
         resValue "integer", "app_version_code", versionCode.toString()
     }
 
+    def signingStoreFile = project.findProperty("VECTRAS_SIGNING_STORE_FILE") ?: System.getenv("VECTRAS_SIGNING_STORE_FILE")
+    def signingStorePassword = project.findProperty("VECTRAS_SIGNING_STORE_PASSWORD") ?: System.getenv("VECTRAS_SIGNING_STORE_PASSWORD")
+    def signingKeyAlias = project.findProperty("VECTRAS_SIGNING_KEY_ALIAS") ?: System.getenv("VECTRAS_SIGNING_KEY_ALIAS")
+    def signingKeyPassword = project.findProperty("VECTRAS_SIGNING_KEY_PASSWORD") ?: System.getenv("VECTRAS_SIGNING_KEY_PASSWORD")
+    def hasReleaseSigning = signingStoreFile && signingStorePassword && signingKeyAlias && signingKeyPassword
+
     signingConfigs {
-        debug {
-            storeFile file('../vectras.jks')
-            keyAlias 'vectras'
-            storePassword '856856'
-            keyPassword '856856'
-        }
-        release {
-            storeFile file('../vectras.jks')
-            keyAlias 'vectras'
-            storePassword '856856'
-            keyPassword '856856'
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(signingStoreFile)
+                storePassword signingStorePassword
+                keyAlias signingKeyAlias
+                keyPassword signingKeyPassword
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.release
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.release
+            }
             minifyEnabled = true
             shrinkResources = true
             proguardFiles(getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro')
             buildConfigField "boolean", "VECTRA_CORE_ENABLED", "false"
         }
         debug {
-            signingConfig = signingConfigs.debug
             minifyEnabled = false
             proguardFiles(getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro')
             buildConfigField "boolean", "VECTRA_CORE_ENABLED", "true"

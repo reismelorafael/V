@@ -1,0 +1,3 @@
+# Documented exceptions for tools/check_sensitive_artifacts.sh
+# One repository-relative path per line.
+# Keep this list minimal and justify each entry in docs/SECURITY.md.

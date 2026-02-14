@@ -40,6 +40,9 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    - name: Run sensitive artifact gate
+      run: tools/check_sensitive_artifacts.sh
+
     - name: Send notification to Telegram
       run: |
         if [[ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]]; then
@@ -62,6 +65,10 @@ jobs:
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        VECTRAS_SIGNING_STORE_FILE: ${{ secrets.VECTRAS_SIGNING_STORE_FILE }}
+        VECTRAS_SIGNING_STORE_PASSWORD: ${{ secrets.VECTRAS_SIGNING_STORE_PASSWORD }}
+        VECTRAS_SIGNING_KEY_ALIAS: ${{ secrets.VECTRAS_SIGNING_KEY_ALIAS }}
+        VECTRAS_SIGNING_KEY_PASSWORD: ${{ secrets.VECTRAS_SIGNING_KEY_PASSWORD }}
       run: ./gradlew assembleRelease -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
 
     - name: Upload Debug APK as artifact
