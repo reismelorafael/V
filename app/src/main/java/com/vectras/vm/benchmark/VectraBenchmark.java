@@ -81,8 +81,6 @@ public class VectraBenchmark {
     private static final int M4_COLS = 4096;
     private static final int M4_BYTES = M4_ROWS * M4_COLS;
     private static volatile int copyStripeBytes = BareMetalProfile.recommendedWorkBlockBytes();
-    private static final ThreadLocal<byte[]> COPY_SCRATCH_POOL =
-            ThreadLocal.withInitial(() -> new byte[M4_BYTES]);
     private static volatile long SINK = 0L;
 
     
@@ -781,12 +779,23 @@ public class VectraBenchmark {
         long run() throws Exception;
     }
     
-    static long benchMemCopyBandwidth(byte[] s0, byte[] d0) {
-        // Low-level manual copy with thread-local arena (no per-call allocations)
-        byte[] scratch = COPY_SCRATCH_POOL.get();
+    static long benchMemCopyBandwidth(byte[] s0, byte[] d0, ArenaBenchmarkContext arenaCtx) {
+        if (arenaCtx != null && arenaCtx.available) {
+            long t0 = System.nanoTime();
+            boolean copied = NativeFastPath.copyArena(arenaCtx.srcArenaHandle, 0,
+                    arenaCtx.dstArenaHandle, 0, M4_BYTES);
+            long t1 = System.nanoTime();
+            if (copied) {
+                return t1 - t0 + (NativeFastPath.xorChecksumArena(arenaCtx.dstArenaHandle, 0, M4_BYTES) & 0);
+            }
+        }
+
+        // Fallback path: Java byte[] destination provided by caller (no hot-path allocations).
+        if (d0 == null || d0.length < M4_BYTES) {
+            throw new IllegalArgumentException("Destination buffer too small for M4 copy");
+        }
         int dstOffset = 0;
         long t0 = System.nanoTime();
-
         for (int i = 0; i < M4_ROWS; i++) {
             byte[] row = M4[i];
             int copied = 0;
@@ -795,14 +804,75 @@ public class VectraBenchmark {
                 if (chunk > copyStripeBytes) {
                     chunk = copyStripeBytes;
                 }
-                NativeFastPath.copyBytes(row, copied, scratch, dstOffset + copied, chunk);
+                NativeFastPath.copyBytes(row, copied, d0, dstOffset + copied, chunk);
                 copied += chunk;
             }
             dstOffset += M4_COLS;
         }
-
         long t1 = System.nanoTime();
-        return t1 - t0 + (NativeFastPath.xorChecksum(scratch, 0, M4_BYTES) & 0);
+        return t1 - t0 + (NativeFastPath.xorChecksum(d0, 0, M4_BYTES) & 0);
+    }
+
+    private static final class ArenaBenchmarkContext {
+        final int srcArenaHandle;
+        final int dstArenaHandle;
+        final boolean available;
+
+        private ArenaBenchmarkContext(int srcArenaHandle, int dstArenaHandle, boolean available) {
+            this.srcArenaHandle = srcArenaHandle;
+            this.dstArenaHandle = dstArenaHandle;
+            this.available = available;
+        }
+    }
+
+    private static ArenaBenchmarkContext setupArenaBenchmarkContext() {
+        if (!NativeFastPath.isArenaAvailable()) {
+            return new ArenaBenchmarkContext(0, 0, false);
+        }
+
+        int src = 0;
+        int dst = 0;
+        try {
+            src = NativeFastPath.allocArena(M4_BYTES);
+            dst = NativeFastPath.allocArena(M4_BYTES);
+            if (src <= 0 || dst <= 0) {
+                teardownArenaBenchmarkContext(new ArenaBenchmarkContext(src, dst, false));
+                return new ArenaBenchmarkContext(0, 0, false);
+            }
+            int o0 = 0;
+            for (int i = 0; i < M4_ROWS; i++) {
+                byte[] row = M4[i];
+                for (int j = 0; j < M4_COLS; j++) {
+                    if (!NativeFastPath.fillArena(src, o0, 1, row[j] & 0xFF)) {
+                        teardownArenaBenchmarkContext(new ArenaBenchmarkContext(src, dst, false));
+                        return new ArenaBenchmarkContext(0, 0, false);
+                    }
+                    o0++;
+                }
+            }
+            return new ArenaBenchmarkContext(src, dst, true);
+        } catch (Throwable ignored) {
+            teardownArenaBenchmarkContext(new ArenaBenchmarkContext(src, dst, false));
+            return new ArenaBenchmarkContext(0, 0, false);
+        }
+    }
+
+    private static void teardownArenaBenchmarkContext(ArenaBenchmarkContext ctx) {
+        if (ctx == null) {
+            return;
+        }
+        if (ctx.dstArenaHandle > 0) {
+            try {
+                NativeFastPath.freeArena(ctx.dstArenaHandle);
+            } catch (Throwable ignored) {
+            }
+        }
+        if (ctx.srcArenaHandle > 0) {
+            try {
+                NativeFastPath.freeArena(ctx.srcArenaHandle);
+            } catch (Throwable ignored) {
+            }
+        }
     }
     
     static long benchMemFillBandwidth(byte[] b0, byte v0) {
@@ -1219,9 +1289,11 @@ public class VectraBenchmark {
      */
     public static BenchmarkResult[] runAllBenchmarks() throws Exception {
         BenchmarkResult[] results = new BenchmarkResult[METRIC_COUNT];
+        ArenaBenchmarkContext arenaCtx = setupArenaBenchmarkContext();
         
         // Prepare test data
         byte[] memBuffer = new byte[MEMORY_BLOCK_SIZE * MEMORY_BLOCKS];
+        byte[] memCopyBuffer = new byte[M4_BYTES];
         int[] randomIndices = new int[MEMORY_BLOCKS];
         for (int i = 0; i < MEMORY_BLOCKS; i++) {
             randomIndices[i] = (int) ((mix64(i) & 0x7FFFFFFF) % memBuffer.length);
@@ -1232,6 +1304,7 @@ public class VectraBenchmark {
         }
         
         // Global warmup is intentionally minimal; detailed warmup/repeat is metric-local.
+        try {
         
         // CPU Single-threaded - Integer operations
         long rawVal = benchCpuIntegerAdd(CPU_WORKLOAD_SIZE);
@@ -1410,7 +1483,7 @@ public class VectraBenchmark {
             rawVal, formatBandwidth(memBytes, rawVal), "MB/s", CAT_MEMORY,
             "Random write pattern");
         
-        rawVal = benchMemCopyBandwidth(memBuffer, new byte[memBuffer.length]);
+        rawVal = benchMemCopyBandwidth(memBuffer, memCopyBuffer, arenaCtx);
         results[MEM_COPY_BANDWIDTH] = new BenchmarkResult(MEM_COPY_BANDWIDTH, "Memory Copy Bandwidth",
             rawVal, formatBandwidth(memBytes, rawVal), "MB/s", CAT_MEMORY,
             String.format("System.arraycopy %d KB", memBytes / 1024));
@@ -1609,7 +1682,7 @@ public class VectraBenchmark {
             rawVal, formatOpsPerSec(100, rawVal), "maps/s", CAT_EMULATION,
             "Memory mapping operations (64KB)");
         
-        rawVal = benchMemCopyBandwidth(memBuffer, new byte[memBuffer.length]);
+        rawVal = benchMemCopyBandwidth(memBuffer, memCopyBuffer, arenaCtx);
         results[EMU_BUFFER_COPY] = new BenchmarkResult(EMU_BUFFER_COPY, "Emu Buffer Copy",
             rawVal, formatBandwidth(memBytes, rawVal), "MB/s", CAT_EMULATION,
             "Host-to-guest buffer copy simulation");
@@ -1650,6 +1723,9 @@ public class VectraBenchmark {
             SINK ^= r.rawValue();
         }
         return results;
+        } finally {
+            teardownArenaBenchmarkContext(arenaCtx);
+        }
     }
     
     /**
