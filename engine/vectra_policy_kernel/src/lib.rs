@@ -347,6 +347,19 @@ impl RouteTable {
 pub struct PolicyKernel {
     route_table: RouteTable,
     allowed_stages: [Stage; 5],
+    focused: Option<String>,
+    anchors: Vec<String>,
+    log: Vec<LogEntry>,
+    seq: u64,
+    checkpoints: Vec<usize>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LogEntry {
+    pub seq: u64,
+    pub op: Op,
+    pub args: Vec<String>,
+    pub output: Output,
 }
 
 impl PolicyKernel {
@@ -360,7 +373,90 @@ impl PolicyKernel {
                 Stage::Verify,
                 Stage::Audit,
             ],
+            focused: None,
+            anchors: Vec::new(),
+            log: Vec::new(),
+            seq: 0,
+            checkpoints: Vec::new(),
         }
+    }
+
+    pub fn checkpoint(&mut self) -> usize {
+        let marker = self.log.len();
+        self.checkpoints.push(marker);
+        marker
+    }
+
+    pub fn rollback(&mut self) -> bool {
+        let Some(checkpoint) = self.checkpoints.pop() else {
+            return false;
+        };
+        self.log.truncate(checkpoint);
+        self.rebuild_from_log();
+        true
+    }
+
+    pub fn apply_log_entry(&mut self, entry: LogEntry) -> Result<(), KernelError> {
+        self.apply_log_entry_internal(entry, true, true)
+    }
+
+    pub fn focused(&self) -> Option<&str> {
+        self.focused.as_deref()
+    }
+
+    pub fn anchors(&self) -> &[String] {
+        &self.anchors
+    }
+
+    pub fn log(&self) -> &[LogEntry] {
+        &self.log
+    }
+
+    pub fn seq(&self) -> u64 {
+        self.seq
+    }
+
+    fn rebuild_from_log(&mut self) {
+        self.focused = None;
+        self.anchors.clear();
+        self.seq = 0;
+
+        let retained_log = self.log.clone();
+        for entry in retained_log {
+            let _ = self.apply_log_entry_internal(entry, false, false);
+        }
+    }
+
+    fn apply_log_entry_internal(
+        &mut self,
+        entry: LogEntry,
+        persist: bool,
+        strict_seq: bool,
+    ) -> Result<(), KernelError> {
+        if strict_seq && entry.seq != self.seq {
+            return Err(KernelError::PolicyViolation("log sequence mismatch"));
+        }
+
+        let expected_output = execute_key_once(&canonize(entry.op, &entry.args));
+        if entry.output != expected_output {
+            return Err(KernelError::PolicyViolation("log replay mismatch"));
+        }
+
+        match &entry.output {
+            Output::Focus(target) => {
+                self.focused = Some(target.clone());
+            }
+            Output::Anchor(anchor) => {
+                self.anchors.push(anchor.clone());
+            }
+            Output::Text(_) | Output::Number(_) => {}
+        }
+
+        self.seq = entry.seq.saturating_add(1);
+        if persist {
+            self.log.push(entry);
+        }
+        Ok(())
     }
 
     fn ensure_stage_allowed(&self, stage: Stage) -> Result<(), KernelError> {
