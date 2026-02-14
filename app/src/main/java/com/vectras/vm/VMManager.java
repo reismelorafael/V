@@ -97,10 +97,11 @@ public class VMManager {
 
     /**
      * Android app sandboxes can hit failures near the 32-child-process ceiling.
-     * Keep VM-owned subprocesses safely below 10 to preserve headroom for
-     * supporting services (logcat, audio, shell helpers, etc).
+     * Keep VM-owned subprocesses conservatively capped while adapting to device class.
      */
-    private static final int MAX_SUPERVISED_VM_PROCESSES = 9;
+    private static final int MIN_SUPERVISED_VM_PROCESSES = 4;
+    private static final int BASE_SUPERVISED_VM_PROCESSES = 9;
+    private static final int MAX_SUPERVISED_VM_PROCESSES = 12;
 
 
     public static synchronized boolean tryMarkVmStarting(String vmId) {
@@ -172,7 +173,7 @@ public class VMManager {
         if (!ensureSupervisorCapacity()) {
             VM_STATES.put(key, VmRuntimeState.STOPPED);
             safeTerminateDetachedProcess(process);
-            Log.w(TAG, "registerVmProcess rejected: active supervisor cap reached (" + MAX_SUPERVISED_VM_PROCESSES + ")");
+            Log.w(TAG, "registerVmProcess rejected: active supervisor cap reached (" + getMaxSupervisedVmProcesses() + ")");
             return;
         }
 
@@ -224,12 +225,12 @@ public class VMManager {
     }
 
     private static boolean ensureSupervisorCapacity() {
-        if (SUPERVISORS.size() < MAX_SUPERVISED_VM_PROCESSES) {
+        if (SUPERVISORS.size() < getMaxSupervisedVmProcesses()) {
             return true;
         }
 
         pruneInactiveSupervisors();
-        if (SUPERVISORS.size() < MAX_SUPERVISED_VM_PROCESSES) {
+        if (SUPERVISORS.size() < getMaxSupervisedVmProcesses()) {
             return true;
         }
 
@@ -255,7 +256,7 @@ public class VMManager {
             }
         }
 
-        return SUPERVISORS.size() < MAX_SUPERVISED_VM_PROCESSES;
+        return SUPERVISORS.size() < getMaxSupervisedVmProcesses();
     }
 
     public static synchronized int getActiveSupervisedVmProcessCount() {
@@ -264,12 +265,17 @@ public class VMManager {
     }
 
     public static synchronized int getMaxSupervisedVmProcesses() {
-        return MAX_SUPERVISED_VM_PROCESSES;
+        int cpuCount = Runtime.getRuntime().availableProcessors();
+        int adaptive = BASE_SUPERVISED_VM_PROCESSES + (cpuCount >= 8 ? 2 : 0) + (cpuCount >= 12 ? 1 : 0);
+        if (adaptive < MIN_SUPERVISED_VM_PROCESSES) {
+            return MIN_SUPERVISED_VM_PROCESSES;
+        }
+        return Math.min(adaptive, MAX_SUPERVISED_VM_PROCESSES);
     }
 
     public static synchronized boolean canRegisterAnotherVmProcess() {
         pruneInactiveSupervisors();
-        return SUPERVISORS.size() < MAX_SUPERVISED_VM_PROCESSES;
+        return SUPERVISORS.size() < getMaxSupervisedVmProcesses();
     }
 
     private static void safeTerminateDetachedProcess(Process process) {

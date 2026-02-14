@@ -9,12 +9,11 @@ import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
 import com.vectras.vterm.Terminal;
 
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
 public class LibraryChecker {
-    private Context context;
+    private final Context context;
 
     public LibraryChecker(Context context) {
         this.context = context;
@@ -78,26 +77,41 @@ public class LibraryChecker {
 
     // Method to check if the package is installed
     public void isPackageInstalled(String packageName, Terminal.CommandCallback callback) {
-        String command = "apk info";
-
-        Terminal terminal = new Terminal(context);
-        terminal.executeShellCommand(command, (Activity) context, false, (output, errors) -> {
-            if (callback != null) {
-                callback.onCommandCompleted(output, errors);
-            }
-        });
+        runInstalledPackageQuery(context, callback);
     }
 
     // Method to check if the package is installed
     public static void isPackageInstalled2(Context context, String packageName, Terminal.CommandCallback callback) {
-        String command = "apk info";
+        runInstalledPackageQuery(context, callback);
+    }
+
+    private static void runInstalledPackageQuery(Context context, Terminal.CommandCallback callback) {
+        if (context == null || callback == null) {
+            return;
+        }
 
         Terminal terminal = new Terminal(context);
-        terminal.executeShellCommand(command, context, false, (output, errors) -> {
-            if (callback != null) {
-                callback.onCommandCompleted(output, errors);
-            }
-        });
+        String pkgOutput = terminal.executeShellCommandWithResult("pkg list-installed", context);
+
+        if (pkgOutput != null && !pkgOutput.trim().isEmpty() && !containsShellNotFound(pkgOutput)) {
+            callback.onCommandCompleted(pkgOutput, "");
+            return;
+        }
+
+        String apkOutput = terminal.executeShellCommandWithResult("apk info", context);
+        if (apkOutput != null && !apkOutput.trim().isEmpty() && !containsShellNotFound(apkOutput)) {
+            callback.onCommandCompleted(apkOutput, "");
+            return;
+        }
+
+        callback.onCommandCompleted("", "No supported package manager detected in current distro/runtime.");
+    }
+
+    private static boolean containsShellNotFound(String output) {
+        String normalized = output.toLowerCase();
+        return normalized.contains("not found")
+                || normalized.contains("inaccessible or not found")
+                || normalized.contains("no such file");
     }
 
     public void checkAndInstallXFCE4(Activity activity) {

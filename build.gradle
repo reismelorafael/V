@@ -28,7 +28,7 @@ allprojects {
 ext {
     toolsVersion = properties.get('TOOLS_VERSION', '35.0.0')
     compileApi = Integer.parseInt(properties.get('COMPILE_API', '35').toString())
-    targetApi = Integer.parseInt(properties.get('TARGET_API', '28').toString())
+    targetApi = Integer.parseInt(properties.get('TARGET_API', '34').toString())
     minApi = Integer.parseInt(properties.get('MIN_API', '23').toString())
     javaLanguageVersion = Integer.parseInt(properties.get('JAVA_LANGUAGE_VERSION', '17').toString())
     ndkVersion = properties.get('NDK_VERSION', '27.2.12479018')
