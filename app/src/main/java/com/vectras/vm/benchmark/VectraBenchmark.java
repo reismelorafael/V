@@ -663,7 +663,7 @@ public class VectraBenchmark {
         return t1 - t0 + (r0.get() & 0);
     }
     
-    // ========== LOW-LEVEL Memory Benchmarks (Matrix-based) ==========
+    // ========== LOW-LEVEL Memory Benchmarks (caller-buffer based) ==========
     
     static long benchMemSequentialRead(byte[] b0) {
         // Low-level sequential read using caller-provided byte buffer
@@ -1509,22 +1509,22 @@ public class VectraBenchmark {
         rawVal = benchMemSequentialRead(memBuffer);
         results[MEM_SEQUENTIAL_READ] = new BenchmarkResult(MEM_SEQUENTIAL_READ, "Memory Seq Read",
             rawVal, formatBandwidth(memBytes, rawVal), "MB/s", CAT_MEMORY,
-            String.format("Sequential read of %d KB", memBytes / 1024));
+            String.format("Sequential read on caller buffer (%d KB)", memBytes / 1024));
         
         rawVal = benchMemSequentialWrite(memBuffer);
         results[MEM_SEQUENTIAL_WRITE] = new BenchmarkResult(MEM_SEQUENTIAL_WRITE, "Memory Seq Write",
             rawVal, formatBandwidth(memBytes, rawVal), "MB/s", CAT_MEMORY,
-            String.format("Sequential write of %d KB", memBytes / 1024));
+            String.format("Sequential write on caller buffer (%d KB)", memBytes / 1024));
         
         rawVal = benchMemRandomRead(memBuffer, randomIndices);
         results[MEM_RANDOM_READ] = new BenchmarkResult(MEM_RANDOM_READ, "Memory Random Read",
             rawVal, formatLatency(rawVal, MEMORY_BLOCKS), "ns/access", CAT_MEMORY,
-            String.format("%d random reads", MEMORY_BLOCKS));
+            String.format("%d random reads on caller buffer", MEMORY_BLOCKS));
         
         rawVal = benchmarkMedian(() -> benchMemRandomWrite(memBuffer, randomIndices));
         results[MEM_RANDOM_WRITE] = new BenchmarkResult(MEM_RANDOM_WRITE, "Memory Random Write",
             rawVal, formatBandwidth(memBytes, rawVal), "MB/s", CAT_MEMORY,
-            "Random write pattern");
+            "Random write pattern on caller buffer");
         
         rawVal = benchMemCopyBandwidth(memBuffer, memCopyBuffer, arenaCtx);
         results[MEM_COPY_BANDWIDTH] = new BenchmarkResult(MEM_COPY_BANDWIDTH, "Memory Copy Bandwidth",
