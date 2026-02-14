@@ -42,3 +42,11 @@ tasks.register("verifyRepoFileDependencies", Exec) {
     workingDir rootDir
     commandLine "python3", "tools/verify_repo_file_dependencies.py"
 }
+
+
+tasks.register("auditNonMdInventory", Exec) {
+    group = "verification"
+    description = "Gera inventário forense de arquivos não-Markdown"
+    workingDir rootDir
+    commandLine "python3", "tools/audit_non_md_inventory.py"
+}

@@ -75,3 +75,9 @@ Mapa arquivo-a-arquivo em três linhas por item: papel, ligação e comando de i
 - **Papel**: código C autoral para alocar arquivo de spill em storage e reduzir risco de kill por memória.
 - **Liga com**: ver [`tools/termux-arm64-orchestrator/orchestrate-build.sh`](termux-arm64-orchestrator/orchestrate-build.sh) e artefato `bin/storage_spill_allocator`.
 - **Inspeção**: `file "tools/termux-arm64-orchestrator/c/storage_spill_allocator.c"` e, quando texto, `sed -n "1,260p" "tools/termux-arm64-orchestrator/c/storage_spill_allocator.c"`.
+
+
+## `tools/audit_non_md_inventory.py`
+- **Papel**: script de auditoria forense para inventariar todos os arquivos não-Markdown com hash SHA-256.
+- **Liga com**: gera [`reports/NON_MD_AUDIT_REPORT.md`](../reports/NON_MD_AUDIT_REPORT.md) e [`reports/non_md_inventory.tsv`](../reports/non_md_inventory.tsv).
+- **Inspeção**: `python3 tools/audit_non_md_inventory.py` e `sed -n "1,80p" "reports/NON_MD_AUDIT_REPORT.md"`.
