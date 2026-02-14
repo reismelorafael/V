@@ -520,8 +520,7 @@ public class Terminal {
             if (isShortProcess) {
                 if (!process.waitFor(30, TimeUnit.SECONDS)) {
                     ringBuffer.addLine("Execution timed out after 30 seconds.");
-                    process.destroy();
-                    process.waitFor(2, TimeUnit.SECONDS);
+                    stopProcessWithTimeout(process, 2_000, 1_000);
                 } else {
                     int exitCode = process.exitValue();
                     ringBuffer.addLine(exitCode == 0
@@ -533,7 +532,7 @@ public class Terminal {
                     Thread.sleep(150);
                 }
                 if (STREAM_STOP_TOKEN.get() && process.isAlive()) {
-                    process.destroy();
+                    stopProcessWithTimeout(process, 2_000, 1_000);
                 }
             }
 
@@ -561,6 +560,25 @@ public class Terminal {
             drainer.shutdown();
         }
         return new StringBuilder(ringBuffer.snapshot());
+    }
+
+
+    static boolean stopProcessWithTimeout(Process process, long gracefulTimeoutMs, long forcedTimeoutMs) {
+        if (process == null || !process.isAlive()) {
+            return true;
+        }
+        process.destroy();
+        try {
+            if (process.waitFor(Math.max(1L, gracefulTimeoutMs), TimeUnit.MILLISECONDS)) {
+                return true;
+            }
+            process.destroyForcibly();
+            return process.waitFor(Math.max(1L, forcedTimeoutMs), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            process.destroyForcibly();
+            return false;
+        }
     }
 
     private Context getContext() {

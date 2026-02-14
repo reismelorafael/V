@@ -65,15 +65,15 @@ public class FileUtils {
 
     public static String getFullPathFromDocumentFilePath(String filePath) {
 
-        filePath = filePath.replaceAll("%3A", "^3A");
+        filePath = filePath.replace("%3A", "^3A");
         int index = filePath.lastIndexOf("^3A");
         if (index > 0)
             filePath = filePath.substring(index + 3);
         if (!filePath.startsWith("/"))
             filePath = "/" + filePath;
 
-//        filePath = filePath.replaceAll("%2F", "/");
-//        filePath = filePath.replaceAll("\\^2F", "/");
+//        filePath = filePath.replace("%2F", "/");
+//        filePath = filePath.replace("^2F", "/");
 
         //remove any spaces encoded by the ASF
         try {
@@ -86,10 +86,10 @@ public class FileUtils {
     }
 
     public static String getFilenameFromPath(String filePath) {
-        filePath = filePath.replaceAll("%2F", "/");
-        filePath = filePath.replaceAll("%3A", "/");
-        filePath = filePath.replaceAll("\\^2F", "/");
-        filePath = filePath.replaceAll("\\^3A", "/");
+        filePath = filePath.replace("%2F", "/");
+        filePath = filePath.replace("%3A", "/");
+        filePath = filePath.replace("^2F", "/");
+        filePath = filePath.replace("^3A", "/");
 
 
         int index = filePath.lastIndexOf("/");
@@ -101,7 +101,7 @@ public class FileUtils {
     public static String unconvertDocumentFilePath(String filePath) {
         if (filePath != null && filePath.startsWith("/content//")) {
             filePath = filePath.replace("/content//", "content://");
-            filePath = filePath.replaceAll("\\^\\^\\^", "%");
+            filePath = filePath.replace("^^^", "%");
         }
         return filePath;
     }
@@ -109,7 +109,7 @@ public class FileUtils {
     public static String convertDocumentFilePath(String filePath) {
         if (filePath != null && filePath.startsWith("content://")) {
             filePath = filePath.replace("content://", "/content//");
-            filePath = filePath.replaceAll("%", "\\^\\^\\^");;
+            filePath = filePath.replace("%", "^^^");
 
         }
         return filePath;

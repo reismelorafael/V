@@ -295,10 +295,17 @@ public class VMManager {
      */
     public static synchronized boolean stopVmProcess(Context context, String vmId, boolean tryQmp) {
         String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
+        pruneInactiveSupervisors();
         ProcessSupervisor supervisor = SUPERVISORS.get(key);
         if (supervisor == null) {
             VM_STATES.put(key, VmRuntimeState.STOPPED);
             return false;
+        }
+
+        if (!supervisor.isProcessAlive()) {
+            SUPERVISORS.remove(key, supervisor);
+            VM_STATES.put(key, VmRuntimeState.STOPPED);
+            return true;
         }
 
         VM_STATES.put(key, VmRuntimeState.STOPPING);

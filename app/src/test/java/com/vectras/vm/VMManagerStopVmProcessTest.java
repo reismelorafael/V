@@ -90,6 +90,19 @@ public class VMManagerStopVmProcessTest {
     }
 
     @Test
+    public void stopVmProcess_shouldPruneStaleSupervisorWithoutStopCall() {
+        ConcurrentHashMap<String, ProcessSupervisor> map = supervisorsMap();
+        FakeStoppedProcessSupervisor supervisor = new FakeStoppedProcessSupervisor();
+        map.put("vm-stale", supervisor);
+
+        boolean stopped = VMManager.stopVmProcess(null, "vm-stale", true);
+
+        Assert.assertTrue(stopped);
+        Assert.assertFalse(map.containsKey("vm-stale"));
+        Assert.assertFalse(supervisor.stopGracefullyCalled);
+    }
+
+    @Test
     public void registerVmProcess_shouldBeIdempotentForSameProcessInstance() {
         ConcurrentHashMap<String, ProcessSupervisor> map = supervisorsMap();
         FakeAliveProcess process = new FakeAliveProcess();
@@ -128,6 +141,25 @@ public class VMManagerStopVmProcessTest {
         @Override
         public synchronized boolean stopGracefully(boolean tryQmp) {
             return result;
+        }
+    }
+
+    private static final class FakeStoppedProcessSupervisor extends ProcessSupervisor {
+        boolean stopGracefullyCalled = false;
+
+        FakeStoppedProcessSupervisor() {
+            super(null, "test-stale");
+        }
+
+        @Override
+        public synchronized boolean stopGracefully(boolean tryQmp) {
+            stopGracefullyCalled = true;
+            return true;
+        }
+
+        @Override
+        public boolean isProcessAlive() {
+            return false;
         }
     }
 
