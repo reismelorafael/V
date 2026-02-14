@@ -7,7 +7,10 @@
 #include <string.h>
 #include <time.h>
 
-#define TILE_BYTES 4096u
+#include "rmr_hw_detect.h"
+#include "rmr_ll_tuning.h"
+
+#define ZERO_BLOCK_BYTES 4096u
 #define HIST_SIZE 256u
 
 typedef enum { ROUTE_SEQ, ROUTE_SPIRAL, ROUTE_TOROID, ROUTE_RANDOM_PERM, ROUTE_DELTA_MISS } RouteType;
@@ -65,8 +68,8 @@ static uint32_t crc32c_accel(const uint8_t *buf, size_t len) {
 static uint32_t popcount_ones(const uint8_t *buf, size_t len) {
   uint32_t ones = 0;
   size_t i = 0;
-  for (; i + 8 <= len; i += 8) { uint64_t v; memcpy(&v, buf + i, sizeof(v)); ones += (uint32_t)__builtin_popcountll(v); }
-  for (; i < len; ++i) ones += (uint32_t)__builtin_popcount((unsigned)buf[i]);
+  for (; i + 8 <= len; i += 8) { uint64_t v; memcpy(&v, buf + i, sizeof(v)); ones += RmR_LL_PopCount64(v); }
+  for (; i < len; ++i) ones += RmR_LL_PopCount32((uint32_t)buf[i]);
   return ones;
 }
 
@@ -87,9 +90,9 @@ static int write_u32_at(FILE *f, uint64_t idx, uint32_t value) {
 }
 
 static int init_zero_file(FILE *f, uint64_t bytes) {
-  uint8_t zero[TILE_BYTES] = {0};
+  uint8_t zero[ZERO_BLOCK_BYTES] = {0};
   while (bytes) {
-    size_t n = (bytes > TILE_BYTES) ? TILE_BYTES : (size_t)bytes;
+    size_t n = (bytes > ZERO_BLOCK_BYTES) ? ZERO_BLOCK_BYTES : (size_t)bytes;
     if (fwrite(zero, 1, n, f) != n) return -1;
     bytes -= n;
   }
@@ -184,6 +187,13 @@ int main(int argc, char **argv) {
     return 2;
   }
 
+  RmR_HW_Info hw;
+  RmR_LL_TunePlan tune;
+  memset(&hw, 0, sizeof(hw));
+  memset(&tune, 0, sizeof(tune));
+  RmR_HW_Detect(&hw);
+  RmR_LL_ApplyTuneDefaults(&hw, &tune);
+
   ScanConfig cfg = {.w = 50, .h = 50, .z = 10, .seed = 1, .route = ROUTE_SEQ};
   for (int i = 4; i + 1 < argc; i += 2) {
     if (!strcmp(argv[i], "--w")) parse_u64(argv[i + 1], &cfg.w);
@@ -202,7 +212,12 @@ int main(int argc, char **argv) {
   long fsz = ftell(fin);
   if (fsz < 0 || fseek(fin, 0, SEEK_SET) != 0) return 1;
 
-  uint64_t ntiles = ((uint64_t)fsz + TILE_BYTES - 1u) / TILE_BYTES;
+  uint32_t chunk_bytes = tune.cti_chunk_size ? tune.cti_chunk_size : 4096u;
+  if (chunk_bytes < 512u) chunk_bytes = 512u;
+  uint32_t scan_stride = tune.cti_stride ? tune.cti_stride : 1u;
+  uint32_t prefetch_bytes = tune.cti_prefetch;
+
+  uint64_t ntiles = ((uint64_t)fsz + (uint64_t)chunk_bytes - 1u) / (uint64_t)chunk_bytes;
   if (init_zero_file(fcrc, ntiles * sizeof(uint32_t)) != 0) return 1;
 
   FILE *fvis = tmpfile();
@@ -210,7 +225,9 @@ int main(int argc, char **argv) {
   if (init_zero_file(fvis, (ntiles + 7u) / 8u) != 0) return 1;
 
   crc32c_init();
-  uint8_t tile[TILE_BYTES];
+  uint8_t *tile = (uint8_t *)malloc(chunk_bytes);
+  if (!tile) return 1;
+
   uint64_t produced = 0, step = 0, prev_idx = 0;
   uint32_t prev_crc = 0, prev_miss = 0;
 
@@ -225,11 +242,11 @@ int main(int argc, char **argv) {
       int seen = visited_test_set(fvis, idx);
       if (seen == 0) break;
       if (seen < 0) return 1;
-      idx = (idx + 1) % ntiles;
+      idx = (idx + (uint64_t)scan_stride) % ntiles;
     }
 
-    uint64_t off = idx * TILE_BYTES;
-    size_t size = (off + TILE_BYTES <= (uint64_t)fsz) ? TILE_BYTES : (size_t)((uint64_t)fsz - off);
+    uint64_t off = idx * (uint64_t)chunk_bytes;
+    size_t size = (off + (uint64_t)chunk_bytes <= (uint64_t)fsz) ? (size_t)chunk_bytes : (size_t)((uint64_t)fsz - off);
     if (fseek(fin, (long)off, SEEK_SET) != 0 || fread(tile, 1, size, fin) != size) return 1;
 
     TileRecord rec;
@@ -237,13 +254,18 @@ int main(int argc, char **argv) {
     rec.off = off;
     rec.size = (uint32_t)size;
     rec.ts_ns = now_ns();
+    if (prefetch_bytes > 0u && size > (size_t)prefetch_bytes) {
+      for (size_t pfx = 0; pfx + (size_t)prefetch_bytes < size; pfx += (size_t)prefetch_bytes) {
+        __builtin_prefetch(tile + pfx + (size_t)prefetch_bytes, 0, 1);
+      }
+    }
     rec.crc = crc32c_accel(tile, size);
     rec.ones = popcount_ones(tile, size);
     rec.entropy = entropy_estimate(tile, size);
     uint32_t delta = prev_crc ^ rec.crc;
     uint32_t entropy_term = (uint32_t)(rec.entropy * 256.0);
     rec.miss_score = (uint32_t)(((uint64_t)__builtin_popcount(delta) * 17u + entropy_term + prev_miss) & 1023u);
-    rec.bad_event = (rec.size != TILE_BYTES) | (rec.entropy < 1.0) | (rec.miss_score > 950u);
+    rec.bad_event = (rec.size != chunk_bytes) | (rec.entropy < 1.0) | (rec.miss_score > 950u);
 
     uint64_t x = cfg.w ? (idx % cfg.w) : 0;
     uint64_t y = cfg.h ? ((idx / (cfg.w ? cfg.w : 1u)) % cfg.h) : 0;
@@ -262,9 +284,10 @@ int main(int argc, char **argv) {
     prev_crc = rec.crc;
     prev_miss = rec.miss_score;
     ++produced;
-    ++step;
+    step += (uint64_t)scan_stride;
   }
 
+  free(tile);
   fclose(fvis);
   fclose(fin);
   fflush(fjson);

@@ -12,12 +12,18 @@ typedef struct {
   u32 score;
   u32 variance;
   u32 error_margin;
+  u32 stage_seed;
+  u32 tune_plan;
+  u32 path_id;
+  u32 output_checksum;
+  u64 stage_signature;
 } RmR_Bench_Metric;
 
 typedef struct {
   RmR_Bench_Metric metric[RMR_BENCH_COUNT];
   u32 total_score;
   u32 total_error;
+  u64 exec_signature;
 } RmR_Bench_SuiteResult;
 
 typedef struct {

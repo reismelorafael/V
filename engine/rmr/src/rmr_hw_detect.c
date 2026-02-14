@@ -1,6 +1,7 @@
 /* rmr_hw_detect.c - autodetecção avançada low-level */
 #include "rmr_hw_detect.h"
 #include "rmr_cycles.h"
+#include "rmr_ll_ops.h"
 
 static u32 RmR_IsLittleEndian(void){
   unsigned short v = 0x0102u;
@@ -63,6 +64,7 @@ static u32 RmR_MemBusHint(u32 arch){
 
 static void RmR_AsmProbe(u32 arch, RmR_HW_Info *out){
   (void)arch;
+  RmR_LL_AsmProbe probe;
   out->has_asm_probe = 0u;
   out->reg_signature_0 = 0u;
   out->reg_signature_1 = 0u;
@@ -70,57 +72,13 @@ static void RmR_AsmProbe(u32 arch, RmR_HW_Info *out){
   out->feature_bits_0 = 0u;
   out->feature_bits_1 = 0u;
 
-#if defined(__x86_64__) || defined(__i386__)
-  {
-    u32 eax = 0u;
-    u32 ebx = 0u;
-    u32 ecx = 0u;
-    u32 edx = 0u;
-    __asm__ volatile (
-      "cpuid"
-      : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
-      : "a"(0u), "c"(0u)
-    );
-    out->reg_signature_0 = ebx;
-    out->reg_signature_1 = edx;
-    out->reg_signature_2 = ecx;
-
-    __asm__ volatile (
-      "cpuid"
-      : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
-      : "a"(1u), "c"(0u)
-    );
-    out->feature_bits_0 = ecx;
-    out->feature_bits_1 = edx;
-    out->has_asm_probe = 1u;
-  }
-#elif defined(__aarch64__)
-  {
-    u64 midr = 0u;
-    u64 ctr = 0u;
-    __asm__ volatile ("mrs %0, ctr_el0" : "=r"(ctr));
-    __asm__ volatile ("mrs %0, dczid_el0" : "=r"(midr));
-    out->reg_signature_0 = (u32)(ctr & 0xFFFFFFFFu);
-    out->reg_signature_1 = (u32)((ctr >> 32) & 0xFFFFFFFFu);
-    out->feature_bits_0 = (u32)(midr & 0xFFFFFFFFu);
-    out->feature_bits_1 = (u32)((midr >> 32) & 0xFFFFFFFFu);
-    out->has_asm_probe = 1u;
-  }
-#elif defined(__arm__)
-  {
-    out->reg_signature_0 = 0u;
-    out->feature_bits_0 = 0u;
-    out->has_asm_probe = 0u;
-  }
-#elif defined(__riscv)
-  {
-    u32 misa = 0u;
-    __asm__ volatile ("csrr %0, misa" : "=r"(misa));
-    out->reg_signature_0 = misa;
-    out->feature_bits_0 = misa;
-    out->has_asm_probe = 1u;
-  }
-#endif
+  if (RmR_LL_ReadAsmProbe(&probe) != 0) return;
+  out->has_asm_probe = probe.has_probe;
+  out->reg_signature_0 = probe.reg_signature_0;
+  out->reg_signature_1 = probe.reg_signature_1;
+  out->reg_signature_2 = probe.reg_signature_2;
+  out->feature_bits_0 = probe.feature_bits_0;
+  out->feature_bits_1 = probe.feature_bits_1;
 }
 
 static u32 RmR_GpioWordBits(u32 ptr_bits){

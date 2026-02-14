@@ -15,6 +15,21 @@ static u32 RmR_Lcg(u32 *s){
   return x;
 }
 
+
+static u64 RmR_Mix64(u64 acc, u64 x){
+  acc ^= x + 0x9E3779B97F4A7C15ull + (acc << 6) + (acc >> 2);
+  return acc;
+}
+
+static u64 RmR_BuildStageSignature(u32 seed, u32 tune_plan, u32 path_id, u32 output_checksum){
+  u64 sig = 1469598103934665603ull;
+  sig = RmR_Mix64(sig, seed);
+  sig = RmR_Mix64(sig, tune_plan);
+  sig = RmR_Mix64(sig, path_id);
+  sig = RmR_Mix64(sig, output_checksum);
+  return sig;
+}
+
 static u32 RmR_Score(u64 cycles, u32 ops, u32 checksum){
   if(cycles == 0u) return checksum ^ ops;
   return (u32)((((u64)ops) << 8) / cycles) ^ checksum;
@@ -85,7 +100,7 @@ static u32 RmR_Bench_Matrix(u32 n){
   return chk;
 }
 
-static void RmR_RunOne(const RmR_Bench_Def *d, RmR_Bench_Metric *m){
+static void RmR_RunOne(const RmR_Bench_Def *d, u32 idx, u32 tune_plan, RmR_Bench_Metric *m){
   u64 start = RmR_ReadCycles();
   u32 checksum = 0u;
   u32 ops = d->p0;
@@ -100,6 +115,11 @@ static void RmR_RunOne(const RmR_Bench_Def *d, RmR_Bench_Metric *m){
   m->score = score;
   m->variance = (score >> 3) ^ (checksum & 0xFFu);
   m->error_margin = (score >> 5) + (m->variance & 0x3Fu);
+  m->stage_seed = 0xC0FFEE11u ^ (idx * 0x9E37u);
+  m->tune_plan = tune_plan;
+  m->path_id = (d->kind << 16) ^ (d->p0 << 1) ^ d->p1;
+  m->output_checksum = checksum;
+  m->stage_signature = RmR_BuildStageSignature(m->stage_seed, m->tune_plan, m->path_id, m->output_checksum);
 }
 
 void RmR_BenchSuite_Run(const RmR_Bench_Config *cfg, RmR_Bench_SuiteResult *out){
@@ -121,13 +141,16 @@ void RmR_BenchSuite_Run(const RmR_Bench_Config *cfg, RmR_Bench_SuiteResult *out)
   };
   out->total_score = 0u;
   out->total_error = 0u;
+  out->exec_signature = 1469598103934665603ull;
+  u32 tune_plan = ((iters & 0xFFFFu) << 16) ^ ((stride & 0xFFu) << 8) ^ (msize & 0xFFu);
   for(u32 i=0;i<RMR_BENCH_COUNT;i++){
     RmR_Bench_Def d = defs[i];
     if(d.kind == 0u || d.kind == 1u || d.kind == 2u) d.p0 = (d.p0 * iters) >> 10;
     if(d.kind == 3u) d.p1 = (stride ? stride : 1u);
     if(d.kind == 4u) d.p0 = msize;
-    RmR_RunOne(&d, &out->metric[i]);
+    RmR_RunOne(&d, i, tune_plan, &out->metric[i]);
     out->total_score += out->metric[i].score;
     out->total_error += out->metric[i].error_margin;
+    out->exec_signature = RmR_Mix64(out->exec_signature, out->metric[i].stage_signature);
   }
 }

@@ -84,6 +84,7 @@ int main(int argc, char **argv) {
 
   printf("bench_total_score=%u\n", res.total_score);
   printf("bench_total_error=%u\n", res.total_error);
+  printf("bench_exec_signature=%llu\n", (unsigned long long)res.exec_signature);
   printf("isorf_identity=%llu pages_used=%u rebuild=%u\n",
          (unsigned long long)manifest.identity,
          manifest.pages_used,
