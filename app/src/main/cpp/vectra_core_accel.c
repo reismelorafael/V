@@ -165,7 +165,9 @@ Java_com_vectras_vm_core_NativeFastPath_nativeCopyBytes(JNIEnv* env, jclass claz
 
     jsize srcLen = (*env)->GetArrayLength(env, src);
     jsize dstLen = (*env)->GetArrayLength(env, dst);
-    if ((jint)srcLen < srcOffset + length || (jint)dstLen < dstOffset + length) return -3;
+    jlong srcEnd = (jlong)srcOffset + (jlong)length;
+    jlong dstEnd = (jlong)dstOffset + (jlong)length;
+    if (srcEnd > (jlong)srcLen || dstEnd > (jlong)dstLen) return -3;
 
     jboolean sameArray = (*env)->IsSameObject(env, src, dst);
 
@@ -249,7 +251,8 @@ Java_com_vectras_vm_core_NativeFastPath_nativeXorChecksum(JNIEnv* env, jclass cl
     if (!data || length <= 0 || offset < 0) return 0;
 
     jsize dataLen = (*env)->GetArrayLength(env, data);
-    if ((jint)dataLen < offset + length) return INT32_MIN;
+    jlong dataEnd = (jlong)offset + (jlong)length;
+    if (dataEnd > (jlong)dataLen) return INT32_MIN;
 
     jbyte* base = (*env)->GetPrimitiveArrayCritical(env, data, 0);
     if (!base) return INT32_MIN;

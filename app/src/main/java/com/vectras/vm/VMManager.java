@@ -85,7 +85,11 @@ public class VMManager {
     public static String latestUnsafeCommandReason = "";
     public static String lastQemuCommand = "";
     private static final ConcurrentHashMap<String, ProcessSupervisor> SUPERVISORS = new ConcurrentHashMap<>();
-    private static final int MAX_SUPERVISED_VM_PROCESSES = 32;
+    /**
+     * Android 15 tightened practical child-process pressure in app sandboxes.
+     * Keep a conservative cap to avoid hitting process spawn failures under load.
+     */
+    private static final int MAX_SUPERVISED_VM_PROCESSES = 12;
 
 
     /**
@@ -161,6 +165,20 @@ public class VMManager {
             SUPERVISORS.remove(oldestKey, oldest);
         }
 
+        return SUPERVISORS.size() < MAX_SUPERVISED_VM_PROCESSES;
+    }
+
+    public static synchronized int getActiveSupervisedVmProcessCount() {
+        pruneInactiveSupervisors();
+        return SUPERVISORS.size();
+    }
+
+    public static synchronized int getMaxSupervisedVmProcesses() {
+        return MAX_SUPERVISED_VM_PROCESSES;
+    }
+
+    public static synchronized boolean canRegisterAnotherVmProcess() {
+        pruneInactiveSupervisors();
         return SUPERVISORS.size() < MAX_SUPERVISED_VM_PROCESSES;
     }
 

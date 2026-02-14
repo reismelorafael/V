@@ -70,12 +70,28 @@ public class Terminal {
                 () -> ClipboardUltils.copyToClipboard(context, message), null, null);
     }
 
+    private boolean ensureVmProcessCapacity(Context dialogContext) {
+        if (VMManager.canRegisterAnotherVmProcess()) {
+            return true;
+        }
+        int active = VMManager.getActiveSupervisedVmProcessCount();
+        int max = VMManager.getMaxSupervisedVmProcesses();
+        String message = "VM process limit reached for Android 15 compatibility (" + active + "/" + max + "). Stop an active VM process and try again.";
+        Log.w(TAG, message);
+        if (dialogContext != null) {
+            new Handler(Looper.getMainLooper()).post(() -> DialogUtils.oneDialog(dialogContext, "Process limit reached", message, R.drawable.round_terminal_24));
+        }
+        return false;
+    }
+
+
     // Method to execute the shell command
     public void executeShellCommand(String userCommand, boolean showResultDialog, boolean showProgressDialog, Context dialogActivity) {
         executeShellCommand(userCommand, showResultDialog, showProgressDialog, dialogActivity.getString(R.string.executing_command_please_wait), dialogActivity);
     }
 
     public void executeShellCommand(String userCommand, boolean showResultDialog, boolean showProgressDialog, String progressDialogMessage, Context dialogActivity) {
+        if (!ensureVmProcessCapacity(dialogActivity)) return;
         AtomicReference<StringBuilder> output = new AtomicReference<>(new StringBuilder());
         StringBuilder errors = new StringBuilder();
         Log.d(TAG, userCommand);
@@ -152,6 +168,7 @@ public class Terminal {
     }
 
     public void executeShellCommand2(String userCommand, boolean showResultDialog, Context dialogActivity) {
+        if (!ensureVmProcessCapacity(dialogActivity)) return;
         AtomicReference<StringBuilder> output = new AtomicReference<>(new StringBuilder());
         StringBuilder errors = new StringBuilder();
         if (BuildConfig.DEBUG) {
@@ -230,6 +247,10 @@ public class Terminal {
     }
 
     public static String executeShellCommandWithResult(String userCommand, Context context) {
+        if (!VMManager.canRegisterAnotherVmProcess()) {
+            Log.w(TAG, "executeShellCommandWithResult blocked: VM process limit reached " + VMManager.getActiveSupervisedVmProcessCount() + "/" + VMManager.getMaxSupervisedVmProcesses());
+            return "VM process limit reached for Android 15 compatibility.";
+        }
         StringBuilder output = new StringBuilder();
         StringBuilder errors = new StringBuilder();
         Log.d(TAG, userCommand);
@@ -287,6 +308,10 @@ public class Terminal {
     }
 
     public String executeShellCommand(String userCommand, Context dialogActivity, boolean isShowProgressDialog, CommandCallback callback) {
+        if (!ensureVmProcessCapacity(dialogActivity)) {
+            callback.onCommandCompleted("", "VM process limit reached for Android 15 compatibility.");
+            return "Execution blocked: process limit reached.";
+        }
         AtomicReference<StringBuilder> output = new AtomicReference<>(new StringBuilder());
         StringBuilder errors = new StringBuilder();
         Log.d(TAG, userCommand);
