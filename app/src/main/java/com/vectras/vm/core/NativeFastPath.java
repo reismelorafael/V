@@ -12,6 +12,7 @@ public final class NativeFastPath {
 
     private static final int NATIVE_OK_MAGIC = 0x56414343;
     private static final boolean NATIVE_AVAILABLE;
+    private static final boolean ARENA_AVAILABLE;
 
     private static final int HW_CONTRACT_SIGNATURE = 0;
     private static final int HW_CONTRACT_POINTER_BITS = 1;
@@ -51,6 +52,7 @@ public final class NativeFastPath {
             loaded = false;
         }
         NATIVE_AVAILABLE = loaded;
+        ARENA_AVAILABLE = loaded;
         BOOT_PROFILE = detectHardwareProfile();
     }
 
@@ -60,6 +62,10 @@ public final class NativeFastPath {
 
     public static boolean isNativeAvailable() {
         return NATIVE_AVAILABLE;
+    }
+
+    public static boolean isArenaAvailable() {
+        return ARENA_AVAILABLE;
     }
 
     static HardwareProfile getHardwareProfile() {
@@ -201,6 +207,7 @@ public final class NativeFastPath {
             throw new IllegalArgumentException("Invalid copy range");
         }
 
+        // Explicit fallback path when JNI arena acceleration is not available.
         if (NATIVE_AVAILABLE && nativeCopyBytes(src, srcOffset, dst, dstOffset, length) == 0) {
             return;
         }
@@ -245,6 +252,7 @@ public final class NativeFastPath {
             throw new IllegalArgumentException("Invalid checksum range");
         }
 
+        // Explicit fallback path when JNI arena acceleration is not available.
         if (NATIVE_AVAILABLE) {
             int value = nativeXorChecksum(data, offset, length);
             if (value != Integer.MIN_VALUE) {
@@ -271,6 +279,78 @@ public final class NativeFastPath {
             i++;
         }
         return x;
+    }
+
+    public static int allocArena(int bytes) {
+        if (bytes <= 0) {
+            throw new IllegalArgumentException("Arena size must be > 0");
+        }
+        if (!ARENA_AVAILABLE) {
+            return 0;
+        }
+        int handle = nativeAllocArena(bytes);
+        return handle > 0 ? handle : 0;
+    }
+
+    public static boolean freeArena(int handle) {
+        if (handle <= 0) {
+            throw new IllegalArgumentException("Arena handle must be > 0");
+        }
+        if (!ARENA_AVAILABLE) {
+            return false;
+        }
+        return nativeFreeArena(handle) == 0;
+    }
+
+    public static boolean copyArena(int srcHandle, int srcOffset, int dstHandle, int dstOffset, int length) {
+        if (srcHandle <= 0 || dstHandle <= 0) {
+            throw new IllegalArgumentException("Arena handles must be > 0");
+        }
+        if (srcOffset < 0 || dstOffset < 0 || length < 0) {
+            throw new IllegalArgumentException("Arena copy offsets/length must be >= 0");
+        }
+        if (length == 0) {
+            return true;
+        }
+        if (!ARENA_AVAILABLE) {
+            return false;
+        }
+        return nativeArenaCopy(srcHandle, srcOffset, dstHandle, dstOffset, length) == 0;
+    }
+
+    public static int xorChecksumArena(int handle, int offset, int length) {
+        if (handle <= 0) {
+            throw new IllegalArgumentException("Arena handle must be > 0");
+        }
+        if (offset < 0 || length < 0) {
+            throw new IllegalArgumentException("Arena checksum offset/length must be >= 0");
+        }
+        if (length == 0) {
+            return 0;
+        }
+        if (!ARENA_AVAILABLE) {
+            return 0;
+        }
+        return nativeArenaXorChecksum(handle, offset, length);
+    }
+
+    public static boolean fillArena(int handle, int offset, int length, int value) {
+        if (handle <= 0) {
+            throw new IllegalArgumentException("Arena handle must be > 0");
+        }
+        if (offset < 0 || length < 0) {
+            throw new IllegalArgumentException("Arena fill offset/length must be >= 0");
+        }
+        if ((value & ~0xFF) != 0) {
+            throw new IllegalArgumentException("Arena fill value must be in [0, 255]");
+        }
+        if (length == 0) {
+            return true;
+        }
+        if (!ARENA_AVAILABLE) {
+            return false;
+        }
+        return nativeArenaFill(handle, offset, length, value) == 0;
     }
 
 
@@ -348,6 +428,16 @@ public final class NativeFastPath {
     private static native int nativeRotateLeft32(int value, int distance);
 
     private static native int nativeRotateRight32(int value, int distance);
+
+    private static native int nativeAllocArena(int bytes);
+
+    private static native int nativeFreeArena(int handle);
+
+    private static native int nativeArenaCopy(int srcHandle, int srcOffset, int dstHandle, int dstOffset, int length);
+
+    private static native int nativeArenaXorChecksum(int handle, int offset, int length);
+
+    private static native int nativeArenaFill(int handle, int offset, int length, int value);
 
     private static native int nativePlatformSignature();
 
