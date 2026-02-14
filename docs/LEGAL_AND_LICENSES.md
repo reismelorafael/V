@@ -75,6 +75,8 @@ Checklist recomendado antes de release:
 - [ ] Política de privacidade disponível (se aplicável).
 - [ ] Dependências externas revisadas e documentadas.
 - [ ] Mudanças registradas no changelog/documentos.
+- [ ] Keystores/credenciais fora do Git; segredos de release mantidos em cofre de CI.
+- [ ] Política de rotação e resposta a incidente de chave validada para a release.
 
 ---
 
@@ -87,3 +89,11 @@ Este documento segue as normas definidas em [docs/DOCUMENTATION_STANDARDS.md](DO
 ---
 
 © 2024-2026 Vectras VM Development Team — Licensed under GPL-2.0.
+
+
+## 8) Política Legal de Chaves de Assinatura
+
+- O keystore `vectras.jks` é tratado como credencial sensível de **assinatura release** e não deve ser distribuído em repositório público.
+- A custódia deve ocorrer em cofre seguro/segredos de CI, com controle de acesso mínimo e rastreabilidade de uso.
+- Rotação periódica e por incidente é mandatória para reduzir risco de comprometimento de cadeia de supply chain.
+- Exceções para arquivos sensíveis devem ser formalmente documentadas e aprovadas antes de versionamento.

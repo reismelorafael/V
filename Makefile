@@ -11,7 +11,7 @@ else ifeq ($(UNAME_S),Darwin)
   SHARED_EXT := dylib
 endif
 
-ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c engine/rmr/src/rmr_math_fabric.c engine/rmr/src/rmr_policy_kernel.c engine/rmr/src/rmr_qemu_bridge.c
+ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c engine/rmr/src/rmr_math_fabric.c engine/rmr/src/rmr_policy_kernel.c engine/rmr/src/rmr_qemu_bridge.c engine/rmr/src/rmr_corelib.c
 ENGINE_OBJS := $(patsubst %.c,build/%.o,$(ENGINE_SRCS))
 BITRAF_API_SRC := engine/rmr/src/bitraf.c
 BITRAF_API_OBJ := $(patsubst %.c,build/%.o,$(BITRAF_API_SRC))
@@ -85,9 +85,9 @@ verify-librmr-symbols: $(LIB_STATIC)
 	done
 	@echo "[link-contract] verified required symbols in $(LIB_STATIC)"
 
-$(CTI_SCAN_BIN): engine/rmr/src/rafa_cti_scan.c
+$(CTI_SCAN_BIN): engine/rmr/src/rafa_cti_scan.c $(LIB_STATIC)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $< $(LDFLAGS) -lm -o $@
+	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -lm -o $@
 
 
 $(POLICY_DEMO_BIN): demo_cli/src/policy_kernel_demo.c $(LIB_STATIC)

@@ -1,6 +1,44 @@
 name: Android CI
 
 on:
+  push:
+    paths:
+      - '.github/workflows/android.yml'
+      - 'app/**'
+      - 'shell-loader/**'
+      - 'terminal-emulator/**'
+      - 'terminal-view/**'
+      - 'gradle/**'
+      - 'build.gradle'
+      - 'build.gradle.kts'
+      - 'settings.gradle'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'docs/**'
+      - 'README.md'
+      - 'DOC_INDEX.md'
+      - 'CHANGELOG.md'
+  pull_request:
+    paths:
+      - '.github/workflows/android.yml'
+      - 'app/**'
+      - 'shell-loader/**'
+      - 'terminal-emulator/**'
+      - 'terminal-view/**'
+      - 'gradle/**'
+      - 'build.gradle'
+      - 'build.gradle.kts'
+      - 'settings.gradle'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'docs/**'
+      - 'README.md'
+      - 'DOC_INDEX.md'
+      - 'CHANGELOG.md'
   workflow_dispatch:
 
 jobs:
@@ -40,6 +78,57 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    - name: Verify repository file dependencies
+      env:
+        ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+      run: ./gradlew verifyRepoFileDependencies
+
+    - name: Validate local Markdown links (optional)
+      continue-on-error: true
+      run: |
+        python3 - <<'PY'
+        import pathlib
+        import re
+        import sys
+
+        root = pathlib.Path('.')
+        md_files = sorted(root.glob('docs/**/*.md')) + [
+            p for p in [
+                root / 'README.md',
+                root / 'DOC_INDEX.md',
+                root / 'CHANGELOG.md',
+                root / 'docs/OPERATIONS.md',
+            ] if p.exists()
+        ]
+
+        pattern = re.compile(r'!?(?:\[[^\]]*\])\(([^)]+)\)')
+        missing = []
+
+        for md in dict.fromkeys(md_files):
+            content = md.read_text(encoding='utf-8', errors='ignore')
+            for match in pattern.finditer(content):
+                target = match.group(1).strip()
+                if not target or target.startswith('#'):
+                    continue
+                if '://' in target or target.startswith('mailto:'):
+                    continue
+                target = target.split('#', 1)[0].split('?', 1)[0].strip()
+                if not target:
+                    continue
+                resolved = (md.parent / target).resolve()
+                if not resolved.exists():
+                    missing.append(f"{md}: {target}")
+
+        if missing:
+            print('Broken local markdown links found:')
+            for item in missing:
+                print(f' - {item}')
+            sys.exit(1)
+
+        print('All checked local markdown links exist.')
+        PY
+
     - name: Send notification to Telegram
       run: |
         if [[ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]]; then
@@ -62,6 +151,10 @@ jobs:
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        VECTRAS_SIGNING_STORE_FILE: ${{ secrets.VECTRAS_SIGNING_STORE_FILE }}
+        VECTRAS_SIGNING_STORE_PASSWORD: ${{ secrets.VECTRAS_SIGNING_STORE_PASSWORD }}
+        VECTRAS_SIGNING_KEY_ALIAS: ${{ secrets.VECTRAS_SIGNING_KEY_ALIAS }}
+        VECTRAS_SIGNING_KEY_PASSWORD: ${{ secrets.VECTRAS_SIGNING_KEY_PASSWORD }}
       run: ./gradlew assembleRelease -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
 
     - name: Upload Debug APK as artifact

@@ -21,6 +21,7 @@ add_library(rmr STATIC
   engine/rmr/src/rmr_policy_kernel.c
   engine/rmr/src/rmr_qemu_bridge.c
   engine/rmr/src/rmr_math_fabric.c
+  engine/rmr/src/rmr_corelib.c
 )
 
 target_include_directories(rmr PUBLIC engine/rmr/include)
@@ -67,5 +68,6 @@ target_link_libraries(math_fabric_selftest PRIVATE rmr)
 rmr_apply_common_flags(math_fabric_selftest)
 
 add_executable(rafa_cti_scan engine/rmr/src/rafa_cti_scan.c)
-target_link_libraries(rafa_cti_scan PRIVATE m)
+target_link_libraries(rafa_cti_scan PRIVATE rmr m)
+target_include_directories(rafa_cti_scan PRIVATE engine/rmr/include)
 rmr_apply_common_flags(rafa_cti_scan)

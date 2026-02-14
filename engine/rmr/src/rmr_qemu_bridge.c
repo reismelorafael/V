@@ -1,4 +1,5 @@
 #include "rmr_qemu_bridge.h"
+#include "rmr_corelib.h"
 
 #include <limits.h>
 #include <stdio.h>
@@ -12,7 +13,7 @@ static uint32_t clamp_u32(uint32_t v, uint32_t lo, uint32_t hi) {
 
 void RmR_QemuPlan_Default(RmR_QemuPlan *plan) {
   if (!plan) return;
-  memset(plan, 0, sizeof(*plan));
+  rmr_mem_set(plan, 0, sizeof(*plan));
   plan->preset = RMR_QEMU_PRESET_BALANCED;
   plan->arch = RMR_GUEST_ARCH_X86_64;
   plan->host_cores = 2;
@@ -33,9 +34,15 @@ void RmR_QemuPlan_Autotune(const RmR_HW_Info *hw,
   plan->vm_mem_mib = clamp_u32(mem_mib ? mem_mib : 2048u, 512u, 32768u);
 
   uint32_t host_cores = 2u;
+  {
+    RmR_LL_TunePlan tune;
+    RmR_LL_ApplyTuneDefaults(hw, &tune);
+    host_cores = clamp_u32(tune.qemu_smp_cpus, 2u, 16u);
+    plan->use_iothread = tune.qemu_use_iothread ? 1u : 0u;
+    plan->use_direct_io = tune.qemu_use_direct_io ? 1u : 0u;
+  }
+
   if (hw) {
-    host_cores = clamp_u32(hw->word_bits >= 64u ? 8u : 4u, 2u, 16u);
-    if (hw->arch == 4u || hw->arch == 2u) host_cores = clamp_u32(host_cores + 2u, 2u, 16u);
     plan->use_kvm = (hw->arch == 2u || hw->arch == 4u) ? 1u : 0u;
     if (hw->cache_hint_l2 >= (512u * 1024u)) {
       plan->preset = RMR_QEMU_PRESET_PERFORMANCE;
@@ -72,8 +79,6 @@ void RmR_QemuPlan_Autotune(const RmR_HW_Info *hw,
     case RMR_QEMU_PRESET_BALANCED:
     default:
       plan->vm_cpus = clamp_u32(host_cores / 2u, 2u, 8u);
-      plan->use_iothread = 1u;
-      plan->use_direct_io = 0u;
       plan->use_multifd = 0u;
       break;
   }
@@ -125,7 +130,7 @@ int RmR_QemuPlan_BuildArgs(const RmR_QemuPlan *plan, char *out, size_t out_len) 
 static int parse_u32_after_key(const char *s, const char *key, uint32_t *out) {
   const char *p = strstr(s, key);
   if (!p) return -1;
-  p += strlen(key);
+  p += rmr_len_u8((const uint8_t *)key);
   while (*p == ' ' || *p == ':' || *p == '"') p++;
   uint32_t v = 0u;
   int found = 0;
@@ -149,17 +154,17 @@ static int parse_u32_after_key(const char *s, const char *key, uint32_t *out) {
 static int has_json_bool_true(const char *s, const char *key) {
   const char *p = strstr(s, key);
   if (!p) return 0;
-  p += strlen(key);
+  p += rmr_len_u8((const uint8_t *)key);
   while (*p == ' ' || *p == '\t') p++;
   if (*p != ':') return 0;
   p++;
   while (*p == ' ' || *p == '\t') p++;
-  return (strncmp(p, "true", 4) == 0) ? 1 : 0;
+  return rmr_mem_eq(p, "true", 4u) ? 1 : 0;
 }
 
 int RmR_QmpTelemetry_Parse(const char *qmp_json_line, RmR_QmpTelemetry *out) {
   if (!qmp_json_line || !out) return -1;
-  memset(out, 0, sizeof(*out));
+  rmr_mem_set(out, 0, sizeof(*out));
 
   if (strstr(qmp_json_line, "\"status\":\"running\"") || strstr(qmp_json_line, "\"status\" : \"running\"")) {
     out->running = 1u;

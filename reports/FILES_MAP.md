@@ -47,3 +47,14 @@ Mapa arquivo-a-arquivo em três linhas por item: papel, ligação e comando de i
 - **Liga com**: ver [`reports/README.md`](README.md) e [`docs/THREE_LAYER_ANALYSIS.md`](../docs/THREE_LAYER_ANALYSIS.md) para contexto de camadas.
 - **Inspeção**: `file "reports/metrics/rafaelia_metrics_250.json"` e, quando texto, `sed -n "1,80p" "reports/metrics/rafaelia_metrics_250.json"`.
 
+
+
+## `reports/NON_MD_AUDIT_REPORT.md`
+- **Papel**: relatório executivo da auditoria de arquivos não-MD (estatísticas, riscos e recomendações).
+- **Liga com**: gerado por [`tools/audit_non_md_inventory.py`](../tools/audit_non_md_inventory.py).
+- **Inspeção**: `file "reports/NON_MD_AUDIT_REPORT.md"` e `sed -n "1,200p" "reports/NON_MD_AUDIT_REPORT.md"`.
+
+## `reports/non_md_inventory.tsv`
+- **Papel**: inventário forense arquivo-a-arquivo (path, tamanho, extensão, tipo, executável, SHA-256).
+- **Liga com**: gerado por [`tools/audit_non_md_inventory.py`](../tools/audit_non_md_inventory.py).
+- **Inspeção**: `head -n 5 "reports/non_md_inventory.tsv"` e `wc -l "reports/non_md_inventory.tsv"`.
