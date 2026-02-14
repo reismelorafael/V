@@ -8,6 +8,7 @@ import org.junit.Test;
 
 import java.lang.reflect.Field;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 public class VMManagerStopVmProcessTest {
 
@@ -57,6 +58,19 @@ public class VMManagerStopVmProcessTest {
         Assert.assertTrue(map.containsKey("vm-fail"));
     }
 
+    @Test
+    public void registerVmProcess_shouldBeIdempotentForSameProcessInstance() {
+        ConcurrentHashMap<String, ProcessSupervisor> map = supervisorsMap();
+        FakeAliveProcess process = new FakeAliveProcess();
+
+        VMManager.registerVmProcess(null, "vm-same", process);
+        VMManager.registerVmProcess(null, "vm-same", process);
+
+        Assert.assertEquals(1, map.size());
+        Assert.assertEquals(0, process.destroyCount);
+        Assert.assertEquals(0, process.destroyForciblyCount);
+    }
+
     private static final class FakeProcessSupervisor extends ProcessSupervisor {
         private final boolean result;
 
@@ -68,6 +82,57 @@ public class VMManagerStopVmProcessTest {
         @Override
         public synchronized boolean stopGracefully(boolean tryQmp) {
             return result;
+        }
+    }
+
+    private static final class FakeAliveProcess extends Process {
+        int destroyCount = 0;
+        int destroyForciblyCount = 0;
+
+        @Override
+        public java.io.OutputStream getOutputStream() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public java.io.InputStream getInputStream() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public java.io.InputStream getErrorStream() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int waitFor() {
+            return 0;
+        }
+
+        @Override
+        public boolean waitFor(long timeout, TimeUnit unit) {
+            return false;
+        }
+
+        @Override
+        public int exitValue() {
+            return 0;
+        }
+
+        @Override
+        public void destroy() {
+            destroyCount++;
+        }
+
+        @Override
+        public Process destroyForcibly() {
+            destroyForciblyCount++;
+            return this;
+        }
+
+        @Override
+        public boolean isAlive() {
+            return true;
         }
     }
 }
