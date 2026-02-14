@@ -2,7 +2,7 @@
 #include "rmr_hw_detect.h"
 #include "rmr_ll_ops.h"
 #include "rmr_math_fabric.h"
-#include "rmr_ll_ops.h"
+#include "rmr_ll_tuning.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +22,12 @@ typedef struct {
   size_t cap;
 } ChunkVec;
 
+
+static uint32_t clamp_u32_local(uint32_t v, uint32_t lo, uint32_t hi) {
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
 static const char *route_target_from_id(uint8_t id) {
   switch (id) {
     case RMR_ROUTE_CPU: return "CPU";
@@ -291,12 +297,24 @@ int RmR_RunPolicyPipeline(const char *input_path,
   RmR_AuditSummary local_summary;
   RmR_HW_Info hw;
   RmR_MathFabricPlan math_plan;
+  RmR_LL_TunePlan tune;
+  size_t io_batch_size;
+  uint32_t commit_quantum;
+  uint32_t commit_counter = 0u;
   memset(&local_summary, 0, sizeof(local_summary));
   memset(&hw, 0, sizeof(hw));
   memset(&math_plan, 0, sizeof(math_plan));
+  memset(&tune, 0, sizeof(tune));
   RmR_HW_Detect(&hw);
   RmR_MathFabric_AutodetectPlan(&hw, &math_plan);
-  uint8_t decision_mode = resolve_decision_mode();
+  RmR_LL_ApplyTuneDefaults(&hw, &tune);
+  math_plan.lane_count = clamp_u32_local(tune.policy_lane_width, 4u, 32u);
+  io_batch_size = config->chunk_size;
+  if (tune.policy_batch_size > 0u && (size_t)tune.policy_batch_size < io_batch_size) {
+    io_batch_size = (size_t)tune.policy_batch_size;
+  }
+  if (io_batch_size == 0u) io_batch_size = config->chunk_size;
+  commit_quantum = tune.policy_commit_quantum ? tune.policy_commit_quantum : 16u;
 
   FILE *in = fopen(input_path, "rb");
   if (!in) return -2;
@@ -306,7 +324,7 @@ int RmR_RunPolicyPipeline(const char *input_path,
   if (!logf) { fclose(in); fclose(out); return -4; }
 
   ChunkVec plan = {0}, applied = {0};
-  uint8_t *buf = (uint8_t *)malloc(config->chunk_size);
+  uint8_t *buf = (uint8_t *)malloc(io_batch_size);
   if (!buf) {
     fclose(in); fclose(out); fclose(logf);
     return -5;
@@ -315,7 +333,7 @@ int RmR_RunPolicyPipeline(const char *input_path,
   uint64_t event_idx = 1;
   uint64_t offset = 0;
   size_t rd;
-  while ((rd = fread(buf, 1, config->chunk_size, in)) > 0) {
+  while ((rd = fread(buf, 1, io_batch_size, in)) > 0) {
     RmR_ChunkMeta m;
     memset(&m, 0, sizeof(m));
     m.offset = offset;
@@ -343,6 +361,11 @@ int RmR_RunPolicyPipeline(const char *input_path,
     local_summary.chunks_applied++;
 
     if (fwrite(buf, 1, rd, out) != rd) goto fail;
+    commit_counter++;
+    if (commit_counter >= commit_quantum) {
+      if (fflush(out) != 0 || fflush(logf) != 0) goto fail;
+      commit_counter = 0u;
+    }
     offset += rd;
   }
   fflush(out);
@@ -361,7 +384,7 @@ int RmR_RunPolicyPipeline(const char *input_path,
   if (!verify) goto fail;
   offset = 0;
   size_t idx = 0;
-  while ((rd = fread(buf, 1, config->chunk_size, verify)) > 0 && idx < applied.n) {
+  while ((rd = fread(buf, 1, io_batch_size, verify)) > 0 && idx < applied.n) {
     RmR_ChunkMeta vm = applied.v[idx];
     vm.offset = offset;
     vm.size = (uint32_t)rd;
@@ -380,6 +403,14 @@ int RmR_RunPolicyPipeline(const char *input_path,
       goto fail;
     }
     local_summary.chunks_verified++;
+    commit_counter++;
+    if (commit_counter >= commit_quantum) {
+      if (fflush(logf) != 0) {
+        fclose(verify);
+        goto fail;
+      }
+      commit_counter = 0u;
+    }
     offset += rd;
     idx++;
   }
