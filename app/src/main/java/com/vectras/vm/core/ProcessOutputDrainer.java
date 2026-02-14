@@ -5,6 +5,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import android.util.Log;
+
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -15,6 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Concurrent stdout/stderr drainer that never blocks on one side only.
  */
 public class ProcessOutputDrainer {
+    private static final String TAG = "ProcessOutputDrainer";
     public interface OutputLineConsumer {
         void onLine(String stream, String line);
     }
@@ -29,8 +34,20 @@ public class ProcessOutputDrainer {
     public void drain(Process process, OutputLineConsumer consumer) throws InterruptedException {
         Future<?> out = streamExecutor.submit(() -> readStream("stdout", process.getInputStream(), consumer));
         Future<?> err = streamExecutor.submit(() -> readStream("stderr", process.getErrorStream(), consumer));
-        waitFuture(out);
-        waitFuture(err);
+
+        try {
+            waitFuture(out);
+            waitFuture(err);
+        } catch (InterruptedException e) {
+            out.cancel(true);
+            err.cancel(true);
+            throw e;
+        } catch (RuntimeException e) {
+            out.cancel(true);
+            err.cancel(true);
+            Log.w(TAG, "drain failed", e);
+            throw e;
+        }
     }
 
     public void shutdown() {
@@ -57,9 +74,12 @@ public class ProcessOutputDrainer {
         try {
             future.get();
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw e;
-        } catch (Exception ignored) {
-            // non-fatal by design
+        } catch (ExecutionException e) {
+            throw new IllegalStateException("stream drain failed", e.getCause());
+        } catch (CancellationException e) {
+            throw new IllegalStateException("stream drain cancelled", e);
         }
     }
 }

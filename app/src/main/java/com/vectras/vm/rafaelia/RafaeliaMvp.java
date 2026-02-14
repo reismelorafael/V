@@ -112,21 +112,26 @@ public class RafaeliaMvp {
 
     long appendRecord(long payloadU64, int metaU32) {
       int crc = crc32c(payloadU64, metaU32);
-      long pos = writePos.getAndAdd(RECORD_BYTES);
-      if (pos + RECORD_BYTES > map.capacity()) {
-        // Minimal MVP: no segment rollover; in real version, chain segments.
-        throw new IllegalStateException(
-            "BitStack full (capacity=" + map.capacity()
-                + " bytes, pos=" + pos + ", recordBytes=" + RECORD_BYTES + ").");
+      while (true) {
+        long pos = writePos.get();
+        long nextPos = pos + RECORD_BYTES;
+        if (pos > Integer.MAX_VALUE - RECORD_BYTES) {
+          throw new IllegalStateException("BitStack offset exceeds supported range (pos=" + pos + ").");
+        }
+        if (nextPos > map.capacity()) {
+          throw new IllegalStateException(
+              "BitStack full (capacity=" + map.capacity()
+                  + " bytes, pos=" + pos + ", recordBytes=" + RECORD_BYTES + ").");
+        }
+        if (!writePos.compareAndSet(pos, nextPos)) {
+          continue;
+        }
+        int p = (int) pos;
+        map.putLong(p, payloadU64);
+        map.putInt(p + 8, metaU32);
+        map.putInt(p + 12, crc);
+        return pos;
       }
-      if (pos > Integer.MAX_VALUE - RECORD_BYTES) {
-        throw new IllegalStateException("BitStack offset exceeds supported range (pos=" + pos + ").");
-      }
-      int p = (int) pos;
-      map.putLong(p, payloadU64);
-      map.putInt(p + 8, metaU32);
-      map.putInt(p + 12, crc);
-      return pos;
     }
 
     // optional: flush (fsync-ish)
@@ -142,8 +147,8 @@ public class RafaeliaMvp {
       CRC32C c = CRC32C_POOL.get();
       c.reset();
       // little-endian feed
-      for (int i = 0; i < 8; i++) c.update((int)((payloadU64 >>> (8*i)) & 0xFF));
-      for (int i = 0; i < 4; i++) c.update((metaU32 >>> (8*i)) & 0xFF);
+      for (int i = 0; i < 8; i++) c.update((byte) ((payloadU64 >>> (8 * i)) & 0xFF));
+      for (int i = 0; i < 4; i++) c.update((byte) ((metaU32 >>> (8 * i)) & 0xFF));
       return (int) c.getValue();
     }
   }

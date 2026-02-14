@@ -130,6 +130,20 @@ public class ProcessSupervisorFailoverTest {
         Assert.assertTrue(sink.hasNonNegativeStall("FAILOVER->STOP:kill_success:kill"));
     }
 
+
+    @Test(expected = IllegalArgumentException.class)
+    public void bindProcess_rejectsNull() {
+        ProcessSupervisor supervisor = new ProcessSupervisor(null, "vm-null");
+        supervisor.bindProcess(null);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void bindProcess_rejectsSecondBind() {
+        ProcessSupervisor supervisor = new ProcessSupervisor(null, "vm-bind");
+        supervisor.bindProcess(new FakeProcess(true));
+        supervisor.bindProcess(new FakeProcess(true));
+    }
+
     private static final class RecordingTransitionSink implements ProcessSupervisor.TransitionSink {
         private final List<String> transitions = new ArrayList<>();
 

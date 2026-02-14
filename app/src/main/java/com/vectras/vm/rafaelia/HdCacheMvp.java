@@ -1,5 +1,7 @@
 package com.vectras.vm.rafaelia;
 
+import android.util.Log;
+
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
@@ -42,6 +44,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * @author Rafaelia
  */
 public final class HdCacheMvp {
+    private static final String TAG = "HdCacheMvp";
 
     // ========== Configuration ==========
     /** Block alignment on disk (page size) */
@@ -671,7 +674,11 @@ public final class HdCacheMvp {
             
             lock.lock();
             try {
-                queues.get(layer).addLast(k);
+                Deque<EventKey> q = queues.get(layer);
+                if (q == null) {
+                    throw new IllegalStateException("missing queue for layer: " + layer);
+                }
+                q.addLast(k);
             } finally {
                 lock.unlock();
             }
@@ -694,23 +701,34 @@ public final class HdCacheMvp {
         private void dropOldestGlobal() throws IOException {
             lock.lock();
             try {
-                // Find most loaded layer
                 String maxLayer = null;
                 int maxSize = 0;
                 for (Map.Entry<String, Deque<EventKey>> entry : queues.entrySet()) {
-                    if (entry.getValue().size() > maxSize) {
-                        maxSize = entry.getValue().size();
+                    Deque<EventKey> queue = entry.getValue();
+                    int size = queue == null ? 0 : queue.size();
+                    if (size > maxSize) {
+                        maxSize = size;
                         maxLayer = entry.getKey();
                     }
                 }
-                if (maxLayer != null && !queues.get(maxLayer).isEmpty()) {
-                    EventKey k = queues.get(maxLayer).pollFirst();
-                    EventMeta m = meta.get(k);
-                    if (m != null) {
-                        m.setStatus(EventStatus.DROPPED);
-                        store.writeIndex(m);
-                    }
+                if (maxLayer == null) {
+                    return;
                 }
+                Deque<EventKey> queue = queues.get(maxLayer);
+                if (queue == null || queue.isEmpty()) {
+                    return;
+                }
+                EventKey k = queue.pollFirst();
+                if (k == null) {
+                    return;
+                }
+                EventMeta m = meta.get(k);
+                if (m == null) {
+                    Log.w(TAG, "Dropped event has no metadata: " + k);
+                    return;
+                }
+                m.setStatus(EventStatus.DROPPED);
+                store.writeIndex(m);
             } finally {
                 lock.unlock();
             }
@@ -786,7 +804,14 @@ public final class HdCacheMvp {
                     // Requeue
                     lock.lock();
                     try {
-                        queues.get(m.getLayer()).addLast(k);
+                        Deque<EventKey> q = queues.get(m.getLayer());
+                        if (q != null) {
+                            q.addLast(k);
+                        } else {
+                            m.setStatus(EventStatus.DROPPED);
+                            store.writeIndex(m);
+                            Log.w(TAG, "Retry queue missing for layer: " + m.getLayer());
+                        }
                     } finally {
                         lock.unlock();
                     }
@@ -844,11 +869,18 @@ public final class HdCacheMvp {
         public Map<String, Integer> getLayerFreqs() { return layerFreqs; }
         public Map<EventKey, EventMeta> getMeta() { return meta; }
         public int getTotalQueueSize() {
-            int total = 0;
-            for (Deque<EventKey> q : queues.values()) {
-                total += q.size();
+            lock.lock();
+            try {
+                int total = 0;
+                for (Deque<EventKey> q : queues.values()) {
+                    if (q != null) {
+                        total += q.size();
+                    }
+                }
+                return total;
+            } finally {
+                lock.unlock();
             }
-            return total;
         }
     }
 

@@ -101,11 +101,24 @@ public class ProcessSupervisor {
      * @param process processo principal da VM
      */
     public synchronized void bindProcess(Process process) {
-        this.process = process;
-        this.startMonoMs = clock.monoMs();
-        this.startWallMs = clock.wallMs();
-        transition(State.START, State.VERIFY, "process_bound", 0, 0, 0, "bind");
-        transition(State.VERIFY, State.RUN, "verified", 0, 0, 0, "run");
+        if (process == null) {
+            throw new IllegalArgumentException("process == null");
+        }
+        if (this.process != null) {
+            throw new IllegalStateException("process already bound");
+        }
+
+        try {
+            this.process = process;
+            this.startMonoMs = clock.monoMs();
+            this.startWallMs = clock.wallMs();
+            transition(State.START, State.VERIFY, "process_bound", 0, 0, 0, "bind");
+            transition(State.VERIFY, State.RUN, "verified", 0, 0, 0, "run");
+        } catch (RuntimeException e) {
+            this.process = null;
+            this.state = State.START;
+            throw e;
+        }
     }
 
     /**
@@ -125,40 +138,46 @@ public class ProcessSupervisor {
      * @return true se o processo foi finalizado durante a janela de timeout
      */
     public synchronized boolean stopGracefully(boolean tryQmp) {
-        if (process == null) {
+        Process running = process;
+        if (running == null) {
             transition(state, State.STOP, "missing_process", 0, 0, 0, "no_op");
             return true;
         }
 
-        long stallMs = Math.max(0L, clock.monoMs() - startMonoMs);
-        boolean qmpRequested = false;
-        if (tryQmp) {
-            qmpRequested = true;
-            String result = qmpTransport.sendPowerdown();
-            if (ProcessRuntimeOps.isQmpAck(result)) {
-                if (awaitExit(3_000)) {
+        try {
+            long stallMs = Math.max(0L, clock.monoMs() - startMonoMs);
+            boolean qmpRequested = false;
+            if (tryQmp) {
+                qmpRequested = true;
+                String result = qmpTransport.sendPowerdown();
+                if (ProcessRuntimeOps.isQmpAck(result) && awaitExit(running, 3_000)) {
                     transition(state, State.STOP, "qmp_shutdown", 0, 0, stallMs, "qmp");
                     return true;
                 }
             }
-        }
 
-        transition(state, State.FAILOVER, qmpRequested ? "qmp_timeout" : "no_qmp", 0, 0, stallMs, "term_kill");
-        process.destroy();
-        if (awaitExit(3_000)) {
-            transition(State.FAILOVER, State.STOP, "term_success", 0, 0, stallMs, "term");
-            return true;
-        }
+            transition(state, State.FAILOVER, qmpRequested ? "qmp_timeout" : "no_qmp", 0, 0, stallMs, "term_kill");
+            running.destroy();
+            if (awaitExit(running, 3_000)) {
+                transition(State.FAILOVER, State.STOP, "term_success", 0, 0, stallMs, "term");
+                return true;
+            }
 
-        process.destroyForcibly();
-        boolean killed = awaitExit(2_000);
-        transition(State.FAILOVER, State.STOP, killed ? "kill_success" : "kill_timeout", 0, 0, stallMs, "kill");
-        return killed;
+            running.destroyForcibly();
+            boolean killed = awaitExit(running, 2_000);
+            transition(State.FAILOVER, State.STOP, killed ? "kill_success" : "kill_timeout", 0, 0, stallMs, "kill");
+            return killed;
+        } finally {
+            this.process = null;
+        }
     }
 
-    private boolean awaitExit(long timeoutMs) {
+    private boolean awaitExit(Process target, long timeoutMs) {
+        if (target == null) {
+            return false;
+        }
         try {
-            return process.waitFor(timeoutMs, TimeUnit.MILLISECONDS);
+            return target.waitFor(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;

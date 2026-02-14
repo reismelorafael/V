@@ -7,6 +7,7 @@ import com.vectras.vm.logger.VectrasStatus;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -46,11 +47,14 @@ public class ShellExecutor {
     }
 
     public ExecResult execute(String command, long timeoutMs) {
-        CallableExec callable = new CallableExec(command, timeoutMs <= 0 ? DEFAULT_TIMEOUT_MS : timeoutMs);
-        processFuture = executorService.submit(callable);
+        long effectiveTimeoutMs = timeoutMs <= 0 ? DEFAULT_TIMEOUT_MS : timeoutMs;
+        CallableExec callable = new CallableExec(command, effectiveTimeoutMs);
+        Future<?> localFuture = executorService.submit(callable);
+        processFuture = localFuture;
         try {
             return callable.await();
         } catch (Exception e) {
+            localFuture.cancel(true);
             Log.e(TAG, "exec failed", e);
             VectrasStatus.logInfo(TAG + " > " + e);
             return new ExecResult(-1, "", e.toString(), false);
@@ -96,17 +100,20 @@ public class ShellExecutor {
             ProcessOutputDrainer drainer = new ProcessOutputDrainer();
             int exitCode = -1;
             boolean timedOut = false;
+            Process localProcess = null;
 
             try {
-                shellExecutorProcess = new ProcessBuilder(shellPath).start();
-                try (OutputStream outputStream = shellExecutorProcess.getOutputStream()) {
+                localProcess = new ProcessBuilder(shellPath).start();
+                shellExecutorProcess = localProcess;
+                try (OutputStream outputStream = localProcess.getOutputStream()) {
                     outputStream.write((command + "\n").getBytes(StandardCharsets.UTF_8));
                     outputStream.flush();
                 }
 
+                Process finalProcess = localProcess;
                 Future<?> drainerFuture = executorService.submit(() -> {
                     try {
-                        drainer.drain(shellExecutorProcess, (stream, line) -> {
+                        drainer.drain(finalProcess, (stream, line) -> {
                             if ("stderr".equals(stream)) {
                                 errBuffer.addLine(line);
                             } else {
@@ -118,18 +125,26 @@ public class ShellExecutor {
                     }
                 });
 
-                if (!shellExecutorProcess.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
+                if (!localProcess.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
                     timedOut = true;
-                    cancel();
-                } else {
-                    exitCode = shellExecutorProcess.exitValue();
+                    drainer.cancel();
+                    localProcess.destroy();
+                    if (!localProcess.waitFor(3, TimeUnit.SECONDS)) {
+                        localProcess.destroyForcibly();
+                        localProcess.waitFor(2, TimeUnit.SECONDS);
+                    }
+                }
+                if (!timedOut) {
+                    exitCode = localProcess.exitValue();
                 }
 
                 try {
                     drainerFuture.get(2, TimeUnit.SECONDS);
-                } catch (TimeoutException ignored) {
+                } catch (TimeoutException e) {
                     drainer.cancel();
-                } catch (Exception ignored) {
+                    drainerFuture.cancel(true);
+                } catch (ExecutionException e) {
+                    Log.w(TAG, "drainer failed", e.getCause());
                 }
             } catch (IOException | InterruptedException e) {
                 error = e;
@@ -137,6 +152,10 @@ public class ShellExecutor {
                     Thread.currentThread().interrupt();
                 }
             } finally {
+                if (localProcess != null && localProcess.isAlive()) {
+                    localProcess.destroyForcibly();
+                }
+                shellExecutorProcess = null;
                 drainer.shutdown();
                 result = new ExecResult(exitCode, outBuffer.snapshot(), errBuffer.snapshot(), timedOut);
                 synchronized (monitor) {
@@ -146,14 +165,23 @@ public class ShellExecutor {
         }
 
         ExecResult await() throws Exception {
+            long deadlineNs = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs + 5_000L);
             synchronized (monitor) {
                 while (result == null && error == null) {
-                    monitor.wait(timeoutMs + 5_000L);
+                    long remainingNs = deadlineNs - System.nanoTime();
+                    if (remainingNs <= 0) {
+                        break;
+                    }
+                    long waitMs = TimeUnit.NANOSECONDS.toMillis(remainingNs);
+                    if (waitMs <= 0) {
+                        waitMs = 1;
+                    }
+                    monitor.wait(waitMs);
                 }
             }
             if (error != null) throw error;
             if (result == null) {
-                throw new IOException("shell execution did not produce result");
+                throw new TimeoutException("shell execution timed out while waiting for result");
             }
             return result;
         }
