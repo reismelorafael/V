@@ -115,23 +115,17 @@ public class FileUtils {
         return filePath;
     }
 
-    public static void saveFileContents(String filePath, String contents) {
+    public static void saveFileContents(String filePath, String contents) throws IOException {
         byteArrayToFile(contents.getBytes(), new File(filePath));
     }
 
-    public static void byteArrayToFile(byte[] byteData, File filePath) {
-
-        try {
-            FileOutputStream fos = new FileOutputStream(filePath);
+    public static void byteArrayToFile(byte[] byteData, File filePath) throws IOException {
+        try (FileOutputStream fos = new FileOutputStream(filePath)) {
             fos.write(byteData);
-            fos.close();
-
-        } catch (FileNotFoundException ex) {
-            System.out.println("FileNotFoundException : " + ex);
-        } catch (IOException ioe) {
-            System.out.println("IOException : " + ioe);
+        } catch (IOException ex) {
+            Log.e(TAG, "Failed to write byte array to file: " + filePath, ex);
+            throw ex;
         }
-
     }
     public static InputStream getStreamFromFilePath(Context context, String importFilePath) throws FileNotFoundException {
         InputStream stream = null;
@@ -553,7 +547,8 @@ public class FileUtils {
             //success
             filePath = destFileF.getAbsolutePath();
 
-        } catch (Exception ex) {
+        } catch (IOException ex) {
+            Log.e(TAG, "Failed to save legacy log file: " + destFileF.getAbsolutePath(), ex);
             UIUtils.toastShort(activity, "Failed to save log file: " + destFileF.getAbsolutePath() + ", Error:" + ex.getMessage());
         } finally {
         }
