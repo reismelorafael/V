@@ -56,3 +56,15 @@ Recursos:
 - autotuning determinístico de preset (balanced/performance/compatibility) com base em `RmR_HW_Detect`.
 - builder de argumentos QEMU para CPU/Memória/IO (`-smp`, `-drive cache/aio`, `iothread`, `virtio`).
 - parser low-level de telemetria QMP (`status`, `query-cpus-fast`) sem dependências externas.
+
+
+## Interop C/ASM (diretório dedicado)
+- Header: `include/rmr_casm_bridge.h`
+- Fonte C: `src/rmr_casm_bridge.c`
+- ASM x86_64: `interop/rmr_casm_x86_64.S`
+- Selftest: `build/demo/rmr_casm_bridge_selftest`
+
+Recursos:
+- união determinística C/ASM com fallback automático para compatibilidade de arquitetura.
+- checksum `xor-fold32` para trilha de interoperabilidade e validação cruzada C↔ASM.
+- relatório de execução (`used_asm`, bytes processados e checksum final).
