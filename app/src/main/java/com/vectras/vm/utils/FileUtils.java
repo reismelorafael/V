@@ -21,6 +21,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -431,30 +432,24 @@ public class FileUtils {
 
 
 	public String LoadFile(Activity activity, String fileName, boolean loadFromRawFolder) throws IOException {
-		// Create a InputStream to read the file into
 		InputStream iS;
 		if (loadFromRawFolder) {
-			// get the resource id from the file name
 			int rID = activity.getResources().getIdentifier(getClass().getPackage().getName() + ":raw/" + fileName,
 					null, null);
-			// get the file as a stream
 			iS = activity.getResources().openRawResource(rID);
 		} else {
-			// get the file as a stream
 			iS = activity.getResources().getAssets().open(fileName);
 		}
 
-		ByteArrayOutputStream oS = new ByteArrayOutputStream();
-		byte[] buffer = new byte[iS.available()];
-		int bytesRead = 0;
-		while ((bytesRead = iS.read(buffer)) > 0) {
-			oS.write(buffer);
-		}
-		oS.close();
-		iS.close();
+		try (InputStream inputStream = iS; ByteArrayOutputStream oS = new ByteArrayOutputStream()) {
+			byte[] buffer = new byte[8192];
+			int bytesRead;
+			while ((bytesRead = inputStream.read(buffer)) != -1) {
+				oS.write(buffer, 0, bytesRead);
+			}
 
-		// return the output stream as a String
-		return oS.toString();
+			return oS.toString(StandardCharsets.UTF_8.name());
+		}
 	}
 
 	public static void saveFileContents(String dBFile, String machinesToExport) {
