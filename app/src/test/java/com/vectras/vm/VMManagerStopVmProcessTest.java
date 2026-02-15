@@ -59,6 +59,67 @@ public class VMManagerStopVmProcessTest {
         Assert.assertEquals("STOPPED", state.toString());
     }
 
+
+
+    @Test
+    public void tryMarkVmStarting_shouldAllowConcurrentLaunchesForDistinctTransientIds() throws Exception {
+        String vmIdA = "launch-1000-1";
+        String vmIdB = "launch-1000-2";
+        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicBoolean resultA = new java.util.concurrent.atomic.AtomicBoolean(false);
+        java.util.concurrent.atomic.AtomicBoolean resultB = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+        Thread first = new Thread(() -> {
+            ready.countDown();
+            try {
+                go.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            resultA.set(VMManager.tryMarkVmStarting(vmIdA));
+        });
+        Thread second = new Thread(() -> {
+            ready.countDown();
+            try {
+                go.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            resultB.set(VMManager.tryMarkVmStarting(vmIdB));
+        });
+
+        first.start();
+        second.start();
+        Assert.assertTrue(ready.await(2, TimeUnit.SECONDS));
+        go.countDown();
+        first.join(2000L);
+        second.join(2000L);
+
+        Assert.assertTrue(resultA.get());
+        Assert.assertTrue(resultB.get());
+        Assert.assertEquals("STARTING", statesMap().get(vmIdA).toString());
+        Assert.assertEquals("STARTING", statesMap().get(vmIdB).toString());
+        Assert.assertFalse(statesMap().containsKey("unknown"));
+    }
+
+    @Test
+    public void registerVmProcess_shouldKeepDistinctTransientKeysWhenVmIdMissingAtCallSite() {
+        ConcurrentHashMap<String, ProcessSupervisor> map = supervisorsMap();
+        FakeAliveProcess firstProcess = new FakeAliveProcess();
+        FakeAliveProcess secondProcess = new FakeAliveProcess();
+        String vmIdA = "launch-2000-1";
+        String vmIdB = "launch-2000-2";
+
+        VMManager.registerVmProcess(null, vmIdA, firstProcess);
+        VMManager.registerVmProcess(null, vmIdB, secondProcess);
+
+        Assert.assertTrue(map.containsKey(vmIdA));
+        Assert.assertTrue(map.containsKey(vmIdB));
+        Assert.assertEquals(2, map.size());
+        Assert.assertFalse(map.containsKey("unknown"));
+    }
+
     @Test
     public void stopVmProcess_shouldReturnFalse_whenSupervisorIsMissing() {
         boolean stopped = VMManager.stopVmProcess(null, "vm-absent", false);

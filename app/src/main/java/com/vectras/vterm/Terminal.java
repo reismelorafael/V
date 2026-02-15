@@ -28,7 +28,6 @@ import java.util.Enumeration;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -57,6 +56,7 @@ public class Terminal {
     private static final int MAX_LOG_BYTES = 512 * 1024;
     private static final int RATE_LINES_PER_SEC = 60;
     private static final int RATE_BURST = 120;
+    private static final String TRANSIENT_VM_ID_PREFIX = "launch-";
 
     public Terminal(Context context) {
         this.context = context;
@@ -98,9 +98,37 @@ public class Terminal {
     }
 
 
-    private String currentVmId() {
+    private static String nextTransientVmId() {
+        return com.vectras.vm.main.core.MainStartVM.createTransientLaunchVmId();
+    }
+
+    private static boolean isNullOrEmpty(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private static boolean isTransientVmId(String vmId) {
+        return vmId != null && vmId.startsWith(TRANSIENT_VM_ID_PREFIX);
+    }
+
+    private static String resolveCurrentVmId() {
         String vmId = com.vectras.vm.main.core.MainStartVM.lastVMID;
-        return (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
+        if (isNullOrEmpty(vmId)) {
+            return com.vectras.vm.main.core.MainStartVM.ensureLastVmIdInitialized(nextTransientVmId());
+        }
+        return vmId;
+    }
+
+    private static void rotateTransientVmIdAfterBootstrapFailure(String vmId) {
+        if (!isTransientVmId(vmId)) {
+            return;
+        }
+        if (vmId.equals(com.vectras.vm.main.core.MainStartVM.lastVMID)) {
+            com.vectras.vm.main.core.MainStartVM.lastVMID = nextTransientVmId();
+        }
+    }
+
+    private String currentVmId() {
+        return resolveCurrentVmId();
     }
 
     private boolean acquireVmStartSlot(Context dialogContext, String vmId) {
@@ -183,6 +211,7 @@ public class Terminal {
                 output.set(streamLog(userCommand, qemuProcess, false));
             } catch (IOException e) {
                 VMManager.clearVmStarting(vmId);
+                rotateTransientVmIdAfterBootstrapFailure(vmId);
                 progressDialog.dismiss(); // Dismiss ProgressDialog
                 output.get().append(e.getMessage());
                 errors.append(Log.getStackTraceString(e));
@@ -264,6 +293,7 @@ public class Terminal {
                 output.set(streamLog(userCommand, qemuProcess, false));
             } catch (IOException e) {
                 VMManager.clearVmStarting(vmId);
+                rotateTransientVmIdAfterBootstrapFailure(vmId);
                 output.get().append(e.getMessage());
                 errors.append(Log.getStackTraceString(e));
                 NotificationUtils.clearAll(VectrasApp.getContext());
@@ -289,7 +319,7 @@ public class Terminal {
             Log.w(TAG, "executeShellCommandWithResult blocked: VM process limit reached " + VMManager.getActiveSupervisedVmProcessCount() + "/" + VMManager.getMaxSupervisedVmProcesses());
             return "VM process limit reached for Android 15 compatibility.";
         }
-        String vmId = com.vectras.vm.main.core.MainStartVM.lastVMID;
+        String vmId = resolveCurrentVmId();
         if (!VMManager.tryMarkVmStarting(vmId)) {
             Log.w(TAG, "executeShellCommandWithResult blocked: VM start in-flight or already running for id=" + vmId);
             return "VM start already in progress or VM already running.";
@@ -341,6 +371,7 @@ public class Terminal {
             output = streamLog(userCommand, qemuProcess, false);
         } catch (IOException e) {
             VMManager.clearVmStarting(vmId);
+            rotateTransientVmIdAfterBootstrapFailure(vmId);
             output.append(e.getMessage());
             errors.append(Log.getStackTraceString(e));
         } finally {
@@ -542,7 +573,7 @@ public class Terminal {
                 AuditLedger.record(VectrasApp.getContext(), new AuditEvent(
                         android.os.SystemClock.elapsedRealtime(),
                         System.currentTimeMillis(),
-                        vmId == null ? "unknown" : vmId,
+                        isNullOrEmpty(vmId) ? resolveCurrentVmId() : vmId,
                         "RUN",
                         "DEGRADED",
                         "LOG_FLOOD",

@@ -44,6 +44,7 @@ import com.vectras.vm.rafaelia.RafaeliaEventRecorder;
 import com.vectras.vm.rafaelia.RafaeliaSettings;
 
 import java.io.File;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class MainStartVM {
     public static final String TAG = "HomeStartVM";
@@ -63,6 +64,28 @@ public class MainStartVM {
     public static String pendingThumbnailFile = "";
     public static boolean isLaunchFromPending = false;
     public static final String BASE_RUN_COMMAND_FORMAT = "export TMPDIR=/tmp && mkdir -p $TMPDIR/pulse && export XDG_RUNTIME_DIR=/tmp && chmod -R 775 $TMPDIR/pulse && pulseaudio --start --exit-idle-time=-1 > /dev/null 2>&1 && %s";
+
+    private static final AtomicLong TRANSIENT_VM_ID_COUNTER = new AtomicLong(0L);
+    private static final String TRANSIENT_VM_ID_PREFIX = "launch-";
+
+    private static boolean isNullOrEmpty(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    public static String createTransientLaunchVmId() {
+        return TRANSIENT_VM_ID_PREFIX + System.currentTimeMillis() + "-" + TRANSIENT_VM_ID_COUNTER.incrementAndGet();
+    }
+
+    public static String ensureLastVmIdInitialized(String preferredVmId) {
+        if (!isNullOrEmpty(preferredVmId)) {
+            lastVMID = preferredVmId;
+            return lastVMID;
+        }
+        if (isNullOrEmpty(lastVMID)) {
+            lastVMID = createTransientLaunchVmId();
+        }
+        return lastVMID;
+    }
 
     static String resolveRunCommandFormat(boolean isX11Ui, boolean isVmRunning, boolean useXterm) {
         if (!isX11Ui || isVmRunning) {
@@ -95,14 +118,14 @@ public class MainStartVM {
         } else {
             lastVMName = vmName;
             lastEnv = env;
-            lastVMID = vmID;
+            lastVMID = ensureLastVmIdInitialized(vmID);
             lastThumbnailFile = thumbnailFile;
 
             if (isX11Ui && !VMManager.isVMRunning(context, vmID)) {
                 if (DisplaySystem.isUseBuiltInX11()) {
                     pendingVMName = vmName;
                     pendingEnv = env;
-                    pendingVMID = vmID;
+                    pendingVMID = ensureLastVmIdInitialized(vmID);
                     pendingThumbnailFile = thumbnailFile;
                     DisplaySystem.launch(context);
                     return;
@@ -112,12 +135,7 @@ public class MainStartVM {
 
         isStopNow = false;
 
-        String finalvmID;
-        if (vmID == null || vmID.isEmpty()) {
-            finalvmID = VMManager.startRamdomVMID();
-        } else {
-            finalvmID = vmID;
-        }
+        String finalvmID = ensureLastVmIdInitialized(vmID);
 
         Config.vmID = finalvmID;
         boolean headless = AppConfig.engineHeadlessMode || env.contains("-display none") || env.contains("headless=true");

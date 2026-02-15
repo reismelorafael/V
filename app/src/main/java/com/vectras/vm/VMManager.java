@@ -103,9 +103,14 @@ public class VMManager {
     private static final int BASE_SUPERVISED_VM_PROCESSES = 9;
     private static final int MAX_SUPERVISED_VM_PROCESSES = 12;
 
+    private static String normalizeVmLifecycleId(String vmId) {
+        if (vmId == null) return "unknown";
+        String normalized = vmId.trim();
+        return normalized.isEmpty() ? "unknown" : normalized;
+    }
 
     public static synchronized boolean tryMarkVmStarting(String vmId) {
-        String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
+        String key = normalizeVmLifecycleId(vmId);
         pruneInactiveSupervisors();
 
         VmRuntimeState state = VM_STATES.getOrDefault(key, VmRuntimeState.STOPPED);
@@ -125,7 +130,7 @@ public class VMManager {
     }
 
     public static synchronized void clearVmStarting(String vmId) {
-        String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
+        String key = normalizeVmLifecycleId(vmId);
         ProcessSupervisor supervisor = SUPERVISORS.get(key);
         VmRuntimeState state = VM_STATES.getOrDefault(key, VmRuntimeState.STOPPED);
 
@@ -138,12 +143,12 @@ public class VMManager {
      * Registra o processo da VM no supervisor associado ao identificador.
      *
      * @param context contexto Android para trilha de auditoria
-     * @param vmId identificador da VM (nulo/vazio cai para {@code unknown})
+     * @param vmId identificador da VM (nulo/vazio cai para {@code unknown}; IDs transitórios são preservados)
      * @param process processo QEMU ativo
      */
     public static synchronized void registerVmProcess(Context context, String vmId, Process process) {
         if (process == null) return;
-        String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
+        String key = normalizeVmLifecycleId(vmId);
 
         pruneInactiveSupervisors();
 
@@ -301,7 +306,7 @@ public class VMManager {
      * @return true quando a VM é finalizada dentro dos timeouts de failover e removida do registro ativo
      */
     public static synchronized boolean stopVmProcess(Context context, String vmId, boolean tryQmp) {
-        String key = (vmId == null || vmId.isEmpty()) ? "unknown" : vmId;
+        String key = normalizeVmLifecycleId(vmId);
         pruneInactiveSupervisors();
         ProcessSupervisor supervisor = SUPERVISORS.get(key);
         if (supervisor == null) {

@@ -13,6 +13,7 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
+import com.vectras.vm.main.core.MainStartVM;
 import com.vectras.vterm.Terminal;
 
 public class MainService extends Service {
@@ -57,6 +58,7 @@ public class MainService extends Service {
 
         if (command != null) {
             Context targetContext = ctx != null ? ctx : getApplicationContext();
+            MainStartVM.ensureLastVmIdInitialized(MainStartVM.lastVMID);
             Terminal vterm = new Terminal(targetContext);
             vterm.executeShellCommand2(command, true, targetContext);
         } else {
@@ -119,6 +121,7 @@ public class MainService extends Service {
     }
 
     public static void startCommand(String _env, Context _context) {
+        MainStartVM.ensureLastVmIdInitialized(MainStartVM.lastVMID);
         Terminal vterm = new Terminal(_context);
         vterm.executeShellCommand2(_env, true, _context);
     }
