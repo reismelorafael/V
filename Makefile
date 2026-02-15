@@ -22,6 +22,9 @@ endif
 endif
 CASM_ASM_OBJS := $(patsubst %.S,build/%.o,$(CASM_ASM_SRCS))
 ENGINE_OBJS += $(CASM_ASM_OBJS)
+CASM_BRIDGE_C_SRC := engine/rmr/src/rmr_casm_bridge.c
+CASM_BRIDGE_C_OBJ := $(patsubst %.c,build/%.o,$(CASM_BRIDGE_C_SRC))
+CASM_BRIDGE_OBJS := $(CASM_BRIDGE_C_OBJ) $(CASM_ASM_OBJS)
 BITRAF_API_SRC := engine/rmr/src/bitraf.c
 BITRAF_API_OBJ := $(patsubst %.c,build/%.o,$(BITRAF_API_SRC))
 BITRAF_BIN := build/demo/bitraf_core
@@ -124,11 +127,14 @@ $(DETERMINISM_SIGNATURE_SELFTEST_BIN): demo_cli/src/determinism_signature_selfte
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
 
-$(CASM_BRIDGE_SELFTEST_BIN): demo_cli/src/rmr_casm_bridge_selftest.c $(LIB_STATIC)
+$(CASM_BRIDGE_SELFTEST_BIN): demo_cli/src/rmr_casm_bridge_selftest.c $(CASM_BRIDGE_OBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
+	$(CC) $(CFLAGS) $< $(CASM_BRIDGE_OBJS) $(LDFLAGS) -o $@
 run-demo: $(DEMO_BIN)
 	./$(DEMO_BIN)
+
+run-casm-selftest: $(CASM_BRIDGE_SELFTEST_BIN)
+	./$(CASM_BRIDGE_SELFTEST_BIN)
 
 run-selftest: $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_BRIDGE_SELFTEST_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
 	./$(SELFTEST_BIN)
@@ -151,4 +157,4 @@ run-release-gate: run-selftest run-bench run-baremetal-gate
 clean:
 	rm -rf build
 
-.PHONY: all clean verify-librmr-symbols run-demo run-selftest run-bench run-baremetal-gate run-release-gate
+.PHONY: all clean verify-librmr-symbols run-demo run-casm-selftest run-selftest run-bench run-baremetal-gate run-release-gate
