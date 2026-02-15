@@ -361,42 +361,58 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (resultCode == RESULT_OK) {
-            Uri content_describer = data.getData();
-            File selectedFilePath;
-            try {
-                selectedFilePath = new File(Objects.requireNonNull(FileUtils.getPath(this, content_describer)));
-            } catch (Exception e) {
-                DialogUtils.oneDialog(this,
-                        getString(R.string.oops),
-                        getString(R.string.invalid_file_path_content),
-                        getString(R.string.ok),
-                        true,
-                        R.drawable.error_96px,
-                        true,
-                        null,
-                        null
-                );
-                return;
-            }
+        if (resultCode != RESULT_OK) {
+            return;
+        }
 
-            switch (requestCode) {
-                case 120:
-                    VMManager.changeCDROM(selectedFilePath.getAbsolutePath(), this);
-                    break;
-                case 889:
-                    VMManager.changeFloppyDriveA(selectedFilePath.getAbsolutePath(), this);
-                    break;
-                case 13335:
-                    VMManager.changeFloppyDriveB(selectedFilePath.getAbsolutePath(), this);
-                    break;
-                case 32:
-                    VMManager.changeSDCard(selectedFilePath.getAbsolutePath(), this);
-                    break;
-                case 1996:
-                    VMManager.changeRemovableDevice(VMManager.pendingDeviceID, selectedFilePath.getAbsolutePath(), this);
-                    break;
-            }
+        if (data == null || data.getData() == null) {
+            DialogUtils.oneDialog(this,
+                    getString(R.string.oops),
+                    getString(R.string.invalid_file_path_content),
+                    getString(R.string.ok),
+                    true,
+                    R.drawable.error_96px,
+                    true,
+                    null,
+                    null
+            );
+            return;
+        }
+
+        Uri contentUri = data.getData();
+        File selectedFilePath;
+        try {
+            selectedFilePath = new File(Objects.requireNonNull(FileUtils.getPath(this, contentUri)));
+        } catch (Exception e) {
+            DialogUtils.oneDialog(this,
+                    getString(R.string.oops),
+                    getString(R.string.invalid_file_path_content),
+                    getString(R.string.ok),
+                    true,
+                    R.drawable.error_96px,
+                    true,
+                    null,
+                    null
+            );
+            return;
+        }
+
+        switch (requestCode) {
+            case 120:
+                VMManager.changeCDROM(selectedFilePath.getAbsolutePath(), this);
+                break;
+            case 889:
+                VMManager.changeFloppyDriveA(selectedFilePath.getAbsolutePath(), this);
+                break;
+            case 13335:
+                VMManager.changeFloppyDriveB(selectedFilePath.getAbsolutePath(), this);
+                break;
+            case 32:
+                VMManager.changeSDCard(selectedFilePath.getAbsolutePath(), this);
+                break;
+            case 1996:
+                VMManager.changeRemovableDevice(VMManager.pendingDeviceID, selectedFilePath.getAbsolutePath(), this);
+                break;
         }
     }
 
