@@ -48,26 +48,31 @@ public class RafaeliaMvp {
   static final long RNG_SEED = 0x4F3C2B1A9D8E7F60L;
   private static final ThreadLocal<CRC32C> CRC32C_POOL = ThreadLocal.withInitial(CRC32C::new);
 
-  interface DeterministicRng {
-    int nextInt(int bound);
-    double nextDouble();
-  }
+  static final class DeterministicRng {
+    private static final long GOLDEN_GAMMA = 0x9E3779B97F4A7C15L;
+    private long state;
 
-  static final class SplittableDeterministicRng implements DeterministicRng {
-    private final SplittableRandom random;
-
-    SplittableDeterministicRng(long seed) {
-      this.random = new SplittableRandom(seed);
+    DeterministicRng(long seed) {
+      state = seed;
     }
 
-    @Override
-    public synchronized int nextInt(int bound) {
-      return random.nextInt(bound);
+    long nextLong() {
+      long z = (state += GOLDEN_GAMMA);
+      z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+      z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+      return z ^ (z >>> 31);
     }
 
-    @Override
-    public synchronized double nextDouble() {
-      return random.nextDouble();
+    int nextInt(int boundExclusive) {
+      if (boundExclusive <= 0) {
+        throw new IllegalArgumentException("boundExclusive must be > 0");
+      }
+      long unsigned = nextLong() >>> 1;
+      return (int) (unsigned % boundExclusive);
+    }
+
+    double nextDouble() {
+      return (nextLong() >>> 11) * 0x1.0p-53;
     }
   }
 
@@ -239,19 +244,28 @@ public class RafaeliaMvp {
     return 3;
   }
 
+  static int generatePayloadWithOptionalDrop(int payload, double bitDropProbability, DeterministicRng rng) {
+    int bits16 = payload & 0xFFFF;
+    if (rng.nextDouble() < bitDropProbability) {
+      int drop = rng.nextInt(BLOCK_BITS);
+      bits16 &= ~(1 << drop);
+    }
+    return bits16;
+  }
+
   // ========== MVP loop ==========
   public static void main(String[] args) throws Exception {
     File path = new File(args.length > 0 ? args[0] : "./bitstack.bin");
-    DeterministicRng radioRng = new SplittableDeterministicRng(RNG_SEED);
-    DeterministicRng timerRng = new SplittableDeterministicRng(RNG_SEED ^ 0xC3C3C3C3C3C3C3C3L);
-    DeterministicRng flowRng = new SplittableDeterministicRng(RNG_SEED ^ 0xA5A5A5A5A5A5A5A5L);
+    long seed = args.length > 1 ? Long.decode(args[1]) : System.nanoTime();
+    DeterministicRng radioRng = new DeterministicRng(seed ^ 0xA5A5A5A5A5A5A5A5L);
+    DeterministicRng dropRng = new DeterministicRng(seed ^ 0x5A5A5A5A5A5A5A5AL);
 
     IrqBus irq = new IrqBus();
 
     // Simulate “4G IRQ” bursts + timers
     ScheduledExecutorService sch = Executors.newScheduledThreadPool(2);
     sch.scheduleAtFixedRate(
-        () -> irq.fire(EventType.RADIO_4G, RADIO_PRIORITY, nextU16(radioRng)),
+        () -> irq.fire(EventType.RADIO_4G, RADIO_PRIORITY, radioRng.nextInt(0x10000)),
         RADIO_INITIAL_DELAY_MS,
         RADIO_PERIOD_MS,
         TimeUnit.MILLISECONDS);
@@ -278,13 +292,7 @@ public class RafaeliaMvp {
 
         // Build a 4x4 bits payload from event (toy mapping)
         // Seed from payload; introduce noise by random bit drop sometimes
-        int bits16 = ev.payload() & 0xFFFF;
-
-        // simulate leak/bit-missing: 2% chance drop one bit
-        if (flowRng.nextDouble() < BIT_DROP_PROBABILITY) {
-          int drop = nextBitIndex(flowRng);
-          bits16 &= ~(1 << drop);
-        }
+        int bits16 = generatePayloadWithOptionalDrop(ev.payload(), BIT_DROP_PROBABILITY, dropRng);
 
         // (2) Processing: compute parity + syndrome vs last known parity
         int computedParity8 = parity2D8(bits16);
