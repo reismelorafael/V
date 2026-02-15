@@ -9,15 +9,22 @@ import android.os.Build;
 import android.provider.Settings;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.fragment.app.FragmentActivity;
 import androidx.documentfile.provider.DocumentFile;
 
 import com.vectras.vm.R;
 
 public class PermissionUtils {
     public static final int REQUEST_LEGACY_STORAGE = 1000;
-    public static final int REQUEST_OPEN_DOCUMENT_TREE = 1001;
+
+    public interface OnDocumentTreePermissionResult {
+        void onResult(@Nullable Uri uri);
+    }
 
     public static boolean storagepermission(Activity activity, boolean request) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -35,9 +42,17 @@ public class PermissionUtils {
         return false;
     }
 
+    public static void requestStoragePermission(Activity activity, ActivityResultLauncher<Uri> openDocumentTreeLauncher) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            openDocumentTreeLauncher.launch(null);
+            return;
+        }
+        requestLegacyStoragePermission(activity);
+    }
+
     public static void requestStoragePermission(Activity activity) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            openDocumentTreePicker(activity);
+            Toast.makeText(activity, R.string.storage_permission_explanation_android11, Toast.LENGTH_LONG).show();
             return;
         }
         requestLegacyStoragePermission(activity);
@@ -54,23 +69,36 @@ public class PermissionUtils {
         }
     }
 
-    public static void openDocumentTreePicker(Activity activity) {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
-                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-                | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
-        activity.startActivityForResult(intent, REQUEST_OPEN_DOCUMENT_TREE);
+    public static ActivityResultLauncher<Uri> registerOpenDocumentTreeLauncher(FragmentActivity activity,
+                                                                                OnDocumentTreePermissionResult callback) {
+        return activity.registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
+            if (uri == null) {
+                callback.onResult(null);
+                return;
+            }
+
+            if (persistTreePermission(activity, uri)) {
+                callback.onResult(uri);
+            } else {
+                callback.onResult(null);
+            }
+        });
+    }
+
+    public static boolean persistTreePermission(Activity activity, Uri uri) {
+        if (uri == null) return false;
+        try {
+            activity.getContentResolver().takePersistableUriPermission(uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            return true;
+        } catch (SecurityException ignored) {
+            // non-fatal fallback
+            return false;
+        }
     }
 
     public static DocumentFile resolveTree(Activity activity, Uri uri) {
         if (uri == null) return null;
-        try {
-            activity.getContentResolver().takePersistableUriPermission(uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-        } catch (SecurityException ignored) {
-            // non-fatal fallback
-        }
         return DocumentFile.fromTreeUri(activity, uri);
     }
 

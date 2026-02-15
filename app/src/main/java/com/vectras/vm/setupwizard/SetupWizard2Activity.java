@@ -16,6 +16,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
+import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
@@ -92,6 +93,17 @@ public class SetupWizard2Activity extends AppCompatActivity {
     boolean isCustomSetupMode = false;
     final ArrayList<HashMap<String, String>> mirrorList = new ArrayList<>();
     ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ActivityResultLauncher<Uri> storagePermissionLauncher =
+            PermissionUtils.registerOpenDocumentTreeLauncher(this, uri -> {
+                if (uri != null) {
+                    Toast.makeText(this, getString(R.string.done), Toast.LENGTH_SHORT).show();
+                    if (currentStep == STEP_REQUEST_PERMISSION) {
+                        extractSystemFiles();
+                    }
+                } else {
+                    UIUtils.toastShort(this, getString(R.string.storage_permission_explanation_android11));
+                }
+            });
 
 
     @Override
@@ -153,7 +165,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
             }
         });
 
-        binding.btnAllowPermission.setOnClickListener(v -> PermissionUtils.requestStoragePermission(this));
+        binding.btnAllowPermission.setOnClickListener(v -> PermissionUtils.requestStoragePermission(this, storagePermissionLauncher));
 
         binding.standardSetupOption.setOnClickListener(v -> {
             if (downloadBootstrapsCommand.isEmpty()) {

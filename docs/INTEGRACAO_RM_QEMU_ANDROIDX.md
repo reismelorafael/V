@@ -99,6 +99,14 @@ Complemento recomendado: manter também o salmo técnico em
 - Padronizar notificações (snackbar, progress dialogs).
 - Centralizar permissões de storage em um helper com **ActivityResult API**.
 
+#### Implementação final de storage (AndroidX SAF)
+
+- `PermissionUtils` passou a registrar e expor launcher baseado em `ActivityResultContracts.OpenDocumentTree`.
+- `requestStoragePermission(...)` agora recebe o launcher no fluxo Android 10+ e mantém fallback legado (`WRITE_EXTERNAL_STORAGE`) apenas para Android antigo.
+- A persistência de acesso SAF (`takePersistableUriPermission`) foi centralizada no callback do novo launcher via `persistTreePermission(...)`.
+- `resolveTree(...)` foi mantido como utilitário compatível para converter URI em `DocumentFile` sem repetir lógica de persistência.
+- `SetupWizard2Activity` passou a registrar o launcher no ciclo de vida da Activity e tratar o callback de URI persistente no próprio fluxo de permissão.
+
 ### 5.3 Vectra Core: alinhamento com a integração
 
 - Garantir logs coerentes (QEMU + Vectra Core) via `VectraBitStackLog`.
