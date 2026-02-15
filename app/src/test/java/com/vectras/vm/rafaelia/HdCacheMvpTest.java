@@ -10,6 +10,8 @@ import static org.junit.Assert.assertTrue;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.lang.reflect.Field;
+import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.List;
@@ -267,6 +269,83 @@ public class HdCacheMvpTest {
         }
     }
 
+
+    @Test
+    public void engineProcessOneRealProcessingSuccess() throws IOException {
+        try (HdCacheMvp.Engine engine = new HdCacheMvp.Engine(tempStoreFile, tempIndexFile)) {
+            engine.addLayer("test_layer", 100);
+
+            byte[] payload = "rafaelia-real-processing".getBytes(StandardCharsets.UTF_8);
+            HdCacheMvp.EventKey key = engine.ingest("test_layer", payload);
+
+            engine.processOne(key);
+            HdCacheMvp.EventMeta meta = engine.getMeta().get(key);
+            assertEquals(HdCacheMvp.EventStatus.DONE, meta.getStatus());
+
+            // Idempotent path: DONE item is ignored, status must remain DONE.
+            engine.processOne(key);
+            assertEquals(HdCacheMvp.EventStatus.DONE, meta.getStatus());
+        }
+    }
+
+    @Test
+    public void engineProcessOneRetriesAreDecrementalOnTransientError() throws Exception {
+        try (HdCacheMvp.Engine engine = new HdCacheMvp.Engine(tempStoreFile, tempIndexFile)) {
+            engine.addLayer("test_layer", 100);
+
+            byte[] payload = "retry-me".getBytes(StandardCharsets.UTF_8);
+            HdCacheMvp.EventKey key = engine.ingest("test_layer", payload);
+            HdCacheMvp.EventMeta meta = engine.getMeta().get(key);
+            int retriesBefore = meta.getRetriesLeft();
+
+            clearAllCacheTiers(engine, key);
+            corruptMagic(meta.getDiskOff());
+
+            engine.processOne(key);
+
+            assertEquals(HdCacheMvp.EventStatus.RETRYING, meta.getStatus());
+            assertEquals(retriesBefore - 1, meta.getRetriesLeft());
+        }
+    }
+
+    @Test
+    public void engineProcessOneTransitionsToDroppedAfterRetryExhaustion() throws Exception {
+        try (HdCacheMvp.Engine engine = new HdCacheMvp.Engine(tempStoreFile, tempIndexFile)) {
+            engine.addLayer("test_layer", 100);
+
+            byte[] payload = "drop-after-retries".getBytes(StandardCharsets.UTF_8);
+            HdCacheMvp.EventKey key = engine.ingest("test_layer", payload);
+            HdCacheMvp.EventMeta meta = engine.getMeta().get(key);
+
+            clearAllCacheTiers(engine, key);
+            corruptMagic(meta.getDiskOff());
+
+            for (int i = 0; i <= HdCacheMvp.MAX_RETRIES; i++) {
+                engine.processOne(key);
+            }
+
+            assertEquals(HdCacheMvp.EventStatus.DROPPED, meta.getStatus());
+            assertEquals(0, meta.getRetriesLeft());
+        }
+    }
+
+    @Test
+    public void engineProcessOnePreventsDoneWhenProcessingIncomplete() throws Exception {
+        try (HdCacheMvp.Engine engine = new HdCacheMvp.Engine(tempStoreFile, tempIndexFile)) {
+            engine.addLayer("test_layer", 100);
+
+            byte[] payload = "tamper-hash".getBytes(StandardCharsets.UTF_8);
+            HdCacheMvp.EventKey key = engine.ingest("test_layer", payload);
+            HdCacheMvp.EventMeta meta = engine.getMeta().get(key);
+
+            forcePayloadHash(meta, "0000000000000000000000000000000000000000000000000000000000000000");
+
+            engine.processOne(key);
+
+            assertEquals(HdCacheMvp.EventStatus.DROPPED, meta.getStatus());
+            assertNotEquals(HdCacheMvp.EventStatus.DONE, meta.getStatus());
+        }
+    }
     @Test
     public void engineProcessOneCompletesEvent() throws IOException {
         try (HdCacheMvp.Engine engine = new HdCacheMvp.Engine(tempStoreFile, tempIndexFile)) {
@@ -350,4 +429,40 @@ public class HdCacheMvpTest {
         assertTrue(json.contains("\"eid\":\"eid123\""));
         assertTrue(json.contains("\"status\":\"NEW\""));
     }
+
+    private void clearAllCacheTiers(HdCacheMvp.Engine engine, HdCacheMvp.EventKey key) throws Exception {
+        removeFromTier(engine.getCache().getL1(), key);
+        removeFromTier(engine.getCache().getL2(), key);
+        removeFromTier(engine.getCache().getL3(), key);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void removeFromTier(HdCacheMvp.TierCache tier, HdCacheMvp.EventKey key) throws Exception {
+        Field mapField = HdCacheMvp.TierCache.class.getDeclaredField("map");
+        mapField.setAccessible(true);
+        Map<HdCacheMvp.EventKey, byte[]> map = (Map<HdCacheMvp.EventKey, byte[]>) mapField.get(tier);
+        map.remove(key);
+
+        Field usedField = HdCacheMvp.TierCache.class.getDeclaredField("used");
+        usedField.setAccessible(true);
+        long used = 0;
+        for (byte[] value : map.values()) {
+            used += value.length;
+        }
+        usedField.setLong(tier, used);
+    }
+
+    private void corruptMagic(long offset) throws IOException {
+        try (RandomAccessFile raf = new RandomAccessFile(tempStoreFile, "rw")) {
+            raf.seek(offset);
+            raf.write(new byte[]{0x00, 0x00, 0x00, 0x00});
+        }
+    }
+
+    private void forcePayloadHash(HdCacheMvp.EventMeta meta, String hash) throws Exception {
+        Field hashField = HdCacheMvp.EventMeta.class.getDeclaredField("payloadHash");
+        hashField.setAccessible(true);
+        hashField.set(meta, hash);
+    }
+
 }
