@@ -56,14 +56,20 @@ import org.json.JSONArray;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.io.Writer;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Pattern;
 
 /**
  * VMManager concentra o ciclo de vida de VMs, persistência de configuração
@@ -87,6 +93,8 @@ public class VMManager {
     public static String lastQemuCommand = "";
     private static final ConcurrentHashMap<String, ProcessSupervisor> SUPERVISORS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, VmRuntimeState> VM_STATES = new ConcurrentHashMap<>();
+    private static final AtomicLong UNKNOWN_VM_SEQUENCE = new AtomicLong(1L);
+    private static final Pattern SAFE_COMMAND_CHARS = Pattern.compile("^[a-zA-Z0-9_./,:=+\\-\"' ]+$");
 
     private enum VmRuntimeState {
         STOPPED,
@@ -149,6 +157,15 @@ public class VMManager {
     public static synchronized void registerVmProcess(Context context, String vmId, Process process) {
         if (process == null) return;
         String key = normalizeVmLifecycleId(vmId);
+
+        if ("unknown".equals(key)) {
+            long pid = ProcessRuntimeOps.safePid(process);
+            if (pid > 0L) {
+                key = "unknown-pid-" + pid;
+            } else {
+                key = "unknown-seq-" + UNKNOWN_VM_SEQUENCE.getAndIncrement();
+            }
+        }
 
         pruneInactiveSupervisors();
 
@@ -600,24 +617,52 @@ public class VMManager {
     //This can be removed because QMP currently uses sockets instead of open ports.
     @Deprecated
     public static int startRandomPort() {
-        int _result;
-        Random _random = new Random();
-        int _min = 10000;
-        int _max = 65535;
-        _result = _random.nextInt(_max - _min + 1) + _min;
+        final Random random = new Random();
+        final int min = 10_000;
+        final int max = 65_535;
+        final int attempts = 128;
+        Set<Integer> reservedPorts = readReservedPortsFromVmDb();
 
-        if (FileUtils.isFileExists(AppConfig.romsdatajson) || FileUtils.canRead(AppConfig.romsdatajson)) {
-            if (FileUtils.readAFile(AppConfig.romsdatajson).contains("\"qmpPort\":" + _result)) {
-                _result = _random.nextInt(_max - _min + 1) + _min;
+        for (int attempt = 0; attempt < attempts; attempt++) {
+            int candidate = random.nextInt(max - min + 1) + min;
+            if (reservedPorts.contains(candidate)) {
+                continue;
             }
-            if (FileUtils.readAFile(AppConfig.romsdatajson).contains("\"qmpPort\":" + _result)) {
-                _result = _random.nextInt(_max - _min + 1) + _min;
+            if (isPortAvailable(candidate)) {
+                return candidate;
             }
-        } else {
-            _result = 8080;
         }
 
-        return _result;
+        return 8080;
+    }
+
+    private static Set<Integer> readReservedPortsFromVmDb() {
+        Set<Integer> ports = new HashSet<>();
+        if (!FileUtils.isFileExists(AppConfig.romsdatajson) && !FileUtils.canRead(AppConfig.romsdatajson)) {
+            return ports;
+        }
+        String content = FileUtils.readAFile(AppConfig.romsdatajson);
+        if (content == null || content.isEmpty()) {
+            return ports;
+        }
+        java.util.regex.Matcher matcher = Pattern.compile("\\\"qmpPort\\\"\\s*:\\s*(\\d+)").matcher(content);
+        while (matcher.find()) {
+            try {
+                ports.add(Integer.parseInt(matcher.group(1)));
+            } catch (NumberFormatException ignored) {
+                // Ignore malformed entries and keep scanning.
+            }
+        }
+        return ports;
+    }
+
+    private static boolean isPortAvailable(int port) {
+        try (ServerSocket ignored = new ServerSocket(port)) {
+            ignored.setReuseAddress(true);
+            return true;
+        } catch (IOException ioException) {
+            return false;
+        }
     }
 
     public static void deleteVM(int position) {
@@ -1120,11 +1165,29 @@ public class VMManager {
             Log.d("VMManager.isthiscommandsafe", _command);
         }
 
-        if (_command.startsWith("qemu")) {
-            if (!_command.contains("&")) {
-                if (!_command.contains("\n")) {
-                    if (!_command.contains(";")) {
-                        if (!_command.contains("|")) {
+        String command = _command.trim();
+        if (command.isEmpty()) {
+            latestUnsafeCommandReason = _context.getString(R.string.not_the_command_to_run_qemu);
+            return false;
+        }
+
+        if (!SAFE_COMMAND_CHARS.matcher(command).matches()) {
+            latestUnsafeCommandReason = _context.getString(R.string.command_are_not_allowed_to_contain_multiple_lines);
+            return false;
+        }
+
+        if (command.contains("&&") || command.contains("||") || command.contains("$")
+                || command.contains("`") || command.contains("<") || command.contains(">")
+                || command.contains("(") || command.contains(")")) {
+            latestUnsafeCommandReason = _context.getString(R.string.command_are_not_allowed_to_contain_semicolons);
+            return false;
+        }
+
+        if (command.startsWith("qemu")) {
+            if (!command.contains("&")) {
+                if (!command.contains("\n")) {
+                    if (!command.contains(";")) {
+                        if (!command.contains("|")) {
                             return true;
                         } else {
                             latestUnsafeCommandReason = _context.getString(R.string.command_are_not_allowed_to_contain_vertical_bars);
@@ -1145,8 +1208,12 @@ public class VMManager {
     }
 
     public static boolean isthiscommandsafeimg(@NonNull String _command, Context _context) {
-        if (!_command.contains("qcow2")) {
-            String _getsize = _command.substring(_command.lastIndexOf(" ") + 1);
+        String command = _command.trim();
+        if (!isthiscommandsafe(command, _context)) {
+            return false;
+        }
+        if (!command.contains("qcow2")) {
+            String _getsize = command.substring(command.lastIndexOf(" ") + 1);
             if (_getsize.toLowerCase().endsWith("t") || _getsize.toLowerCase().endsWith("p") || _getsize.toLowerCase().endsWith("e")) {
                 latestUnsafeCommandReason = _context.getString(R.string.size_too_large_try_qcow2_format);
                 return false;
