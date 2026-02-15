@@ -14,7 +14,11 @@ public final class RafaeliaSalmoCore {
   public static final int COLLAPSE_STATE_9096 = 9096;
   public static final long PHOS_VECTOR = 0x3CF0L;
   public static final int CLOCK_LIMIT_70 = 70;
-  public static final float LIGHT_FLUID = 0.866025f;
+  public static final int LIGHT_FLUID_SCALED = 866_025;
+
+  private static final long TRIAD_MASK = 0xFFFFL;
+  private static final int RAM_SHIFT = 1;
+  private static final int DISK_SHIFT = 2;
 
   public static long anchor() {
     return ANCHOR_SENE_35;
@@ -33,13 +37,16 @@ public final class RafaeliaSalmoCore {
   }
 
   public static long resetPhase70(long value) {
-    return Math.floorMod(value, CLOCK_LIMIT_70);
+    long mod = value % CLOCK_LIMIT_70;
+    return mod < 0 ? mod + CLOCK_LIMIT_70 : mod;
   }
 
   public static long cityLuminance(long cpu, long ram, long disk) {
     long base = phosActivation();
-    long fluid = (long) (LIGHT_FLUID * 1_000_000.0f);
-    long triad = (cpu & 0xFFFFL) ^ ((ram & 0xFFFFL) << 1) ^ ((disk & 0xFFFFL) << 2);
+    long triad = (cpu & TRIAD_MASK)
+        ^ ((ram & TRIAD_MASK) << RAM_SHIFT)
+        ^ ((disk & TRIAD_MASK) << DISK_SHIFT);
+    long fluid = LIGHT_FLUID_SCALED;
     long folded = seneIntersection(base ^ fluid ^ triad);
     return resetPhase70(folded);
   }
