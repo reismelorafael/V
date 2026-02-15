@@ -1,28 +1,21 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(vectra_core_accel C)
 
-option(RMR_ENABLE_POLICY_MODULE "Build optional RMR policy module (kernel/math/tuning)" OFF)
-option(RMR_ENABLE_BITRAF_MODULE "Build BITRAF static module required by legacy unified symbols" ON)
-
-add_library(rmr_core_static STATIC
+set(VECTRA_CORE_ACCEL_SOURCES
+    vectra_core_accel.c
     ../../../../engine/rmr/src/rmr_unified_kernel.c
     ../../../../engine/rmr/src/rmr_hw_detect.c
+    ../../../../engine/rmr/src/rmr_policy_kernel.c
+    ../../../../engine/rmr/src/bitraf.c
     ../../../../engine/rmr/src/rmr_corelib.c
     ../../../../engine/rmr/src/rmr_cycles.c
-    ../../../../engine/rmr/src/rmr_ll_ops.c)
+    ../../../../engine/rmr/src/rmr_ll_ops.c
+    ../../../../engine/rmr/src/rmr_math_fabric.c
+    ../../../../engine/rmr/src/rmr_ll_tuning.c)
 
-if (RMR_ENABLE_POLICY_MODULE)
-    add_library(rmr_policy_static STATIC
-        ../../../../engine/rmr/src/rmr_policy_kernel.c
-        ../../../../engine/rmr/src/rmr_math_fabric.c
-        ../../../../engine/rmr/src/rmr_ll_tuning.c)
-endif()
+list(REMOVE_DUPLICATES VECTRA_CORE_ACCEL_SOURCES)
 
-add_library(bitraf_static STATIC
-    ../../../../engine/rmr/src/bitraf.c)
-
-add_library(vectra_core_accel SHARED
-    vectra_core_accel.c)
+add_library(vectra_core_accel SHARED ${VECTRA_CORE_ACCEL_SOURCES})
 
 find_library(log-lib log)
 find_package(JNI REQUIRED)
