@@ -3,6 +3,8 @@ package com.vectras.vm.qemu;
 import android.app.Activity;
 
 import com.vectras.qemu.MainSettingsManager;
+import com.vectras.vm.core.ExecutionBudget;
+import com.vectras.vm.core.ExecutionBudgetPolicy;
 
 import java.util.ArrayList;
 
@@ -74,9 +76,14 @@ public final class QemuArgsBuilder {
                     params.add("cpus=" + budget.smpCpus);
                 }
                 break;
-            case BALANCED:
             default:
                 break;
+        }
+
+        int cpus = ExecutionBudgetPolicy.cpusFor(profile);
+        if (ExecutionBudgetPolicy.requiresSmp(profile)) {
+            params.add("-smp");
+            params.add("cpus=" + cpus);
         }
     }
 
