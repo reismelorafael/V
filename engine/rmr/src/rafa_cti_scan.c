@@ -181,6 +181,17 @@ static RouteType parse_route(const char *s) {
   return ROUTE_SEQ;
 }
 
+static const char *route_mode_name(RouteType route) {
+  switch (route) {
+    case ROUTE_SPIRAL: return "SPIRAL";
+    case ROUTE_TOROID: return "TOROID";
+    case ROUTE_RANDOM_PERM: return "RANDOM_PERM";
+    case ROUTE_DELTA_MISS: return "DELTA_MISS";
+    case ROUTE_SEQ:
+    default: return "SEQ";
+  }
+}
+
 int main(int argc, char **argv) {
   if (argc < 4) {
     fprintf(stderr, "usage: %s <input.zip> <out.bitstack.jsonl> <crc_matrix.bin> [--w N --h N --z N --seed N --route SEQ|SPIRAL|TOROID|RANDOM_PERM|DELTA_MISS]\n", argv[0]);
@@ -202,6 +213,8 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i], "--seed")) parse_u64(argv[i + 1], &cfg.seed);
     else if (!strcmp(argv[i], "--route")) cfg.route = parse_route(argv[i + 1]);
   }
+
+  printf("RNG mode=%s seed=%" PRIu64 "\n", route_mode_name(cfg.route), cfg.seed);
 
   FILE *fin = fopen(argv[1], "rb");
   FILE *fjson = fopen(argv[2], "wb");
