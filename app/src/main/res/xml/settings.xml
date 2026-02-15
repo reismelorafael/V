@@ -56,6 +56,17 @@
             app:isPreferenceVisible="true"
             app:icon="@drawable/round_language_24" />
 
+
+        <Preference
+            android:key="officialcommunitychannel"
+            android:title="@string/official_community_channel"
+            android:summary="@string/official_community_channel_summary"
+            app:icon="@drawable/groups_24px">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:data="@string/official_community_channel_url" />
+        </Preference>
+
         <Preference
             android:key="checkforupdate"
             android:title="@string/check_for_updates"

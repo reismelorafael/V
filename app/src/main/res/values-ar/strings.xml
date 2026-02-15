@@ -291,8 +291,8 @@
     <string name="back_to_the_display">العودة إلى العرض</string>
     <string name="x11">X11</string>
     <string name="about_app">حول التطبيق</string>
-    <string name="join_us_on_telegram">إنضم إلينا على Telegram</string>
-    <string name="join_us_on_telegram_where_we_publish_all_the_news_and_updates_and_receive_your_opinions_and_bugs">انضم إلينا على Telegram حيث ننشر جميع الأخبار والتحديثات ونتلقى آرائكم وملاحظاتكم</string>
+    <string name="join_us_on_the_official_community_channel">انضم إلينا في قناة المجتمع الرسمية</string>
+    <string name="join_us_on_the_official_community_channel_where_we_publish_all_the_news_and_updates_and_receive_your_opinions_and_bugs">انضم إلينا في قناة المجتمع الرسمية حيث ننشر جميع الأخبار والتحديثات ونتلقى آراءكم وتقارير الأخطاء</string>
     <string name="join">إنضمام</string>
     <string name="dont_show_again">لا تظهر مرة أخرى</string>
     <string name="getting_ready_for_you_please_don_t_disconnect_the_network">نحن نستعد لك...\nيرجى عدم فصل الشبكة.</string>
