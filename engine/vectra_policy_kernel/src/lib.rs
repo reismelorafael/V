@@ -111,7 +111,6 @@ fn build_canon(op_code: &str, canonical_args: &[String], anchor: Option<AnchorAd
 
 pub fn canonize(op: Op, args: &[String], anchor: Option<AnchorAddr>) -> Key {
     let plugin = resolve_op(op);
-    let op_code = plugin.op_code();
     let canonical_args = plugin.canonize(args);
     let canon = build_canon(plugin.op_code(), &canonical_args, anchor);
     Key {
@@ -468,7 +467,11 @@ impl PolicyKernel {
             return Err(KernelError::PolicyViolation("log sequence mismatch"));
         }
 
-        let expected_output = execute_key_once(&canonize(entry.op, &entry.args, None));
+        let replay_anchor = match (entry.op, &entry.output) {
+            (Op::AnchorMark, Output::Anchor(anchor)) => Some(*anchor),
+            _ => None,
+        };
+        let expected_output = execute_key_once(&canonize(entry.op, &entry.args, replay_anchor));
         if entry.output != expected_output {
             return Err(KernelError::PolicyViolation("log replay mismatch"));
         }
