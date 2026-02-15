@@ -76,3 +76,8 @@ sequenceDiagram
     S->>A: RUN/DEGRADED->STOP or FAILOVER->STOP
     V->>V: remove supervisor ativo (on success)
 ```
+
+
+## 7) Fonte de verdade de determinismo
+- O determinismo matemático e de política (CRC32C, paridade 4x4, verificação de bloco, roteamento e transição de política de evento) reside no core C unificado em `engine/rmr` e é exposto para Android via JNI (`vectra_core_accel`).
+- O Kotlin mantém fluxo de app e integração Android (Context, lifecycle, IO de alto nível), atuando como camada de marshaling/orquestração para chamadas determinísticas do core.
