@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include "rmr_unified_kernel.h"
 
 #if defined(__ARM_NEON)
 #include <arm_neon.h>
@@ -43,6 +44,9 @@ typedef struct {
 
 static vectra_hw_contract_t g_hw_contract;
 static pthread_once_t g_hw_contract_once = PTHREAD_ONCE_INIT;
+
+static rmr_kernel_state_t g_unified_state;
+static pthread_mutex_t g_unified_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define VECTRA_ARENA_CAPACITY_BYTES (64u * 1024u * 1024u)
 #define VECTRA_ARENA_MAX_SLOTS 4096u
@@ -463,12 +467,21 @@ static uint32_t vectra_feature_mask(void) {
 }
 
 static void vectra_hw_contract_init(void) {
-    uint32_t arch = vectra_arch_tag();
-    g_hw_contract.signature = arch | vectra_os_tag();
-    g_hw_contract.pointer_bits = (uint32_t)(sizeof(void*) * 8u);
-    g_hw_contract.cache_line_bytes = vectra_cache_line_bytes(arch);
-    g_hw_contract.page_bytes = vectra_page_bytes(arch);
-    g_hw_contract.feature_mask = vectra_feature_mask();
+    rmr_kernel_capabilities_t caps;
+    if (rmr_kernel_autodetect(&caps) != RMR_KERNEL_OK) {
+        uint32_t arch = vectra_arch_tag();
+        g_hw_contract.signature = arch | vectra_os_tag();
+        g_hw_contract.pointer_bits = (uint32_t)(sizeof(void*) * 8u);
+        g_hw_contract.cache_line_bytes = vectra_cache_line_bytes(arch);
+        g_hw_contract.page_bytes = vectra_page_bytes(arch);
+        g_hw_contract.feature_mask = vectra_feature_mask();
+        return;
+    }
+    g_hw_contract.signature = caps.signature;
+    g_hw_contract.pointer_bits = caps.pointer_bits;
+    g_hw_contract.cache_line_bytes = caps.cache_line_bytes;
+    g_hw_contract.page_bytes = caps.page_bytes;
+    g_hw_contract.feature_mask = caps.feature_mask;
 }
 
 static const vectra_hw_contract_t* vectra_hw_contract_get(void) {
@@ -480,6 +493,9 @@ JNIEXPORT jint JNICALL
 Java_com_vectras_vm_core_NativeFastPath_nativeInit(JNIEnv* env, jclass clazz) {
     (void)env;
     (void)clazz;
+    pthread_mutex_lock(&g_unified_lock);
+    (void)rmr_kernel_init(&g_unified_state, 0x56454354u);
+    pthread_mutex_unlock(&g_unified_lock);
     return VECTRA_NATIVE_OK;
 }
 
@@ -1055,6 +1071,143 @@ Java_com_vectras_vm_core_NativeFastPath_nativeArenaFill(JNIEnv* env, jclass claz
     return VECTRA_ARENA_OK;
 }
 
+
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreInit(JNIEnv* env, jclass clazz, jint seed) {
+    (void)env;
+    (void)clazz;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_init(&g_unified_state, (uint32_t)seed);
+    pthread_mutex_unlock(&g_unified_lock);
+    return (jint)rc;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreShutdown(JNIEnv* env, jclass clazz) {
+    (void)env;
+    (void)clazz;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_shutdown(&g_unified_state);
+    pthread_mutex_unlock(&g_unified_lock);
+    return (jint)rc;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreIngest(JNIEnv* env, jclass clazz, jbyteArray payload) {
+    (void)clazz;
+    if (!payload) return RMR_KERNEL_ERR_ARG;
+    jsize len = (*env)->GetArrayLength(env, payload);
+    jbyte* ptr = (*env)->GetPrimitiveArrayCritical(env, payload, 0);
+    if (!ptr) return RMR_KERNEL_ERR_STATE;
+    uint32_t out = 0u;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_ingest(&g_unified_state, (const uint8_t*)ptr, (uint32_t)len, &out);
+    pthread_mutex_unlock(&g_unified_lock);
+    (*env)->ReleasePrimitiveArrayCritical(env, payload, ptr, JNI_ABORT);
+    return (jint)((rc == RMR_KERNEL_OK) ? (int32_t)out : rc);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreProcess(JNIEnv* env, jclass clazz, jint a, jint b, jint mode) {
+    (void)env;
+    (void)clazz;
+    int32_t out = 0;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_process(&g_unified_state, (int32_t)a, (int32_t)b, (uint32_t)mode, &out);
+    pthread_mutex_unlock(&g_unified_lock);
+    return (jint)((rc == RMR_KERNEL_OK) ? out : rc);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreRoute(JNIEnv* env, jclass clazz,
+                                                         jlong cpuCycles, jlong storageReadBytes,
+                                                         jlong storageWriteBytes, jlong inputBytes,
+                                                         jlong outputBytes, jlong m00, jlong m01,
+                                                         jlong m10, jlong m11) {
+    (void)env;
+    (void)clazz;
+    rmr_kernel_route_input_t in;
+    in.cpu_cycles = (uint64_t)cpuCycles;
+    in.storage_read_bytes = (uint64_t)storageReadBytes;
+    in.storage_write_bytes = (uint64_t)storageWriteBytes;
+    in.input_bytes = (uint64_t)inputBytes;
+    in.output_bytes = (uint64_t)outputBytes;
+    in.m00 = (int64_t)m00;
+    in.m01 = (int64_t)m01;
+    in.m10 = (int64_t)m10;
+    in.m11 = (int64_t)m11;
+    rmr_kernel_route_output_t out;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_route(&g_unified_state, &in, &out);
+    pthread_mutex_unlock(&g_unified_lock);
+    return (jint)((rc == RMR_KERNEL_OK) ? (int32_t)out.route : rc);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreVerify(JNIEnv* env, jclass clazz, jbyteArray payload, jint expected) {
+    (void)clazz;
+    if (!payload) return RMR_KERNEL_ERR_ARG;
+    jsize len = (*env)->GetArrayLength(env, payload);
+    jbyte* ptr = (*env)->GetPrimitiveArrayCritical(env, payload, 0);
+    if (!ptr) return RMR_KERNEL_ERR_STATE;
+    uint32_t out = 0u;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_verify(&g_unified_state, (const uint8_t*)ptr, (uint32_t)len, (uint32_t)expected, &out);
+    pthread_mutex_unlock(&g_unified_lock);
+    (*env)->ReleasePrimitiveArrayCritical(env, payload, ptr, JNI_ABORT);
+    if (rc == RMR_KERNEL_OK) {
+        return 1;
+    }
+    if (rc == 1) {
+        return 0;
+    }
+    return (jint)rc;
+}
+
+JNIEXPORT jlongArray JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreAudit(JNIEnv* env, jclass clazz) {
+    (void)clazz;
+    uint64_t counters[7] = {0};
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_audit(&g_unified_state, counters, 7u);
+    pthread_mutex_unlock(&g_unified_lock);
+    if (rc != RMR_KERNEL_OK) {
+        return NULL;
+    }
+    jlongArray out = (*env)->NewLongArray(env, 7);
+    if (!out) {
+        return NULL;
+    }
+    jlong values[7];
+    for (int i = 0; i < 7; i++) values[i] = (jlong)counters[i];
+    (*env)->SetLongArrayRegion(env, out, 0, 7, values);
+    return out;
+}
+
+JNIEXPORT jintArray JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeReadUnifiedCapabilities(JNIEnv* env, jclass clazz) {
+    (void)clazz;
+    rmr_kernel_capabilities_t caps;
+    if (rmr_kernel_autodetect(&caps) != RMR_KERNEL_OK) {
+        return NULL;
+    }
+    jint values[8];
+    values[0] = (jint)caps.signature;
+    values[1] = (jint)caps.pointer_bits;
+    values[2] = (jint)caps.cache_line_bytes;
+    values[3] = (jint)caps.page_bytes;
+    values[4] = (jint)caps.feature_mask;
+    values[5] = (jint)caps.register_width_bits;
+    values[6] = (jint)caps.pin_count_hint;
+    values[7] = (jint)caps.feature_bits_hi;
+    jintArray out = (*env)->NewIntArray(env, 8);
+    if (!out) {
+        return NULL;
+    }
+    (*env)->SetIntArrayRegion(env, out, 0, 8, values);
+    return out;
+}
 
 #define LOGCAT_RING_MAX_ENTRIES 1024
 #define LOGCAT_ENTRY_MAX_BYTES 1024

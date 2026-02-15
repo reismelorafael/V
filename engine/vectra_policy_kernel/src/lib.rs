@@ -85,9 +85,33 @@ fn resolve_op(op: Op) -> &'static dyn DeterministicOp {
     resolve_op_by_code(op_code).unwrap_or_else(|| panic!("op_not_registered={op_code}"))
 }
 
-pub fn canonize(op: Op, args: &[String]) -> Key {
+fn anchor_canon(anchor: Option<AnchorAddr>) -> String {
+    match anchor {
+        Some(anchor) => format!("{}:{}:{}", anchor.dev, anchor.block, anchor.page),
+        None => String::from("none"),
+    }
+}
+
+fn key_canon(op_code: &str, canonical_args: &[String], anchor: Option<AnchorAddr>) -> String {
+    let mut canon = String::new();
+    canon.push_str(op_code);
+    canon.push('|');
+    for arg in canonical_args {
+        canon.push_str(&arg.len().to_string());
+        canon.push(':');
+        canon.push_str(arg);
+        canon.push('|');
+    }
+    canon.push_str("anchor=");
+    canon.push_str(&anchor_canon(anchor));
+    canon
+}
+
+pub fn canonize(op: Op, args: &[String], anchor: Option<AnchorAddr>) -> Key {
     let plugin = resolve_op(op);
+    let op_code = plugin.op_code();
     let canonical_args = plugin.canonize(args);
+    let canon = key_canon(op_code, &canonical_args, anchor);
     Key {
         op,
         args: canonical_args,
@@ -112,9 +136,10 @@ pub fn commit_tick(tick: u64, events: &[Event]) -> Vec<(u64, Output)> {
         });
     }
     ordered.sort_by(|(a_key, _), (b_key, _)| {
-        resolve_op(a_key.op)
-            .op_code()
-            .cmp(resolve_op(b_key.op).op_code())
+        a_key
+            .canon
+            .cmp(&b_key.canon)
+            .then_with(|| a_key.anchor.cmp(&b_key.anchor))
             .then_with(|| a_key.args.cmp(&b_key.args))
             .then_with(|| a_key.op.cmp(&b_key.op))
     });
@@ -146,6 +171,14 @@ pub fn exec_bucket(key: &Key, bucket: &[Event]) -> Vec<(u64, Output)> {
 }
 
 fn execute_key_once(key: &Key) -> Output {
+    if key.op == Op::AnchorMark {
+        return Output::Anchor(key.anchor.unwrap_or(AnchorAddr {
+            dev: 0,
+            block: 0,
+            page: 0,
+        }));
+    }
+
     let plugin = resolve_op(key.op);
     plugin.execute(&key.args)
 }
@@ -342,7 +375,7 @@ pub struct PolicyKernel {
     route_table: RouteTable,
     allowed_stages: [Stage; 5],
     focused: Option<String>,
-    anchors: Vec<String>,
+    anchors: Vec<AnchorAddr>,
     log: Vec<LogEntry>,
     seq: u64,
     checkpoints: Vec<usize>,
@@ -398,7 +431,7 @@ impl PolicyKernel {
         self.focused.as_deref()
     }
 
-    pub fn anchors(&self) -> &[String] {
+    pub fn anchors(&self) -> &[AnchorAddr] {
         &self.anchors
     }
 
@@ -431,7 +464,11 @@ impl PolicyKernel {
             return Err(KernelError::PolicyViolation("log sequence mismatch"));
         }
 
-        let expected_output = execute_key_once(&canonize(entry.op, &entry.args));
+        let replay_anchor = match (entry.op, &entry.output) {
+            (Op::AnchorMark, Output::Anchor(anchor)) => Some(*anchor),
+            _ => None,
+        };
+        let expected_output = execute_key_once(&canonize(entry.op, &entry.args, replay_anchor));
         if entry.output != expected_output {
             return Err(KernelError::PolicyViolation("log replay mismatch"));
         }
@@ -441,7 +478,7 @@ impl PolicyKernel {
                 self.focused = Some(target.clone());
             }
             Output::Anchor(anchor) => {
-                self.anchors.push(anchor.clone());
+                self.anchors.push(*anchor);
             }
             Output::Text(_) | Output::Number(_) => {}
         }
@@ -725,9 +762,8 @@ pub fn fnv1a64(data: &[u8]) -> u64 {
 }
 
 const LOG2_FRAC_Q12_LUT: [u16; 33] = [
-    0, 182, 358, 530, 696, 858, 1016, 1169, 1319, 1465, 1607, 1746, 1882, 2015, 2145, 2272,
-    2396, 2518, 2637, 2754, 2869, 2982, 3092, 3200, 3307, 3412, 3514, 3615, 3715, 3812, 3908,
-    4003, 4096,
+    0, 182, 358, 530, 696, 858, 1016, 1169, 1319, 1465, 1607, 1746, 1882, 2015, 2145, 2272, 2396,
+    2518, 2637, 2754, 2869, 2982, 3092, 3200, 3307, 3412, 3514, 3615, 3715, 3812, 3908, 4003, 4096,
 ];
 
 const LOG2_Q12_SHIFT: u32 = 12;
