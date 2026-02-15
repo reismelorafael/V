@@ -587,6 +587,83 @@ public final class NativeFastPath {
         return nativeAudit(crc, matrixDeterminant, routeTag, verifyOk ? 1 : 0);
     }
 
+    public static int crc32c(int initial, byte[] data, int offset, int length) {
+        if (data == null || length <= 0) {
+            return initial;
+        }
+        if (offset < 0 || offset + length > data.length) {
+            throw new IllegalArgumentException("Invalid crc range");
+        }
+        if (NATIVE_AVAILABLE) {
+            int nativeValue = nativeDeterministicCrc32c(initial, data, offset, length);
+            if (nativeValue != Integer.MIN_VALUE) {
+                return nativeValue;
+            }
+        }
+        int crc = initial;
+        for (int i = offset; i < offset + length; i++) {
+            crc ^= data[i];
+            for (int b = 0; b < 8; b++) {
+                int mask = -(crc & 1);
+                crc = (crc >>> 1) ^ (0x82F63B78 & mask);
+            }
+        }
+        return crc;
+    }
+
+    public static int parity2D8(int data16) {
+        if (NATIVE_AVAILABLE) {
+            return nativeDeterministicParity2D8(data16);
+        }
+        int parity = 0;
+        for (int row = 0; row < 4; row++) {
+            int rowParity = 0;
+            for (int col = 0; col < 4; col++) {
+                int idx = (row << 2) | col;
+                rowParity ^= (data16 >>> idx) & 1;
+            }
+            parity |= (rowParity << (row + 4));
+        }
+        for (int col = 0; col < 4; col++) {
+            int colParity = 0;
+            for (int row = 0; row < 4; row++) {
+                int idx = (row << 2) | col;
+                colParity ^= (data16 >>> idx) & 1;
+            }
+            parity |= (colParity << col);
+        }
+        return parity;
+    }
+
+    public static boolean verify4x4Block(int packedBlock) {
+        if (NATIVE_AVAILABLE) {
+            return nativeDeterministicVerify4x4Block(packedBlock) == 1;
+        }
+        int data = (packedBlock >>> 8) & 0xFFFF;
+        int storedParity = packedBlock & 0xFF;
+        return storedParity == (parity2D8(data) & 0xFF);
+    }
+
+    public static int[] policyTransition(int hitStreak, int missStreak, boolean hasEvent) {
+        if (NATIVE_AVAILABLE) {
+            int[] nativeValue = nativeDeterministicPolicyTransition(hitStreak, missStreak, hasEvent ? 1 : 0);
+            if (nativeValue != null && nativeValue.length == 3) {
+                return nativeValue;
+            }
+        }
+        int hits = hitStreak;
+        int misses = missStreak;
+        if (hasEvent) {
+            hits++;
+            misses = 0;
+        } else {
+            misses++;
+            hits = 0;
+        }
+        int policy = misses >= 2 ? 1 : 0;
+        return new int[]{hits, misses, policy};
+    }
+
     private static native int nativeInit();
 
     private static native int[] nativeReadHardwareContract();
@@ -660,6 +737,15 @@ public final class NativeFastPath {
 
     private static native long nativeAudit(int crc, long matrixDeterminant, long routeTag, int verifyOk);
 
+    private static native int nativeDeterministicCrc32c(int initial, byte[] data, int offset, int length);
+
+    private static native int nativeDeterministicParity2D8(int data16);
+
+    private static native int nativeDeterministicVerify4x4Block(int packedBlock);
+
+    private static native int[] nativeDeterministicPolicyTransition(int hitStreak, int missStreak, int hasEvent);
+
+    private static native int nativePointerBits();
 
 
 }
