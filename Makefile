@@ -11,8 +11,20 @@ else ifeq ($(UNAME_S),Darwin)
   SHARED_EXT := dylib
 endif
 
-ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c engine/rmr/src/rmr_math_fabric.c engine/rmr/src/rmr_policy_kernel.c engine/rmr/src/rmr_qemu_bridge.c engine/rmr/src/rmr_corelib.c
+ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c engine/rmr/src/rmr_math_fabric.c engine/rmr/src/rmr_policy_kernel.c engine/rmr/src/rmr_qemu_bridge.c engine/rmr/src/rmr_corelib.c engine/rmr/src/rmr_ll_ops.c engine/rmr/src/rmr_casm_bridge.c
 ENGINE_OBJS := $(patsubst %.c,build/%.o,$(ENGINE_SRCS))
+
+CASM_ASM_SRCS :=
+ifeq ($(UNAME_S),Linux)
+ifeq ($(shell uname -m 2>/dev/null),x86_64)
+  CASM_ASM_SRCS += engine/rmr/interop/rmr_casm_x86_64.S
+endif
+endif
+CASM_ASM_OBJS := $(patsubst %.S,build/%.o,$(CASM_ASM_SRCS))
+ENGINE_OBJS += $(CASM_ASM_OBJS)
+CASM_BRIDGE_C_SRC := engine/rmr/src/rmr_casm_bridge.c
+CASM_BRIDGE_C_OBJ := $(patsubst %.c,build/%.o,$(CASM_BRIDGE_C_SRC))
+CASM_BRIDGE_OBJS := $(CASM_BRIDGE_C_OBJ) $(CASM_ASM_OBJS)
 BITRAF_API_SRC := engine/rmr/src/bitraf.c
 BITRAF_API_OBJ := $(patsubst %.c,build/%.o,$(BITRAF_API_SRC))
 BITRAF_BIN := build/demo/bitraf_core
@@ -31,11 +43,16 @@ QEMU_BRIDGE_DEMO_BIN := build/demo/rmr_qemu_bridge_demo
 QEMU_BRIDGE_SELFTEST_BIN := build/demo/rmr_qemu_bridge_selftest
 MATH_FABRIC_SELFTEST_BIN := build/demo/math_fabric_selftest
 DETERMINISM_SIGNATURE_SELFTEST_BIN := build/demo/determinism_signature_selftest
+CASM_BRIDGE_SELFTEST_BIN := build/demo/rmr_casm_bridge_selftest
 RMR_REQUIRED_SYMBOLS := RmR_MathFabric_AutodetectPlan RmR_MathFabric_VectorMix
 
-all: $(LIB_STATIC) verify-librmr-symbols $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
+all: $(LIB_STATIC) verify-librmr-symbols $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_BRIDGE_SELFTEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
 
 build/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/%.o: %.S
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -109,13 +126,21 @@ $(QEMU_BRIDGE_SELFTEST_BIN): demo_cli/src/rmr_qemu_bridge_selftest.c $(LIB_STATI
 $(DETERMINISM_SIGNATURE_SELFTEST_BIN): demo_cli/src/determinism_signature_selftest.c $(LIB_STATIC)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
+
+$(CASM_BRIDGE_SELFTEST_BIN): demo_cli/src/rmr_casm_bridge_selftest.c $(CASM_BRIDGE_OBJS)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $< $(CASM_BRIDGE_OBJS) $(LDFLAGS) -o $@
 run-demo: $(DEMO_BIN)
 	./$(DEMO_BIN)
 
-run-selftest: $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
+run-casm-selftest: $(CASM_BRIDGE_SELFTEST_BIN)
+	./$(CASM_BRIDGE_SELFTEST_BIN)
+
+run-selftest: $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_BRIDGE_SELFTEST_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
 	./$(SELFTEST_BIN)
 	./$(MATH_FABRIC_SELFTEST_BIN)
 	./$(DETERMINISM_SIGNATURE_SELFTEST_BIN)
+	./$(CASM_BRIDGE_SELFTEST_BIN)
 	./$(POLICY_SELFTEST_BIN)
 	./$(QEMU_BRIDGE_SELFTEST_BIN)
 
@@ -132,4 +157,4 @@ run-release-gate: run-selftest run-bench run-baremetal-gate
 clean:
 	rm -rf build
 
-.PHONY: all clean verify-librmr-symbols run-demo run-selftest run-bench run-baremetal-gate run-release-gate
+.PHONY: all clean verify-librmr-symbols run-demo run-casm-selftest run-selftest run-bench run-baremetal-gate run-release-gate
