@@ -23,7 +23,9 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
+import com.vectras.vm.benchmark.BenchmarkManager;
 import com.vectras.vm.benchmark.VectraBenchmark;
+import com.vectras.vm.core.ExecutionGovernance;
 import com.vectras.vm.core.QualityStandardsCatalog;
 import com.vectras.vm.utils.FileUtils;
 
@@ -36,7 +38,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * ProfessionalToolsActivity - MEGA TOOLS Professional Engineering/Benchmark/Scientific System
@@ -127,8 +128,11 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
     
     // Data
     private VectraBenchmark.BenchmarkResult[] lastResults;
+    private BenchmarkManager.BenchmarkResult lastBenchmarkResult;
     private AnalysisReport lastReport;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutionGovernance.GovernedExecutor governedExecutor =
+        ExecutionGovernance.newSerialExecutor("professional-tools", "professional-analysis-serial");
+    private final ExecutorService executor = governedExecutor.executor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     
     @Override
@@ -329,8 +333,39 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
                     tvProgressDetail.setText(R.string.pro_tools_warming_up);
                 });
                 
-                // Run benchmark
-                VectraBenchmark.BenchmarkResult[] results = VectraBenchmark.runAllBenchmarks();
+                // Run benchmark with validation and environment controls
+                BenchmarkManager manager = new BenchmarkManager(this);
+                BenchmarkManager.BenchmarkResult benchmarkResult =
+                    manager.runBenchmark(new BenchmarkManager.ProgressCallback() {
+                        @Override
+                        public void onProgress(int metricIndex, int totalMetrics, String currentMetric) {
+                            mainHandler.post(() -> {
+                                tvProgressDetail.setText(currentMetric);
+                                if (totalMetrics > 0) {
+                                    int percent = Math.max(0, Math.min(100,
+                                        (metricIndex * 100) / totalMetrics));
+                                    progressIndicator.setProgress(percent);
+                                }
+                            });
+                        }
+
+                        @Override
+                        public void onWarning(String warning) {
+                            mainHandler.post(() -> tvProgressDetail.setText("⚠ " + warning));
+                        }
+
+                        @Override
+                        public void onComplete(BenchmarkManager.BenchmarkResult result) {
+                            // handled after synchronous return
+                        }
+
+                        @Override
+                        public void onError(String error) {
+                            // handled by outer try/catch
+                        }
+                    });
+                lastBenchmarkResult = benchmarkResult.withGovernanceTelemetry(governedExecutor.snapshot());
+                VectraBenchmark.BenchmarkResult[] results = lastBenchmarkResult.metrics;
                 lastResults = results;
                 
                 // Update progress - Analyzing
@@ -341,7 +376,7 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
                 });
                 
                 // Generate analysis report
-                AnalysisReport report = generateAnalysisReport(results, selectedCategories, getSelectedMethodologies());
+                AnalysisReport report = generateAnalysisReport(lastBenchmarkResult, results, selectedCategories, getSelectedMethodologies());
                 lastReport = report;
                 
                 // Update progress - Finalizing
@@ -376,7 +411,8 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
         });
     }
     
-    private AnalysisReport generateAnalysisReport(VectraBenchmark.BenchmarkResult[] results,
+    private AnalysisReport generateAnalysisReport(BenchmarkManager.BenchmarkResult benchmarkResult,
+                                                   VectraBenchmark.BenchmarkResult[] results,
                                                    List<Integer> selectedCategories,
                                                    List<String> methodologies) {
         AnalysisReport report = new AnalysisReport();
@@ -396,6 +432,11 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
         report.selectedCategories = selectedCategories;
         report.complianceStandards = QualityStandardsCatalog.getDefaultStandards();
         report.integrationSources = buildIntegrationSources();
+        report.governanceTelemetry = benchmarkResult != null ? benchmarkResult.governanceTelemetry : null;
+        if (benchmarkResult != null && benchmarkResult.validation != null) {
+            report.validationConfidencePercent = (int) Math.round(benchmarkResult.validation.confidenceScore * 100);
+            report.validationInterferenceCount = benchmarkResult.validation.interferenceCount;
+        }
         
         // Store device specifications
         report.deviceModel = deviceSpec.cpuModel;
@@ -670,6 +711,26 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
         sb.append(String.format("║  Android Version:      %-55s║\n", report.androidVersion));
         sb.append(String.format("║  CPU ABI:              %-55s║\n", report.cpuAbi));
         sb.append("╠════════════════════════════════════════════════════════════════════════════════╣\n");
+
+        // Section G: Execution governance telemetry
+        sb.append("║ G. EXECUTION GOVERNANCE / POLICY TELEMETRY                                    ║\n");
+        sb.append("╠════════════════════════════════════════════════════════════════════════════════╣\n");
+        if (report.governanceTelemetry != null) {
+            sb.append(String.format("║  Profile:              %-55s║\n", truncateStr(report.governanceTelemetry.profileLabel, 55)));
+            sb.append(String.format("║  Effective SMP:        %-55s║\n", report.governanceTelemetry.effectiveSmp));
+            sb.append(String.format("║  Thread Limit:         %-55s║\n", report.governanceTelemetry.maxThreads));
+            sb.append(String.format("║  Process Limit:        %-55s║\n", report.governanceTelemetry.maxProcesses));
+            sb.append(String.format("║  Queue Depth (obs/max): %-54s║\n", report.governanceTelemetry.maxObservedQueueDepth + "/" + report.governanceTelemetry.maxQueueDepth));
+            sb.append(String.format("║  Rejections:           %-55s║\n", report.governanceTelemetry.rejectionCount));
+            sb.append(String.format("║  CallerRuns Uses:      %-55s║\n", report.governanceTelemetry.callerRunsCount));
+            sb.append(String.format("║  Policy:               %-55s║\n", report.governanceTelemetry.rejectionPolicy));
+            sb.append(String.format("║  Tasks submitted/done: %-55s║\n", report.governanceTelemetry.submittedTasks + "/" + report.governanceTelemetry.completedTasks));
+            sb.append(String.format("║  Confidence/Interference: %-50s║\n", report.validationConfidencePercent + "% / " + report.validationInterferenceCount));
+            sb.append("║  Evidence: counters captured from real executor runtime behavior.             ║\n");
+        } else {
+            sb.append("║  Telemetry unavailable for this execution.                                    ║\n");
+        }
+        sb.append("╠════════════════════════════════════════════════════════════════════════════════╣\n");
         
         // Section 1: Executive Summary
         sb.append("║ 1. EXECUTIVE TECHNICAL SUMMARY                                                ║\n");
@@ -866,7 +927,7 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        executor.shutdown();
+        governedExecutor.shutdown();
     }
     
     /**
@@ -879,6 +940,9 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
         List<String> complianceStandards;
         List<String> integrationSources;
         List<Integer> selectedCategories;
+        ExecutionGovernance.PolicyTelemetry governanceTelemetry;
+        int validationConfidencePercent;
+        int validationInterferenceCount;
         
         // Statistical analysis
         double mean;

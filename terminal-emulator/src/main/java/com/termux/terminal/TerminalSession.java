@@ -19,6 +19,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.UUID;
+import java.util.concurrent.Future;
 
 /**
  * A terminal session, consisting of a process coupled to a terminal interface.
@@ -145,6 +146,10 @@ public final class TerminalSession extends TerminalOutput {
     private final String[] mArgs;
     private final String[] mEnv;
 
+    private volatile Future<?> mInputReaderFuture;
+    private volatile Future<?> mOutputWriterFuture;
+    private volatile Future<?> mWaiterFuture;
+
     public TerminalSession(String shellPath, String cwd, String[] args, String[] env, SessionChangedCallback changeCallback) {
         mChangeCallback = changeCallback;
 
@@ -190,46 +195,37 @@ public final class TerminalSession extends TerminalOutput {
 
         final FileDescriptor terminalFileDescriptorWrapped = wrapFileDescriptor(mTerminalFileDescriptor);
 
-        new Thread("TermSessionInputReader[pid=" + mShellPid + "]") {
-            @Override
-            public void run() {
-                try (InputStream termIn = new FileInputStream(terminalFileDescriptorWrapped)) {
-                    final byte[] buffer = new byte[4096];
-                    while (true) {
-                        int read = termIn.read(buffer);
-                        if (read == -1) return;
-                        if (!mProcessToTerminalIOQueue.write(buffer, 0, read)) return;
-                        mMainThreadHandler.sendEmptyMessage(MSG_NEW_INPUT);
-                    }
-                } catch (Exception e) {
-                    // Ignore, just shutting down.
-                }
-            }
-        }.start();
-
-        new Thread("TermSessionOutputWriter[pid=" + mShellPid + "]") {
-            @Override
-            public void run() {
+        mInputReaderFuture = com.vectras.vm.core.ExecutionExecutors.get().submitTerminalIo(() -> {
+            try (InputStream termIn = new FileInputStream(terminalFileDescriptorWrapped)) {
                 final byte[] buffer = new byte[4096];
-                try (FileOutputStream termOut = new FileOutputStream(terminalFileDescriptorWrapped)) {
-                    while (true) {
-                        int bytesToWrite = mTerminalToProcessIOQueue.read(buffer, true);
-                        if (bytesToWrite == -1) return;
-                        termOut.write(buffer, 0, bytesToWrite);
-                    }
-                } catch (IOException e) {
-                    // Ignore.
+                while (true) {
+                    int read = termIn.read(buffer);
+                    if (read == -1) return;
+                    if (!mProcessToTerminalIOQueue.write(buffer, 0, read)) return;
+                    mMainThreadHandler.sendEmptyMessage(MSG_NEW_INPUT);
                 }
+            } catch (Exception e) {
+                // Ignore, just shutting down.
             }
-        }.start();
+        });
 
-        new Thread("TermSessionWaiter[pid=" + mShellPid + "]") {
-            @Override
-            public void run() {
-                int processExitCode = JNI.waitFor(mShellPid);
-                mMainThreadHandler.sendMessage(mMainThreadHandler.obtainMessage(MSG_PROCESS_EXITED, processExitCode));
+        mOutputWriterFuture = com.vectras.vm.core.ExecutionExecutors.get().submitTerminalIo(() -> {
+            final byte[] buffer = new byte[4096];
+            try (FileOutputStream termOut = new FileOutputStream(terminalFileDescriptorWrapped)) {
+                while (true) {
+                    int bytesToWrite = mTerminalToProcessIOQueue.read(buffer, true);
+                    if (bytesToWrite == -1) return;
+                    termOut.write(buffer, 0, bytesToWrite);
+                }
+            } catch (IOException e) {
+                // Ignore.
             }
-        }.start();
+        });
+
+        mWaiterFuture = com.vectras.vm.core.ExecutionExecutors.get().submitTerminalWait(() -> {
+            int processExitCode = JNI.waitFor(mShellPid);
+            mMainThreadHandler.sendMessage(mMainThreadHandler.obtainMessage(MSG_PROCESS_EXITED, processExitCode));
+        });
 
     }
 
@@ -308,6 +304,16 @@ public final class TerminalSession extends TerminalOutput {
             mShellPid = -1;
             mShellExitStatus = exitStatus;
         }
+
+        Future<?> inputReaderFuture = mInputReaderFuture;
+        Future<?> outputWriterFuture = mOutputWriterFuture;
+        Future<?> waiterFuture = mWaiterFuture;
+        mInputReaderFuture = null;
+        mOutputWriterFuture = null;
+        mWaiterFuture = null;
+        if (inputReaderFuture != null) inputReaderFuture.cancel(true);
+        if (outputWriterFuture != null) outputWriterFuture.cancel(true);
+        if (waiterFuture != null) waiterFuture.cancel(true);
 
         // Stop the reader and writer threads, and close the I/O streams
         mTerminalToProcessIOQueue.close();
