@@ -19,6 +19,13 @@ import kotlin.concurrent.withLock
 private const val TAG = "VectraCore"
 private val EMPTY_PAYLOAD = ByteArray(0)
 
+private fun littleEndianThreadLocal(capacity: Int): ThreadLocal<ByteBuffer> =
+    ThreadLocal.withInitial { ByteBuffer.allocate(capacity).order(ByteOrder.LITTLE_ENDIAN) }
+
+private val threadLocalBuffer8 = littleEndianThreadLocal(8)
+private val threadLocalBuffer16 = littleEndianThreadLocal(16)
+private val threadLocalBuffer20 = littleEndianThreadLocal(20)
+
 private object VectraLogClock {
     private val logTick = AtomicLong(0)
 
@@ -788,7 +795,7 @@ class VectraBitStackLog(logFile: File) {
 
     private val file: RandomAccessFile = RandomAccessFile(logFile, "rw")
     private val lock = ReentrantLock()
-    private val appendHeaderBuffer = ThreadLocal.withInitial { ByteArray(RECORD_HEADER_SIZE) }
+    private val appendHeaderBuffer = littleEndianThreadLocal(RECORD_HEADER_SIZE)
     private var recordCount = 0L
     private var recordsSinceFlush = 0
     private var lastFlushAtMs = System.currentTimeMillis()
@@ -801,11 +808,12 @@ class VectraBitStackLog(logFile: File) {
 
     private fun writeHeader() {
         lock.withLock {
-            val header = ByteArray(16)
-            writeIntLE(header, 0, MAGIC.toInt())
-            writeIntLE(header, 4, VERSION)
-            writeLongLE(header, 8, System.currentTimeMillis())
-            file.write(header)
+            val headerBuffer = threadLocalBuffer16.get()
+            headerBuffer.clear()
+            headerBuffer.putInt(MAGIC.toInt())
+            headerBuffer.putInt(VERSION)
+            headerBuffer.putLong(System.currentTimeMillis())
+            file.write(headerBuffer.array(), 0, 16)
             file.channel.force(true)
         }
     }
@@ -821,16 +829,24 @@ class VectraBitStackLog(logFile: File) {
             }
 
             val len = payloadLength.coerceIn(0, payload.size)
+            val wallClockMs = System.currentTimeMillis()
+            val deterministicTick = VectraLogClock.nextTick()
 
-            val recordHeader = appendHeaderBuffer.get()
-            writeIntLE(recordHeader, 0, MAGIC.toInt())
-            writeIntLE(recordHeader, 4, len)
-            writeIntLE(recordHeader, 8, meta)
+            val recordHeaderBuffer = appendHeaderBuffer.get()
+            recordHeaderBuffer.clear()
+            recordHeaderBuffer.putInt(MAGIC.toInt())
+            recordHeaderBuffer.putInt(len)
+            recordHeaderBuffer.putInt(meta)
+            recordHeaderBuffer.putLong(deterministicTick)
+            recordHeaderBuffer.putLong(wallClockMs)
+            recordHeaderBuffer.putInt(0)
+            recordHeaderBuffer.putInt(0)
+            val recordHeader = recordHeaderBuffer.array()
 
             // Compute CRC incrementally without concatenation
             var crc = CRC32C.update(0, recordHeader, 0, 12)
             crc = CRC32C.update(crc, payload, 0, len)
-            writeIntLE(recordHeader, 12, crc)
+            recordHeaderBuffer.putInt(24, crc)
 
             file.write(recordHeader, 0, RECORD_HEADER_SIZE)
             file.write(payload, 0, len)
@@ -884,7 +900,7 @@ class VectraBitStackLog(logFile: File) {
         dst[offset + 3] = (value ushr 24).toByte()
     }
 
-    private val recordHeaderBuffer = ThreadLocal.withInitial { ByteArray(RECORD_HEADER_SIZE) }
+    private val recordHeaderBuffer = littleEndianThreadLocal(RECORD_HEADER_SIZE)
 
     fun getRecordCount(): Long = recordCount
     fun getFileSize(): Long = file.length()
@@ -908,6 +924,7 @@ object VectraCore {
     private var logger: VectraBitStackLog? = null
     private val initialized = AtomicBoolean(false)
     private val timerTickCounter = java.util.concurrent.atomic.AtomicLong(0L)
+    private val timerPayloadBuffer = ThreadLocal.withInitial { ByteArray(8) }
 
     private const val PREFS_NAME = "vectra_core"
     private const val PREF_SEED_KEY = "seed"
@@ -1017,7 +1034,8 @@ object VectraCore {
         state.setFlag(0, allOk)
         
         // Log self-test results
-        val result = ByteBuffer.allocate(20)
+        val result = threadLocalBuffer20.get()
+        result.clear()
         result.put(if (headerOk) 1.toByte() else 0.toByte())
         result.put(if (detectsChange) 1.toByte() else 0.toByte())
         result.put(if (parityOk) 1.toByte() else 0.toByte())
@@ -1039,7 +1057,17 @@ object VectraCore {
             while (initialized.get()) {
                 try {
                     val wallClockMs = System.currentTimeMillis()
-                    eventBus?.postTimerTick(wallClockMs)
+                    val localPayload = timerPayloadBuffer.get()
+                    writeLongLe(localPayload, 0, wallClockMs)
+                    eventBus?.post(
+                        VectraEvent(
+                            type = VectraEvent.EventType.TIMER_TICK,
+                            priority = 1,
+                            wallClockMs = wallClockMs,
+                            payload = localPayload,
+                            payloadLength = 8
+                        )
+                    )
                     Log.d(TAG, "timer_tick_enqueued deterministic_tick=pending wall_clock_ms=$wallClockMs")
                     Thread.sleep(1000) // 1 Hz tick
                 } catch (e: InterruptedException) {
@@ -1053,6 +1081,17 @@ object VectraCore {
             isDaemon = true
             start()
         }
+    }
+
+    private fun writeLongLe(dst: ByteArray, offset: Int, value: Long) {
+        dst[offset] = value.toByte()
+        dst[offset + 1] = (value ushr 8).toByte()
+        dst[offset + 2] = (value ushr 16).toByte()
+        dst[offset + 3] = (value ushr 24).toByte()
+        dst[offset + 4] = (value ushr 32).toByte()
+        dst[offset + 5] = (value ushr 40).toByte()
+        dst[offset + 6] = (value ushr 48).toByte()
+        dst[offset + 7] = (value ushr 56).toByte()
     }
 
 
