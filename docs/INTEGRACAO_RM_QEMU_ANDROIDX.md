@@ -51,12 +51,17 @@ Consolidar melhorias comprovadas dos projetos externos (QEMU e AndroidX) dentro 
 
 ## 4. Uso dos diagramas fornecidos (imagens)
 
-Os diagramas enviados devem guiar o desenho das camadas de integração:
+Os diagramas enviados devem guiar o desenho das camadas de integração (sempre por paths locais em `docs/assets/`):
 
-- **Diagrama 1 (Olho/Toroide/IA)** → representa o eixo central da arquitetura e a triagem de pipeline (Core → QEMU → UI).
-- **Diagrama 2 (Coerência/Estabilidade)** → define critérios de equilíbrio entre desempenho, integridade e compatibilidade.
+- **Diagrama 1 (Olho/Toroide/IA)** → [`docs/assets/rafaelia-core-eye-toroid.png`](assets/rafaelia-core-eye-toroid.png) representa o eixo central da arquitetura e a triagem de pipeline (Core → QEMU → UI).
+- **Diagrama 2 (Coerência/Estabilidade)** → [`docs/assets/rafaelia-coherence-layers.png`](assets/rafaelia-coherence-layers.png) define critérios de equilíbrio entre desempenho, integridade e compatibilidade.
+- **Arquitetura Fractal** → [`docs/assets/rafaelia-fractal-architecture.png`](assets/rafaelia-fractal-architecture.png).
+- **Pipeline de Sistema** → [`docs/assets/rafaelia-system-pipeline.png`](assets/rafaelia-system-pipeline.png).
+- **Modelo Matemático** → [`docs/assets/rafaelia-mathematical.png`](assets/rafaelia-mathematical.png).
+- **Conceito visual de UI** → [`docs/assets/vectra-mystical-ui-concept.png`](assets/vectra-mystical-ui-concept.png).
+- **Arquitetura de integridade ZIPRAFA** → [`docs/assets/ziprafa-integrity-architecture.png`](assets/ziprafa-integrity-architecture.png).
 
-**Ação**: adicionar as imagens em `docs/assets/` e atualizá-las no índice.
+**Ação**: manter os paths canônicos em `docs/assets/` na documentação e refletir presença/ausência real no índice `docs/IMAGES_INDEX.md` (sem versionar binários no repositório).
 
 ### 4.1 Símbolos e bootblock RAFAELIA (referência direta)
 
