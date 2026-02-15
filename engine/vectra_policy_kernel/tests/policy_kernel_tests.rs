@@ -16,7 +16,6 @@ fn golden_crc32c_vectors_are_stable() {
     );
 }
 
-
 #[test]
 fn entropy_metric_is_bit_stable() {
     let zero = vec![0u8; 4096];
@@ -142,7 +141,7 @@ fn canonize_produces_stable_forms_per_operation() {
             op: Op::TrimWs,
             args: vec!["abc".to_string()],
             anchor: None,
-            canon: "TrimWs|abc".to_string(),
+            canon: "trim_ws|3:abc|anchor=none".to_string(),
         }
     );
 
@@ -153,7 +152,7 @@ fn canonize_produces_stable_forms_per_operation() {
             op: Op::Len,
             args: vec!["  abc  ".to_string()],
             anchor: None,
-            canon: "Len|  abc  ".to_string(),
+            canon: "len|7:  abc  |anchor=none".to_string(),
         }
     );
 
@@ -173,7 +172,7 @@ fn canonize_produces_stable_forms_per_operation() {
             op: Op::ReplaceChar,
             args: vec!["aba".to_string(), "a".to_string(), "x".to_string()],
             anchor: Some(anchor),
-            canon: "ReplaceChar|aba|a|x|A[2:15:3]".to_string(),
+            canon: "replace_char|3:aba|1:a|1:x|anchor=2:15:3".to_string(),
         }
     );
 }
@@ -219,7 +218,7 @@ fn exec_bucket_executes_once_and_reuses_output() {
         op: Op::AnchorMark,
         args: vec!["anchor-1".to_string()],
         anchor: Some(anchor),
-        canon: "AnchorMark|anchor-1|A[7:99:1]".to_string(),
+        canon: "anchor|8:anchor-1|anchor=7:99:1".to_string(),
     };
     let bucket = vec![
         Event {
@@ -277,12 +276,23 @@ fn rollback_is_idempotent() {
             seq: 1,
             op: Op::AnchorMark,
             args: vec!["A1".to_string()],
-            output: Output::Anchor("A1".to_string()),
+            output: Output::Anchor(AnchorAddr {
+                dev: 1,
+                block: 1,
+                page: 1,
+            }),
         })
         .expect("anchor entry");
 
     assert_eq!(kernel.focused(), Some("main"));
-    assert_eq!(kernel.anchors(), ["A1".to_string()]);
+    assert_eq!(
+        kernel.anchors(),
+        [AnchorAddr {
+            dev: 1,
+            block: 1,
+            page: 1
+        }]
+    );
     assert_eq!(kernel.seq(), 2);
     assert_eq!(kernel.log().len(), 2);
 
@@ -313,13 +323,21 @@ fn log_replay_is_reproducible() {
             seq: 1,
             op: Op::AnchorMark,
             args: vec!["A".to_string()],
-            output: Output::Anchor("A".to_string()),
+            output: Output::Anchor(AnchorAddr {
+                dev: 1,
+                block: 10,
+                page: 1,
+            }),
         },
         LogEntry {
             seq: 2,
             op: Op::AnchorMark,
             args: vec!["B".to_string()],
-            output: Output::Anchor("B".to_string()),
+            output: Output::Anchor(AnchorAddr {
+                dev: 1,
+                block: 11,
+                page: 1,
+            }),
         },
     ];
 
@@ -362,7 +380,11 @@ fn seq_stays_consistent_through_checkpoint_and_rollback() {
             seq: 1,
             op: Op::AnchorMark,
             args: vec!["B1".to_string()],
-            output: Output::Anchor("B1".to_string()),
+            output: Output::Anchor(AnchorAddr {
+                dev: 2,
+                block: 1,
+                page: 1,
+            }),
         })
         .expect("entry 1");
     assert_eq!(kernel.seq(), 2);
@@ -377,7 +399,11 @@ fn seq_stays_consistent_through_checkpoint_and_rollback() {
             seq: 1,
             op: Op::AnchorMark,
             args: vec!["B2".to_string()],
-            output: Output::Anchor("B2".to_string()),
+            output: Output::Anchor(AnchorAddr {
+                dev: 2,
+                block: 2,
+                page: 1,
+            }),
         })
         .expect("entry 1 replayed after rollback");
     assert_eq!(kernel.seq(), 2);
@@ -387,7 +413,11 @@ fn seq_stays_consistent_through_checkpoint_and_rollback() {
             seq: 5,
             op: Op::AnchorMark,
             args: vec!["bad".to_string()],
-            output: Output::Anchor("bad".to_string()),
+            output: Output::Anchor(AnchorAddr {
+                dev: 9,
+                block: 9,
+                page: 9,
+            }),
         })
         .expect_err("must reject unexpected seq");
     assert!(seq_err
@@ -420,27 +450,45 @@ fn commit_tick_uses_total_stable_ordering_by_op_code() {
             id: 40,
             op: Op::TrimWs,
             args: vec!["  z  ".to_string()],
+            anchor: None,
         },
         Event {
             id: 10,
             op: Op::AnchorMark,
             args: vec!["z".to_string()],
+            anchor: Some(AnchorAddr {
+                dev: 3,
+                block: 33,
+                page: 7,
+            }),
         },
         Event {
             id: 20,
             op: Op::Len,
             args: vec!["z".to_string()],
+            anchor: None,
         },
         Event {
             id: 30,
             op: Op::SetFocus,
             args: vec!["  z  ".to_string()],
+            anchor: None,
         },
     ];
 
     let committed = commit_tick(1, &events);
     assert_eq!(committed.len(), 4);
-    assert_eq!(committed[0], (10, Output::Anchor("z".to_string())));
+    assert_eq!(
+        committed[0],
+        (
+            10,
+            Output::Anchor(AnchorAddr {
+                dev: 3,
+                block: 33,
+                page: 7
+            })
+        )
+    );
     assert_eq!(committed[1], (20, Output::Number(1)));
     assert_eq!(committed[2], (30, Output::Focus("z".to_string())));
     assert_eq!(committed[3], (40, Output::Text("z".to_string())));
