@@ -63,6 +63,9 @@ public final class NativeFastPath {
         }
         NATIVE_AVAILABLE = loaded;
         ARENA_AVAILABLE = loaded;
+        if (loaded) {
+            nativeCoreInit(0x56454354);
+        }
         BOOT_PROFILE = detectHardwareProfile();
     }
 
@@ -506,6 +509,57 @@ public final class NativeFastPath {
         return vec2Dot(vec, vec);
     }
 
+
+    public static int coreIngest(byte[] payload) {
+        if (!NATIVE_AVAILABLE || payload == null) {
+            return Integer.MIN_VALUE;
+        }
+        return nativeCoreIngest(payload);
+    }
+
+    public static int coreProcess(int a, int b, int mode) {
+        if (!NATIVE_AVAILABLE) {
+            return Integer.MIN_VALUE;
+        }
+        return nativeCoreProcess(a, b, mode);
+    }
+
+    public static int coreRoute(long cpuCycles, long storageReadBytes, long storageWriteBytes,
+                                long inputBytes, long outputBytes,
+                                long m00, long m01, long m10, long m11) {
+        if (!NATIVE_AVAILABLE) {
+            return -1;
+        }
+        return nativeCoreRoute(cpuCycles, storageReadBytes, storageWriteBytes, inputBytes, outputBytes, m00, m01, m10, m11);
+    }
+
+    public static boolean coreVerify(byte[] payload, int expected) {
+        if (!NATIVE_AVAILABLE || payload == null) {
+            return false;
+        }
+        return nativeCoreVerify(payload, expected) == 1;
+    }
+
+    public static long[] coreAudit() {
+        if (!NATIVE_AVAILABLE) {
+            return null;
+        }
+        return nativeCoreAudit();
+    }
+
+    public static int[] readUnifiedCapabilities() {
+        if (!NATIVE_AVAILABLE) {
+            return null;
+        }
+        return nativeReadUnifiedCapabilities();
+    }
+
+    public static void coreShutdown() {
+        if (NATIVE_AVAILABLE) {
+            nativeCoreShutdown();
+        }
+    }
+
     private static int clamp16(int value) {
         if (value < Short.MIN_VALUE) {
             return Short.MIN_VALUE;
@@ -596,6 +650,25 @@ public final class NativeFastPath {
     private static native int nativeArenaFill(int handle, int offset, int length, int value);
 
     private static native int nativeArenaWrite(int handle, int offset, byte[] src, int srcOffset, int length);
+
+
+    private static native int nativeCoreInit(int seed);
+
+    private static native int nativeCoreShutdown();
+
+    private static native int nativeCoreIngest(byte[] payload);
+
+    private static native int nativeCoreProcess(int a, int b, int mode);
+
+    private static native int nativeCoreRoute(long cpuCycles, long storageReadBytes, long storageWriteBytes,
+                                              long inputBytes, long outputBytes,
+                                              long m00, long m01, long m10, long m11);
+
+    private static native int nativeCoreVerify(byte[] payload, int expected);
+
+    private static native long[] nativeCoreAudit();
+
+    private static native int[] nativeReadUnifiedCapabilities();
 
     private static native int nativePlatformSignature();
 

@@ -4,18 +4,19 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import com.vectras.vm.BuildConfig
+import com.vectras.vm.core.NativeFastPath
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.ArrayDeque
-import java.util.PriorityQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 private const val TAG = "VectraCore"
+private val EMPTY_PAYLOAD = ByteArray(0)
 
 private object VectraLogClock {
     private val logTick = AtomicLong(0)
@@ -497,32 +498,164 @@ class VectraDataOrchestrator(private val state: VectraState) {
  * Thread-safe event bus with priority handling.
  */
 class VectraEventBus {
-    private val queue = PriorityQueue<VectraEvent>()
+    private companion object {
+        private const val DEFAULT_CAPACITY = 256
+        private const val SLOT_BYTES = 256
+        private const val TIMER_PAYLOAD_BYTES = 8
+    }
+
+    private class EventSlot(payloadBytes: Int) {
+        val payload = ByteArray(payloadBytes)
+        val event = VectraEvent()
+        var payloadLength = 0
+    }
+
     private val lock = ReentrantLock()
+    private val slots = Array(DEFAULT_CAPACITY) { EventSlot(SLOT_BYTES) }
+    private val queue = IntArray(DEFAULT_CAPACITY)
+    private val freeStack = IntArray(DEFAULT_CAPACITY) { it }
+    private var freeTop = DEFAULT_CAPACITY
+    private var head = 0
+    private var tail = 0
+    private var queued = 0
+    private val nativeArenaHandle: Int
+    private val mirrorArenaHandle: Int
+
+    init {
+        for (i in slots.indices) {
+            slots[i].event.slotIndex = i
+        }
+        if (NativeFastPath.isArenaAvailable()) {
+            val bytes = DEFAULT_CAPACITY * SLOT_BYTES
+            nativeArenaHandle = NativeFastPath.allocArena(bytes)
+            mirrorArenaHandle = NativeFastPath.allocArena(bytes)
+        } else {
+            nativeArenaHandle = 0
+            mirrorArenaHandle = 0
+        }
+    }
 
     fun post(event: VectraEvent) {
+        val payload = event.payload
+        postInternal(
+            type = event.type,
+            priority = event.priority,
+            timestamp = event.timestamp,
+            payload = payload,
+            payloadLength = event.payloadLength.takeIf { it > 0 } ?: (payload?.size ?: 0)
+        )
+    }
+
+    fun postTimerTick(nowMs: Long) {
+        val payload = timerPayloadBuffer.get()
+        writeLongLe(payload, 0, nowMs)
+        postInternal(
+            type = VectraEvent.EventType.TIMER_TICK,
+            priority = 1,
+            timestamp = System.nanoTime(),
+            payload = payload,
+            payloadLength = TIMER_PAYLOAD_BYTES
+        )
+    }
+
+    private fun postInternal(type: VectraEvent.EventType, priority: Int, timestamp: Long, payload: ByteArray?, payloadLength: Int) {
         lock.withLock {
-            queue.add(event)
+            if (freeTop == 0 || queued == DEFAULT_CAPACITY) {
+                return
+            }
+
+            val slotIndex = freeStack[--freeTop]
+            val slot = slots[slotIndex]
+            val sourceLen = payload?.size ?: 0
+            val len = payloadLength.coerceIn(0, minOf(SLOT_BYTES, sourceLen))
+            if (payload != null && len > 0) {
+                System.arraycopy(payload, 0, slot.payload, 0, len)
+                if (nativeArenaHandle > 0) {
+                    val offset = slotIndex * SLOT_BYTES
+                    val wrote = NativeFastPath.writeArena(nativeArenaHandle, offset, slot.payload, 0, len)
+                    if (wrote && mirrorArenaHandle > 0) {
+                        NativeFastPath.copyArena(nativeArenaHandle, offset, mirrorArenaHandle, offset, len)
+                    }
+                }
+            }
+            slot.payloadLength = len
+            slot.event.reset(type, priority, timestamp, if (len > 0) slot.payload else null, len)
+
+            queue[tail] = slotIndex
+            tail = (tail + 1) and (DEFAULT_CAPACITY - 1)
+            queued++
         }
     }
 
     fun poll(): VectraEvent? {
         lock.withLock {
-            return queue.poll()
+            if (queued == 0) return null
+            val slotIndex = queue[head]
+            head = (head + 1) and (DEFAULT_CAPACITY - 1)
+            queued--
+            return slots[slotIndex].event
+        }
+    }
+
+    fun recycle(event: VectraEvent?) {
+        if (event == null) return
+        lock.withLock {
+            val slotIndex = event.slotIndex
+            if (slotIndex < 0 || slotIndex >= DEFAULT_CAPACITY) {
+                return
+            }
+            if (freeTop >= DEFAULT_CAPACITY) {
+                return
+            }
+            val slot = slots[slotIndex]
+            slot.payloadLength = 0
+            slot.event.reset(VectraEvent.EventType.SYSTEM_EVENT, 0, 0L, null, 0)
+            freeStack[freeTop++] = slotIndex
         }
     }
 
     fun size(): Int {
         lock.withLock {
-            return queue.size
+            return queued
         }
     }
 
     fun clear() {
         lock.withLock {
-            queue.clear()
+            queued = 0
+            head = 0
+            tail = 0
+            freeTop = DEFAULT_CAPACITY
+            for (i in freeStack.indices) {
+                freeStack[i] = i
+                slots[i].payloadLength = 0
+                slots[i].event.reset(VectraEvent.EventType.SYSTEM_EVENT, 0, 0L, null, 0)
+            }
         }
     }
+
+    fun close() {
+        clear()
+        if (nativeArenaHandle > 0) {
+            NativeFastPath.freeArena(nativeArenaHandle)
+        }
+        if (mirrorArenaHandle > 0) {
+            NativeFastPath.freeArena(mirrorArenaHandle)
+        }
+    }
+
+    private fun writeLongLe(dst: ByteArray, offset: Int, value: Long) {
+        dst[offset] = value.toByte()
+        dst[offset + 1] = (value ushr 8).toByte()
+        dst[offset + 2] = (value ushr 16).toByte()
+        dst[offset + 3] = (value ushr 24).toByte()
+        dst[offset + 4] = (value ushr 32).toByte()
+        dst[offset + 5] = (value ushr 40).toByte()
+        dst[offset + 6] = (value ushr 48).toByte()
+        dst[offset + 7] = (value ushr 56).toByte()
+    }
+
+    private val timerPayloadBuffer = ThreadLocal.withInitial { ByteArray(TIMER_PAYLOAD_BYTES) }
 }
 
 /**
@@ -576,7 +709,7 @@ class VectraCycle(
     private fun executeCycle() {
         // Phase 1: Input
         val event = eventBus.poll()
-        val inputBytes = event?.payload?.size?.toLong() ?: 0L
+        val inputBytes = event?.payloadLength?.toLong() ?: 0L
         state.stageCounters[0] += inputBytes
         updatePolicy(event)
 
@@ -587,15 +720,16 @@ class VectraCycle(
 
         // Phase 3: Output
         logger?.let {
-            val payload = event?.payload ?: ByteArray(0)
+            val payload = event?.payload ?: EMPTY_PAYLOAD
             val meta = (event?.type?.ordinal ?: 0) or ((event?.priority ?: 0) shl 8)
-            it.append(payload, meta)
-            state.stageCounters[3] += payload.size.toLong()
+            it.append(payload, event?.payloadLength ?: 0, meta)
+            state.stageCounters[3] += (event?.payloadLength ?: 0).toLong()
         }
 
         // Phase 4: Next
         cycleCount++
         state.stageCounters[5] = cycleCount // Track total cycles
+        eventBus.recycle(event)
     }
 
     private fun updatePolicy(event: VectraEvent?) {
@@ -628,8 +762,9 @@ class VectraCycle(
             baseWeight
         }
         
-        if (event.payload != null) {
-            val entropy = CRC32C.update(state.entropyHint, event.payload)
+        val payload = event.payload
+        if (payload != null && event.payloadLength > 0) {
+            val entropy = CRC32C.update(state.entropyHint, payload, 0, event.payloadLength)
             state.entropyHint = entropy + weight
             state.seed = state.seed xor entropy
             state.stageCounters[1] += weight.toLong()
@@ -691,7 +826,7 @@ class VectraBitStackLog(logFile: File) {
     companion object {
         private const val MAGIC = 0x56454354L // "VECT"
         private const val VERSION = 1
-        private const val RECORD_HEADER_SIZE = 16 // magic(4) + len(4) + meta(4) + crc(4)
+        private const val RECORD_HEADER_SIZE = 32 // magic(4) + len(4) + meta(4) + tick(8) + wall(8) + crc(4) + reserved(4)
         private const val MAX_LOG_SIZE = 10 * 1024 * 1024 // 10 MB
         private const val FLUSH_INTERVAL_MS = 1000L
         private const val FLUSH_RECORDS = 32
@@ -721,27 +856,33 @@ class VectraBitStackLog(logFile: File) {
     }
 
     /**
-     * Appends a record: [u32 magic, u32 len, u32 meta, u32 crc, payload]
+     * Appends a record: [u32 magic, u32 len, u32 meta, i64 deterministic_tick, i64 wall_clock_ms, u32 crc, u32 reserved, payload]
      */
     fun append(payload: ByteArray, meta: Int = 0) {
+        append(payload, payload.size, meta)
+    }
+
+    fun append(payload: ByteArray, payloadLength: Int, meta: Int = 0) {
         lock.withLock {
             if (file.length() >= MAX_LOG_SIZE) {
                 logWarn("Log size exceeded, skipping append")
                 return
             }
 
-            val recordHeader = ByteBuffer.allocate(RECORD_HEADER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
-            recordHeader.putInt(MAGIC.toInt())
-            recordHeader.putInt(payload.size)
-            recordHeader.putInt(meta)
-            
-            // Compute CRC incrementally without concatenation
-            var crc = CRC32C.update(0, recordHeader.array(), 0, 12)
-            crc = CRC32C.update(crc, payload)
-            recordHeader.putInt(crc)
+            val boundedLength = payloadLength.coerceIn(0, payload.size)
 
-            file.write(recordHeader.array())
-            file.write(payload)
+            val recordHeader = recordHeaderBuffer.get()
+            putIntLe(recordHeader, 0, MAGIC.toInt())
+            putIntLe(recordHeader, 4, boundedLength)
+            putIntLe(recordHeader, 8, meta)
+
+            // Compute CRC incrementally without concatenation
+            var crc = CRC32C.update(0, recordHeader, 0, 12)
+            crc = CRC32C.update(crc, payload, 0, boundedLength)
+            putIntLe(recordHeader, 12, crc)
+
+            file.write(recordHeader, 0, RECORD_HEADER_SIZE)
+            file.write(payload, 0, boundedLength)
             recordsSinceFlush++
             maybeFlush()
             recordCount++
@@ -767,6 +908,15 @@ class VectraBitStackLog(logFile: File) {
         }
     }
 
+    private fun putIntLe(dst: ByteArray, offset: Int, value: Int) {
+        dst[offset] = value.toByte()
+        dst[offset + 1] = (value ushr 8).toByte()
+        dst[offset + 2] = (value ushr 16).toByte()
+        dst[offset + 3] = (value ushr 24).toByte()
+    }
+
+    private val recordHeaderBuffer = ThreadLocal.withInitial { ByteArray(RECORD_HEADER_SIZE) }
+
     fun getRecordCount(): Long = recordCount
     fun getFileSize(): Long = file.length()
 }
@@ -788,9 +938,11 @@ object VectraCore {
     private var cycle: VectraCycle? = null
     private var logger: VectraBitStackLog? = null
     private val initialized = AtomicBoolean(false)
+    private val timerTickCounter = java.util.concurrent.atomic.AtomicLong(0L)
 
+    @JvmOverloads
     @JvmStatic
-    fun init(context: Context) {
+    fun init(context: Context, configuredSeed: Int? = null) {
         if (!BuildConfig.VECTRA_CORE_ENABLED) {
             logDebug("VectraCore disabled by BuildConfig")
             return
@@ -900,7 +1052,7 @@ object VectraCore {
         result.putInt(crcMutated)
         result.putInt(syndrome)
         result.putInt(packed)
-        logger?.append(result.array(), 0xFFFF) // meta=0xFFFF for self-test
+        logger?.append(result.array(), 0xFFFF, deterministicTick = 0L, wallClockMs = System.currentTimeMillis()) // meta=0xFFFF for self-test
         
         logDebug("selftest_ok=$allOk headerOk=$headerOk detectsChange=$detectsChange parityOk=$parityOk detectsBitFlip=$detectsBitFlip syndromeOk=$syndromeOk syndrome=$syndrome")
     }
@@ -942,6 +1094,27 @@ object VectraCore {
         }
     }
 
+
+    private fun resolveSeed(context: Context, configuredSeed: Int?): Int {
+        if (configuredSeed != null) {
+            return configuredSeed and 0x7FFFFFFF
+        }
+
+        val stableFingerprint = buildString {
+            append(context.packageName)
+            append('|').append(BuildConfig.VERSION_NAME)
+            append('|').append(BuildConfig.VERSION_CODE)
+            append('|').append(Build.BOARD)
+            append('|').append(Build.BRAND)
+            append('|').append(Build.DEVICE)
+            append('|').append(Build.HARDWARE)
+            append('|').append(Build.PRODUCT)
+            append('|').append(Build.FINGERPRINT)
+            append('|').append(Build.SUPPORTED_ABIS.joinToString(","))
+        }
+        return CRC32C.update(0, stableFingerprint.toByteArray(Charsets.UTF_8)) and 0x7FFFFFFF
+    }
+
     /**
      * Shutdown hook for cleanup.
      */
@@ -959,10 +1132,13 @@ object VectraCore {
      * Noise is data (ρ = information not decoded yet).
      */
     fun psi(payload: ByteArray): Int {
-        val crc = CRC32C.update(state.crc32c, payload)
-        state.crc32c = crc
-        state.stageCounters[0]++
-        return crc
+        val crc = NativeFastPath.coreIngest(payload)
+        if (crc != Int.MIN_VALUE) {
+            state.crc32c = crc
+            state.stageCounters[0]++
+            return crc
+        }
+        return state.crc32c
     }
 
     /**
@@ -970,36 +1146,51 @@ object VectraCore {
      * Do not treat noise as simple bug - it's information not decoded yet.
      */
     fun rho(noise: ByteArray, eventWeight: Int = 1): Int {
-        val entropy = CRC32C.update(state.entropyHint, noise)
-        state.entropyHint = entropy + eventWeight
-        state.stageCounters[1]++
-        return entropy
+        val entropy = NativeFastPath.coreIngest(noise)
+        if (entropy != Int.MIN_VALUE) {
+            state.entropyHint = entropy + eventWeight
+            state.stageCounters[1]++
+            return entropy
+        }
+        return state.entropyHint
     }
 
     /**
      * DELTA stage: branchless select between two ints using a mask.
      */
     fun deltaBranchless(a: Int, b: Int, mask: Int): Int {
-        val res = (a and mask.inv()) or (b and mask)
-        state.stageCounters[2]++
-        return res
+        val res = NativeFastPath.coreProcess(a, b, mask)
+        if (res != Int.MIN_VALUE) {
+            state.stageCounters[2]++
+            return res
+        }
+        return 0
     }
 
     /**
      * SIGMA stage: combine two ints with xor and rotate mix (linear pass).
      */
     fun sigmaCombine(a: Int, b: Int): Int {
-        val mix = a xor ((b shl 1) or (b ushr 31))
-        state.stageCounters[3]++
-        return mix
+        val mix = NativeFastPath.coreProcess(a, b, 1)
+        if (mix != Int.MIN_VALUE) {
+            state.stageCounters[3]++
+            return mix
+        }
+        return 0
     }
 
     /**
      * OMEGA stage: finalize digest from crc and entropy hints.
      */
     fun omegaFinalize(): Int {
-        state.stageCounters[4]++
-        return state.crc32c xor state.entropyHint
+        val audit = NativeFastPath.coreAudit()
+        if (audit != null && audit.size >= 2) {
+            state.stageCounters[4]++
+            state.crc32c = audit[0].toInt()
+            state.entropyHint = audit[1].toInt()
+            return state.crc32c xor state.entropyHint
+        }
+        return 0
     }
 
     /**
