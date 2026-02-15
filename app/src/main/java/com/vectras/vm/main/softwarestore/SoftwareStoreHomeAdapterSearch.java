@@ -21,20 +21,30 @@ import com.vectras.vm.RomInfo;
 import com.vectras.vm.R;
 import com.vectras.vm.main.romstore.DataRoms;
 
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 
 public class SoftwareStoreHomeAdapterSearch extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     Context context;
     private final LayoutInflater inflater;
-    static List<DataRoms> dataRom = Collections.emptyList();
+    private final List<DataRoms> dataRom;
     private final String TAG = "RomStoreHomeAdapterSearch";
 
     public SoftwareStoreHomeAdapterSearch(Context context, List<DataRoms> data) {
         this.context = context;
         inflater = LayoutInflater.from(context);
-        dataRom = data;
+        dataRom = new ArrayList<>();
+        submitList(data);
+    }
+
+    @SuppressLint("NotifyDataSetChanged")
+    public void submitList(List<DataRoms> data) {
+        dataRom.clear();
+        if (data != null) {
+            dataRom.addAll(data);
+        }
+        notifyDataSetChanged();
     }
 
     // Inflate the layout when viewholder created
