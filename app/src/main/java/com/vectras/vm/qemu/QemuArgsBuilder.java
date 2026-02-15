@@ -53,9 +53,13 @@ public final class QemuArgsBuilder {
     public static void applyProfile(ArrayList<String> params, Activity activity, String extras) {
         VmProfile profile = resolveProfile(activity, extras);
         String arch = MainSettingsManager.getArch(activity);
-        ExecutionBudgetPolicy.CpuBudget cpuBudget = ExecutionBudgetPolicy.forProfile(profile);
+        ExecutionBudgetPolicy budgetPolicy = ExecutionBudgetPolicy.resolve(
+                profile,
+                arch,
+                Runtime.getRuntime().availableProcessors()
+        );
 
-        if (budget.cpuModel != null) {
+        if (budgetPolicy.shouldForceCpuMax()) {
             params.add("-cpu");
             params.add(budget.cpuModel);
         }
@@ -71,9 +75,10 @@ public final class QemuArgsBuilder {
                 params.add("cpu-pm=on");
                 break;
             case THROUGHPUT:
-                if (cpuBudget.hasCpuTopology()) {
+                Integer smpCpus = budgetPolicy.smpCpus();
+                if (smpCpus != null) {
                     params.add("-smp");
-                    params.add("cpus=" + cpuBudget.cpus());
+                    params.add("cpus=" + smpCpus);
                 }
                 break;
             default:
