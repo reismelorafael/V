@@ -40,7 +40,6 @@ import com.vectras.vm.R;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.InputStreamReader;
@@ -452,24 +451,17 @@ public class FileUtils {
 		}
 	}
 
-	public static void saveFileContents(String dBFile, String machinesToExport) {
-		// TODO Auto-generated method stub
-		byteArrayToFile(machinesToExport.getBytes(), new File(dBFile));
+	public static void saveFileContents(String dBFile, String machinesToExport) throws IOException {
+		byteArrayToFile(machinesToExport.getBytes(StandardCharsets.UTF_8), new File(dBFile));
 	}
 
-	public static void byteArrayToFile(byte[] byteData, File filePath) {
-
-		try {
-			FileOutputStream fos = new FileOutputStream(filePath);
+	public static void byteArrayToFile(byte[] byteData, File filePath) throws IOException {
+		try (FileOutputStream fos = new FileOutputStream(filePath)) {
 			fos.write(byteData);
-			fos.close();
-
-		} catch (FileNotFoundException ex) {
-			System.out.println("FileNotFoundException : " + ex);
 		} catch (IOException ioe) {
-			System.out.println("IOException : " + ioe);
+			Log.e(TAG, "Failed to persist byte array into file: " + filePath, ioe);
+			throw ioe;
 		}
-
 	}
 
 	public static String getDataDir(Context context) {
