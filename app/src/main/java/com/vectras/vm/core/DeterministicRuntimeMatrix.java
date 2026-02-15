@@ -125,8 +125,13 @@ public final class DeterministicRuntimeMatrix {
         if ((features & NativeFastPath.FEATURE_AVX2) != 0 || (features & NativeFastPath.FEATURE_NEON) != 0) {
             base <<= 1;
         }
-        int align = Math.max(32, line);
-        int rem = base & (align - 1);
+        int align = line;
+        if (align <= 0) {
+            align = 32;
+        } else if (align < 32) {
+            align = 32;
+        }
+        int rem = base % align;
         if (rem != 0) {
             base += align - rem;
         }
