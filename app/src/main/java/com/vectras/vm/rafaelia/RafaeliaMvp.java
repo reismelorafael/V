@@ -7,8 +7,7 @@ import java.io.RandomAccessFile;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.util.Locale;
-import java.util.Random;
+import java.util.SplittableRandom;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
@@ -46,12 +45,31 @@ public class RafaeliaMvp {
   static final long RHO_SLEEP_MS = 2L;
   static final int IRQ_QUEUE_CAPACITY = 1024;
   static final long IRQ_POLL_TIMEOUT_MS = 1_000L;
-  static final String MODE_BENCHMARK = "benchmark";
-  static final String MODE_FUZZ = "fuzz";
-  static final long BENCHMARK_DEFAULT_SEED = 0x52414641454C4941L; // "RAFAELIA" stable baseline seed.
+  static final long RNG_SEED = 0x4F3C2B1A9D8E7F60L;
   private static final ThreadLocal<CRC32C> CRC32C_POOL = ThreadLocal.withInitial(CRC32C::new);
 
-  record RuntimeConfig(File path, String mode, Long providedSeed, long resolvedSeed) {}
+  interface DeterministicRng {
+    int nextInt(int bound);
+    double nextDouble();
+  }
+
+  static final class SplittableDeterministicRng implements DeterministicRng {
+    private final SplittableRandom random;
+
+    SplittableDeterministicRng(long seed) {
+      this.random = new SplittableRandom(seed);
+    }
+
+    @Override
+    public synchronized int nextInt(int bound) {
+      return random.nextInt(bound);
+    }
+
+    @Override
+    public synchronized double nextDouble() {
+      return random.nextDouble();
+    }
+  }
 
   // meta layout (u32):
   // [  0.. 7] parity (8 bits)
@@ -160,6 +178,15 @@ public class RafaeliaMvp {
     }
   }
 
+
+  static int nextU16(DeterministicRng rng) {
+    return rng.nextInt(0x10000);
+  }
+
+  static int nextBitIndex(DeterministicRng rng) {
+    return rng.nextInt(16);
+  }
+
   // ========== 4x4 Matrix packing ==========
   // We pack 16 bits in the low 16 bits of a long.
   // Coordinate (x,y) in [0..3]. idx = (y<<2)|x.
@@ -214,31 +241,22 @@ public class RafaeliaMvp {
 
   // ========== MVP loop ==========
   public static void main(String[] args) throws Exception {
-    RuntimeConfig config = parseMainConfig(args);
-    File path = config.path();
-
-    final Random radioRandom = new Random(config.resolvedSeed() ^ 0x9E3779B97F4A7C15L);
-    final Random timerRandom = new Random(config.resolvedSeed() ^ 0xBF58476D1CE4E5B9L);
-    final Random dropRandom = new Random(config.resolvedSeed() ^ 0x94D049BB133111EBL);
-
-    System.out.printf(
-        "RafaeliaMvp mode=%s seed=%d providedSeed=%s path=%s%n",
-        config.mode(),
-        config.resolvedSeed(),
-        config.providedSeed() == null ? "<auto>" : config.providedSeed().toString(),
-        path.getAbsolutePath());
+    File path = new File(args.length > 0 ? args[0] : "./bitstack.bin");
+    DeterministicRng radioRng = new SplittableDeterministicRng(RNG_SEED);
+    DeterministicRng timerRng = new SplittableDeterministicRng(RNG_SEED ^ 0xC3C3C3C3C3C3C3C3L);
+    DeterministicRng flowRng = new SplittableDeterministicRng(RNG_SEED ^ 0xA5A5A5A5A5A5A5A5L);
 
     IrqBus irq = new IrqBus();
 
     // Simulate “4G IRQ” bursts + timers
     ScheduledExecutorService sch = Executors.newScheduledThreadPool(2);
     sch.scheduleAtFixedRate(
-        () -> irq.fire(EventType.RADIO_4G, RADIO_PRIORITY, radioRandom.nextInt(0x1_0000)),
+        () -> irq.fire(EventType.RADIO_4G, RADIO_PRIORITY, nextU16(radioRng)),
         RADIO_INITIAL_DELAY_MS,
         RADIO_PERIOD_MS,
         TimeUnit.MILLISECONDS);
     sch.scheduleAtFixedRate(
-        () -> irq.fire(EventType.TIMER, TIMER_PRIORITY, timerRandom.nextInt(0x1_0000)),
+        () -> irq.fire(EventType.TIMER, TIMER_PRIORITY, nextU16(timerRng)),
         TIMER_INITIAL_DELAY_MS,
         TIMER_PERIOD_MS,
         TimeUnit.MILLISECONDS);
@@ -263,8 +281,8 @@ public class RafaeliaMvp {
         int bits16 = ev.payload() & 0xFFFF;
 
         // simulate leak/bit-missing: 2% chance drop one bit
-        if (dropRandom.nextDouble() < BIT_DROP_PROBABILITY) {
-          int drop = dropRandom.nextInt(16);
+        if (flowRng.nextDouble() < BIT_DROP_PROBABILITY) {
+          int drop = nextBitIndex(flowRng);
           bits16 &= ~(1 << drop);
         }
 

@@ -76,4 +76,26 @@ public class RafaeliaMvpTest {
       Files.deleteIfExists(tmp.toPath());
     }
   }
+
+  @Test
+  public void deterministicRngSameSeedProducesSameSequence() {
+    RafaeliaMvp.DeterministicRng rngA = new RafaeliaMvp.SplittableDeterministicRng(0x1234ABCDL);
+    RafaeliaMvp.DeterministicRng rngB = new RafaeliaMvp.SplittableDeterministicRng(0x1234ABCDL);
+
+    for (int i = 0; i < 64; i++) {
+      assertEquals(rngA.nextInt(1024), rngB.nextInt(1024));
+      assertEquals(rngA.nextDouble(), rngB.nextDouble(), 0.0);
+    }
+  }
+
+  @Test
+  public void deterministicRngDifferentSeedProducesDifferentSequence() {
+    RafaeliaMvp.DeterministicRng rngA = new RafaeliaMvp.SplittableDeterministicRng(1L);
+    RafaeliaMvp.DeterministicRng rngB = new RafaeliaMvp.SplittableDeterministicRng(2L);
+
+    int a = rngA.nextInt(1 << 16);
+    int b = rngB.nextInt(1 << 16);
+
+    assertNotEquals(a, b);
+  }
 }
