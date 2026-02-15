@@ -7,7 +7,6 @@ import com.vectras.vm.audit.AuditLedger;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -42,9 +41,7 @@ public class ProcessSupervisor {
     private static final QmpTransport DEFAULT_QMP_TRANSPORT =
             () -> QmpClient.sendCommandForStopPath("{ \"execute\": \"system_powerdown\" }");
 
-    private static final long QMP_GRACE_TIMEOUT_MS = 1_200L;
-
-    private static final ThreadPoolExecutor QMP_EXECUTOR = ExecutionExecutors.get().processSupervisorQmpPool();
+    private static final ExecutionExecutors EXECUTORS = ExecutionExecutors.get();
 
     private static final TransitionSink NOOP_TRANSITION_SINK =
             (from, to, cause, action, stallMs, droppedLogs, bytes) -> {
@@ -170,7 +167,7 @@ public class ProcessSupervisor {
             boolean qmpTimedOut = false;
             if (tryQmp) {
                 qmpRequested = true;
-                String result = sendPowerdownWithTimeout(QMP_GRACE_TIMEOUT_MS);
+                String result = sendPowerdownWithTimeout(EXECUTORS.qmpGraceTimeoutMs());
                 qmpTimedOut = result == null;
                 if (ProcessRuntimeOps.isQmpAck(result) && awaitExit(running, 3_000)) {
                     transition(state, State.STOP, "qmp_shutdown", 0, 0, stallMs, "qmp");
@@ -195,7 +192,7 @@ public class ProcessSupervisor {
     }
 
     private String sendPowerdownWithTimeout(long timeoutMs) {
-        Future<String> future = ExecutionExecutors.get().submitProcessSupervisorQmp(new Callable<String>() {
+        Future<String> future = EXECUTORS.submitProcessSupervisorQmp(new Callable<String>() {
             @Override
             public String call() {
                 return qmpTransport.sendPowerdown();
@@ -271,11 +268,16 @@ public class ProcessSupervisor {
         return state;
     }
 
+    public static ExecutionExecutors.Snapshot observabilitySnapshot() {
+        return EXECUTORS.snapshot(ExecutionExecutors.Domain.PROCESS_SUPERVISOR_QMP);
+    }
+
+    static ExecutionExecutors.Snapshot getQmpExecutorSnapshotForTests() {
+        return EXECUTORS.snapshot(ExecutionExecutors.Domain.PROCESS_SUPERVISOR_QMP);
+    }
+
     static int getQmpExecutorMaxThreadsForTests() {
-        if (QMP_EXECUTOR instanceof ThreadPoolExecutor) {
-            return ((ThreadPoolExecutor) QMP_EXECUTOR).getMaximumPoolSize();
-        }
-        return -1;
+        return ExecutionBudgetPolicy.defaults().processSupervisorQmp().maxThreads;
     }
 
     public static ExecutionExecutors.DomainSnapshot getQmpExecutorSnapshot() {
@@ -283,9 +285,6 @@ public class ProcessSupervisor {
     }
 
     static boolean isQmpExecutorCallerRunsPolicyForTests() {
-        if (QMP_EXECUTOR instanceof ThreadPoolExecutor) {
-            return ((ThreadPoolExecutor) QMP_EXECUTOR).getRejectedExecutionHandler() instanceof ThreadPoolExecutor.CallerRunsPolicy;
-        }
         return false;
     }
 }

@@ -1,82 +1,203 @@
 package com.vectras.vm.core;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Provedor central de executores com observabilidade padronizada.
+ * Provedor central de executores com orçamento e métricas por domínio.
  */
 public final class ExecutionExecutors {
 
-    public static final class DomainSnapshot {
-        public final String domain;
-        public final int activeCount;
-        public final int poolSize;
-        public final int queueSize;
-        public final int queueRemainingCapacity;
-        public final long completedTaskCount;
-        public final long submittedTaskCount;
-        public final long saturatedCount;
-        public final long rejectedCount;
-        public final long queueLatencyNanosTotal;
-        public final long queueLatencySamples;
-        public final long createdThreads;
+    public interface ObservableExecutor {
+        Snapshot snapshot();
+    }
 
-        DomainSnapshot(String domain,
-                       int activeCount,
-                       int poolSize,
-                       int queueSize,
-                       int queueRemainingCapacity,
-                       long completedTaskCount,
-                       long submittedTaskCount,
-                       long saturatedCount,
-                       long rejectedCount,
-                       long queueLatencyNanosTotal,
-                       long queueLatencySamples,
-                       long createdThreads) {
+    public enum Domain {
+        TERMINAL_IO("terminal-io"),
+        TERMINAL_WAIT("terminal-wait"),
+        SHELL_EXECUTOR("shell-executor"),
+        PROCESS_SUPERVISOR_QMP("process-supervisor-qmp");
+
+        final String threadPrefix;
+
+        Domain(String threadPrefix) {
+            this.threadPrefix = threadPrefix;
+        }
+    }
+
+    public static final class Snapshot {
+        public final String domain;
+        public final int activeThreads;
+        public final int poolSize;
+        public final int queuedTasks;
+        public final long submittedTasks;
+        public final long completedTasks;
+        public final long rejectedTasks;
+        public final long saturations;
+        public final long createdThreads;
+        public final long avgQueueLatencyMicros;
+
+        Snapshot(String domain,
+                 int activeThreads,
+                 int poolSize,
+                 int queuedTasks,
+                 long submittedTasks,
+                 long completedTasks,
+                 long rejectedTasks,
+                 long saturations,
+                 long createdThreads,
+                 long avgQueueLatencyMicros) {
             this.domain = domain;
-            this.activeCount = activeCount;
+            this.activeThreads = activeThreads;
             this.poolSize = poolSize;
-            this.queueSize = queueSize;
-            this.queueRemainingCapacity = queueRemainingCapacity;
-            this.completedTaskCount = completedTaskCount;
-            this.submittedTaskCount = submittedTaskCount;
-            this.saturatedCount = saturatedCount;
-            this.rejectedCount = rejectedCount;
-            this.queueLatencyNanosTotal = queueLatencyNanosTotal;
-            this.queueLatencySamples = queueLatencySamples;
+            this.queuedTasks = queuedTasks;
+            this.submittedTasks = submittedTasks;
+            this.completedTasks = completedTasks;
+            this.rejectedTasks = rejectedTasks;
+            this.saturations = saturations;
             this.createdThreads = createdThreads;
+            this.avgQueueLatencyMicros = avgQueueLatencyMicros;
+        }
+    }
+
+    private static final class MetricThreadFactory implements ThreadFactory {
+        private final String prefix;
+        private final AtomicLong created = new AtomicLong();
+
+        MetricThreadFactory(String prefix) {
+            this.prefix = prefix;
+        }
+
+        @Override
+        public Thread newThread(Runnable r) {
+            long id = created.incrementAndGet();
+            Thread thread = new Thread(r, prefix + "-" + id);
+            thread.setDaemon(true);
+            return thread;
+        }
+
+        long createdCount() {
+            return created.get();
+        }
+    }
+
+    private static final class TimedRunnable implements Runnable {
+        final Runnable delegate;
+        final long enqueuedAtNs;
+
+        TimedRunnable(Runnable delegate) {
+            this.delegate = delegate;
+            this.enqueuedAtNs = System.nanoTime();
+        }
+
+        @Override
+        public void run() {
+            delegate.run();
+        }
+    }
+
+    private static final class InstrumentedExecutor extends ThreadPoolExecutor implements ObservableExecutor {
+        private final String domain;
+        private final MetricThreadFactory metricThreadFactory;
+        private final AtomicLong submittedTasks = new AtomicLong();
+        private final AtomicLong rejectedTasks = new AtomicLong();
+        private final AtomicLong saturations = new AtomicLong();
+        private final AtomicLong queueLatencyNs = new AtomicLong();
+        private final AtomicLong queueLatencySamples = new AtomicLong();
+
+        InstrumentedExecutor(String domain,
+                             int coreThreads,
+                             int maxThreads,
+                             long keepAliveMs,
+                             BlockingQueue<Runnable> queue,
+                             MetricThreadFactory threadFactory,
+                             RejectedExecutionHandler rejectedExecutionHandler) {
+            super(coreThreads, maxThreads, keepAliveMs, TimeUnit.MILLISECONDS, queue, threadFactory, rejectedExecutionHandler);
+            this.domain = domain;
+            this.metricThreadFactory = threadFactory;
+        }
+
+        @Override
+        public void execute(Runnable command) {
+            submittedTasks.incrementAndGet();
+            if (getQueue().remainingCapacity() == 0) {
+                saturations.incrementAndGet();
+            }
+            super.execute(new TimedRunnable(command));
+        }
+
+        @Override
+        protected void beforeExecute(Thread t, Runnable r) {
+            if (r instanceof TimedRunnable) {
+                long delta = System.nanoTime() - ((TimedRunnable) r).enqueuedAtNs;
+                if (delta > 0) {
+                    queueLatencyNs.addAndGet(delta);
+                    queueLatencySamples.incrementAndGet();
+                }
+            }
+            super.beforeExecute(t, r);
+        }
+
+        @Override
+        protected <T> RunnableFuture<T> newTaskFor(Callable<T> callable) {
+            return super.newTaskFor(callable);
+        }
+
+        @Override
+        public Snapshot snapshot() {
+            long samples = queueLatencySamples.get();
+            long avgMicros = samples == 0 ? 0 : TimeUnit.NANOSECONDS.toMicros(queueLatencyNs.get() / samples);
+            return new Snapshot(
+                    domain,
+                    getActiveCount(),
+                    getPoolSize(),
+                    getQueue().size(),
+                    submittedTasks.get(),
+                    getCompletedTaskCount(),
+                    rejectedTasks.get(),
+                    saturations.get(),
+                    metricThreadFactory.createdCount(),
+                    avgMicros
+            );
+        }
+    }
+
+    private static final class MetricsRejectedHandler implements RejectedExecutionHandler {
+        private final InstrumentedExecutor owner;
+
+        MetricsRejectedHandler(InstrumentedExecutor owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+            owner.rejectedTasks.incrementAndGet();
+            owner.saturations.incrementAndGet();
+            throw new RejectedExecutionException(owner.domain + " saturated: queue=" + executor.getQueue().size());
         }
     }
 
     private static volatile ExecutionExecutors INSTANCE;
 
-    private final DomainExecutor terminalIo;
-    private final DomainExecutor terminalWait;
-    private final DomainExecutor shellExecutor;
-    private final DomainExecutor processSupervisorQmp;
+    private final ExecutionBudgetPolicy policy;
+    private final InstrumentedExecutor terminalIo;
+    private final InstrumentedExecutor terminalWait;
+    private final InstrumentedExecutor processSupervisorQmp;
 
     private ExecutionExecutors(ExecutionBudgetPolicy policy) {
-        this.terminalIo = new DomainExecutor(policy.terminalIo());
-        this.terminalWait = new DomainExecutor(policy.terminalWait());
-        this.shellExecutor = new DomainExecutor(policy.shellExecutor());
-        this.processSupervisorQmp = new DomainExecutor(policy.processSupervisorQmp());
-    }
-
-    public static ExecutionExecutors initialize(ExecutionBudgetPolicy policy) {
-        ExecutionExecutors executors = new ExecutionExecutors(policy);
-        INSTANCE = executors;
-        return executors;
+        this.policy = policy;
+        this.terminalIo = buildShared(Domain.TERMINAL_IO, policy.terminalIo());
+        this.terminalWait = buildShared(Domain.TERMINAL_WAIT, policy.terminalWait());
+        this.processSupervisorQmp = buildShared(Domain.PROCESS_SUPERVISOR_QMP, policy.processSupervisorQmp());
     }
 
     public static ExecutionExecutors get() {
@@ -85,11 +206,32 @@ public final class ExecutionExecutors {
             synchronized (ExecutionExecutors.class) {
                 local = INSTANCE;
                 if (local == null) {
-                    local = initialize(ExecutionBudgetPolicy.defaults());
+                    local = new ExecutionExecutors(ExecutionBudgetPolicy.defaults());
+                    INSTANCE = local;
                 }
             }
         }
         return local;
+    }
+
+    private static InstrumentedExecutor buildShared(Domain domain, ExecutionBudgetPolicy.Budget budget) {
+        MetricThreadFactory threadFactory = new MetricThreadFactory(domain.threadPrefix);
+        InstrumentedExecutor[] holder = new InstrumentedExecutor[1];
+        holder[0] = new InstrumentedExecutor(
+                domain.threadPrefix,
+                budget.coreThreads,
+                budget.maxThreads,
+                budget.keepAliveMs,
+                new ArrayBlockingQueue<>(budget.queueCapacity),
+                threadFactory,
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+        holder[0].setRejectedExecutionHandler(new MetricsRejectedHandler(holder[0]));
+        return holder[0];
+    }
+
+    public ThreadPoolExecutor newShellExecutorPool() {
+        return buildShared(Domain.SHELL_EXECUTOR, policy.shellExecutor());
     }
 
     public Future<?> submitTerminalIo(Runnable runnable) {
@@ -100,147 +242,42 @@ public final class ExecutionExecutors {
         return terminalWait.submit(runnable);
     }
 
-    public Future<?> submitShellExecutor(Runnable runnable) {
-        return shellExecutor.submit(runnable);
-    }
-
-    public <T> Future<T> submitShellExecutor(Callable<T> callable) {
-        return shellExecutor.submit(callable);
-    }
-
     public <T> Future<T> submitProcessSupervisorQmp(Callable<T> callable) {
         return processSupervisorQmp.submit(callable);
     }
 
-    public ThreadPoolExecutor shellExecutorPool() {
-        return shellExecutor.executor;
+    public long qmpGraceTimeoutMs() {
+        return policy.qmpGraceTimeoutMs();
     }
 
-    public ThreadPoolExecutor processSupervisorQmpPool() {
-        return processSupervisorQmp.executor;
-    }
-
-    public DomainSnapshot terminalIoSnapshot() {
-        return terminalIo.snapshot();
-    }
-
-    public DomainSnapshot terminalWaitSnapshot() {
-        return terminalWait.snapshot();
-    }
-
-    public DomainSnapshot shellExecutorSnapshot() {
-        return shellExecutor.snapshot();
-    }
-
-    public DomainSnapshot processSupervisorQmpSnapshot() {
-        return processSupervisorQmp.snapshot();
-    }
-
-    public List<DomainSnapshot> snapshotAll() {
-        ArrayList<DomainSnapshot> snapshots = new ArrayList<>(4);
-        snapshots.add(terminalIo.snapshot());
-        snapshots.add(terminalWait.snapshot());
-        snapshots.add(shellExecutor.snapshot());
-        snapshots.add(processSupervisorQmp.snapshot());
-        return snapshots;
-    }
-
-    static final class DomainExecutor {
-        private final String domain;
-        private final AtomicLong submittedTaskCount = new AtomicLong();
-        private final AtomicLong saturatedCount = new AtomicLong();
-        private final AtomicLong rejectedCount = new AtomicLong();
-        private final AtomicLong queueLatencyNanosTotal = new AtomicLong();
-        private final AtomicLong queueLatencySamples = new AtomicLong();
-        private final DomainThreadFactory threadFactory;
-        private final ThreadPoolExecutor executor;
-
-        DomainExecutor(ExecutionBudgetPolicy.DomainBudget budget) {
-            this.domain = budget.threadPrefix;
-            this.threadFactory = new DomainThreadFactory(budget.threadPrefix);
-            BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(budget.queueCapacity);
-            RejectedExecutionHandler backpressureHandler = (r, e) -> {
-                saturatedCount.incrementAndGet();
-                rejectedCount.incrementAndGet();
-                if (!e.isShutdown()) {
-                    r.run();
-                }
-            };
-            this.executor = new ThreadPoolExecutor(
-                    budget.coreThreads,
-                    budget.maxThreads,
-                    budget.keepAliveMs,
-                    TimeUnit.MILLISECONDS,
-                    queue,
-                    threadFactory,
-                    backpressureHandler
-            );
-            this.executor.allowCoreThreadTimeOut(false);
-        }
-
-        Future<?> submit(Runnable runnable) {
-            submittedTaskCount.incrementAndGet();
-            return executor.submit(tracked(runnable));
-        }
-
-        <T> Future<T> submit(Callable<T> callable) {
-            submittedTaskCount.incrementAndGet();
-            return executor.submit(tracked(callable));
-        }
-
-        private Runnable tracked(Runnable delegate) {
-            final long enqueuedNs = System.nanoTime();
-            return () -> {
-                queueLatencyNanosTotal.addAndGet(System.nanoTime() - enqueuedNs);
-                queueLatencySamples.incrementAndGet();
-                delegate.run();
-            };
-        }
-
-        private <T> Callable<T> tracked(Callable<T> delegate) {
-            final long enqueuedNs = System.nanoTime();
-            return () -> {
-                queueLatencyNanosTotal.addAndGet(System.nanoTime() - enqueuedNs);
-                queueLatencySamples.incrementAndGet();
-                return delegate.call();
-            };
-        }
-
-        DomainSnapshot snapshot() {
-            return new DomainSnapshot(
-                    domain,
-                    executor.getActiveCount(),
-                    executor.getPoolSize(),
-                    executor.getQueue().size(),
-                    executor.getQueue().remainingCapacity(),
-                    executor.getCompletedTaskCount(),
-                    submittedTaskCount.get(),
-                    saturatedCount.get(),
-                    rejectedCount.get(),
-                    queueLatencyNanosTotal.get(),
-                    queueLatencySamples.get(),
-                    threadFactory.createdCount()
-            );
+    public Snapshot snapshot(Domain domain) {
+        switch (domain) {
+            case TERMINAL_IO:
+                return terminalIo.snapshot();
+            case TERMINAL_WAIT:
+                return terminalWait.snapshot();
+            case PROCESS_SUPERVISOR_QMP:
+                return processSupervisorQmp.snapshot();
+            default:
+                throw new IllegalArgumentException("No shared executor for domain: " + domain);
         }
     }
 
-    static final class DomainThreadFactory implements ThreadFactory {
-        private final String prefix;
-        private final AtomicInteger counter = new AtomicInteger(1);
-
-        DomainThreadFactory(String prefix) {
-            this.prefix = prefix;
+    public static Snapshot snapshotOf(ThreadPoolExecutor executor, String domain) {
+        if (executor instanceof ObservableExecutor) {
+            return ((ObservableExecutor) executor).snapshot();
         }
-
-        @Override
-        public Thread newThread(Runnable r) {
-            Thread thread = new Thread(r, prefix + "-" + counter.getAndIncrement());
-            thread.setDaemon(true);
-            return thread;
-        }
-
-        long createdCount() {
-            return counter.get() - 1L;
-        }
+        return new Snapshot(
+                domain,
+                executor.getActiveCount(),
+                executor.getPoolSize(),
+                executor.getQueue().size(),
+                executor.getTaskCount(),
+                executor.getCompletedTaskCount(),
+                -1,
+                -1,
+                -1,
+                -1
+        );
     }
 }

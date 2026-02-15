@@ -18,7 +18,6 @@ public class ShellExecutor {
     private static final long DEFAULT_TIMEOUT_MS = 30_000L;
     private static final int OUTPUT_MAX_LINES = 512;
     private static final int OUTPUT_MAX_BYTES = 256 * 1024;
-
     private final ThreadPoolExecutor executorService;
     private final boolean ownsExecutorService;
     private volatile Process shellExecutorProcess;
@@ -39,7 +38,7 @@ public class ShellExecutor {
     }
 
     public ShellExecutor() {
-        this(ExecutionExecutors.get().shellExecutorPool(), false);
+        this(ExecutionExecutors.get().newShellExecutorPool());
     }
 
     ShellExecutor(ThreadPoolExecutor executorService) {
@@ -111,11 +110,11 @@ public class ShellExecutor {
     }
 
     int getCreatedThreadCountForTests() {
-        return (int) ExecutionExecutors.get().shellExecutorSnapshot().createdThreads;
+        return (int) ExecutionExecutors.snapshotOf(executorService, "shell-executor").createdThreads;
     }
 
-    public ExecutionExecutors.DomainSnapshot getExecutorSnapshot() {
-        return ExecutionExecutors.get().shellExecutorSnapshot();
+    public ExecutionExecutors.Snapshot observabilitySnapshot() {
+        return ExecutionExecutors.snapshotOf(executorService, "shell-executor");
     }
 
     private class CallableExec implements Runnable {
