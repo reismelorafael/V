@@ -3,6 +3,8 @@ package com.vectras.vm.qemu;
 import android.app.Activity;
 
 import com.vectras.qemu.MainSettingsManager;
+import com.vectras.vm.core.ExecutionBudget;
+import com.vectras.vm.core.ExecutionBudgetPolicy;
 
 import java.util.ArrayList;
 
@@ -51,6 +53,11 @@ public final class QemuArgsBuilder {
     public static void applyProfile(ArrayList<String> params, Activity activity, String extras) {
         VmProfile profile = resolveProfile(activity, extras);
         String arch = MainSettingsManager.getArch(activity);
+        ExecutionBudget executionBudget = ExecutionBudgetPolicy.resolve(
+                profile,
+                Runtime.getRuntime().availableProcessors(),
+                arch
+        );
 
         if ("X86_64".equals(arch) || "I386".equals(arch)) {
             params.add("-cpu");
@@ -69,6 +76,9 @@ public final class QemuArgsBuilder {
                 break;
             case THROUGHPUT:
             case BALANCED:
+                params.add("-smp");
+                params.add(executionBudget.qemuCpuBudget().toSmpArgument());
+                break;
             default:
                 break;
         }

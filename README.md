@@ -82,3 +82,8 @@ find . -maxdepth 2 -type d | sort
 ## Referência rápida de bugs
 - Escopo e relação com os demais domínios: [`bug/README.md`](bug/README.md)
 - Mapa arquivo-a-arquivo do domínio de bugs: [`bug/FILES_MAP.md`](bug/FILES_MAP.md)
+
+
+## Canal oficial de comunidade e suporte
+- Canal oficial neutro: https://vectras.vercel.app/community.html
+- Para notícias, suporte e feedback, use sempre o canal oficial acima.
