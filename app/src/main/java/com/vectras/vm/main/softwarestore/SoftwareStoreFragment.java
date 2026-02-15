@@ -26,7 +26,9 @@ import com.vectras.vm.network.RequestNetworkController;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class SoftwareStoreFragment extends Fragment {
 
@@ -120,11 +122,29 @@ public class SoftwareStoreFragment extends Fragment {
             binding.linearnothinghere.setVisibility(View.VISIBLE);
         }
 
+        dataSoftware = deduplicateByVecid(dataSoftware);
+
         homeSoftwareStoreViewModel.setSoftwareList(dataSoftware);
         data.clear();
         data.addAll(dataSoftware);
         mAdapter.notifyDataSetChanged();
+        SharedData.dataSoftwareStore.clear();
         SharedData.dataSoftwareStore.addAll(dataSoftware);
         softwareStoreCallToHomeListener.updateSearchStatus(true);
+    }
+
+    private List<DataRoms> deduplicateByVecid(List<DataRoms> source) {
+        Map<String, DataRoms> uniqueItems = new LinkedHashMap<>();
+
+        for (int i = 0; i < source.size(); i++) {
+            DataRoms software = source.get(i);
+            if (software == null) continue;
+
+            String vecid = software.vecid != null ? software.vecid.trim() : "";
+            String key = vecid.isEmpty() ? "index:" + i : "vecid:" + vecid;
+            uniqueItems.putIfAbsent(key, software);
+        }
+
+        return new ArrayList<>(uniqueItems.values());
     }
 }
