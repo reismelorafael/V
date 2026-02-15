@@ -1,4 +1,4 @@
-use crate::{arg_or_empty, DeterministicOp, Output};
+use crate::{arg_or_empty, AnchorAddr, DeterministicOp, Output};
 
 pub(crate) struct AnchorOp;
 
@@ -10,7 +10,12 @@ impl DeterministicOp for AnchorOp {
     }
 
     fn execute(&self, key_args: &[String]) -> Output {
-        Output::Anchor(arg_or_empty(key_args, 0).to_string())
+        let _ = arg_or_empty(key_args, 0);
+        Output::Anchor(AnchorAddr {
+            dev: 0,
+            block: 0,
+            page: 0,
+        })
     }
 
     fn op_code(&self) -> &'static str {

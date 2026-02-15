@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import com.vectras.vm.BuildConfig
+import com.vectras.vm.core.NativeFastPath
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
@@ -939,6 +940,7 @@ object VectraCore {
         if (!initialized.getAndSet(false)) return
         cycle?.stop()
         logger?.close()
+        NativeFastPath.coreShutdown()
         eventBus?.clear()
         Log.d(TAG, "VectraCore shutdown complete")
     }
@@ -948,10 +950,13 @@ object VectraCore {
      * Noise is data (ρ = information not decoded yet).
      */
     fun psi(payload: ByteArray): Int {
-        val crc = CRC32C.update(state.crc32c, payload)
-        state.crc32c = crc
-        state.stageCounters[0]++
-        return crc
+        val crc = NativeFastPath.coreIngest(payload)
+        if (crc != Int.MIN_VALUE) {
+            state.crc32c = crc
+            state.stageCounters[0]++
+            return crc
+        }
+        return state.crc32c
     }
 
     /**
@@ -959,36 +964,51 @@ object VectraCore {
      * Do not treat noise as simple bug - it's information not decoded yet.
      */
     fun rho(noise: ByteArray, eventWeight: Int = 1): Int {
-        val entropy = CRC32C.update(state.entropyHint, noise)
-        state.entropyHint = entropy + eventWeight
-        state.stageCounters[1]++
-        return entropy
+        val entropy = NativeFastPath.coreIngest(noise)
+        if (entropy != Int.MIN_VALUE) {
+            state.entropyHint = entropy + eventWeight
+            state.stageCounters[1]++
+            return entropy
+        }
+        return state.entropyHint
     }
 
     /**
      * DELTA stage: branchless select between two ints using a mask.
      */
     fun deltaBranchless(a: Int, b: Int, mask: Int): Int {
-        val res = (a and mask.inv()) or (b and mask)
-        state.stageCounters[2]++
-        return res
+        val res = NativeFastPath.coreProcess(a, b, mask)
+        if (res != Int.MIN_VALUE) {
+            state.stageCounters[2]++
+            return res
+        }
+        return 0
     }
 
     /**
      * SIGMA stage: combine two ints with xor and rotate mix (linear pass).
      */
     fun sigmaCombine(a: Int, b: Int): Int {
-        val mix = a xor ((b shl 1) or (b ushr 31))
-        state.stageCounters[3]++
-        return mix
+        val mix = NativeFastPath.coreProcess(a, b, 1)
+        if (mix != Int.MIN_VALUE) {
+            state.stageCounters[3]++
+            return mix
+        }
+        return 0
     }
 
     /**
      * OMEGA stage: finalize digest from crc and entropy hints.
      */
     fun omegaFinalize(): Int {
-        state.stageCounters[4]++
-        return state.crc32c xor state.entropyHint
+        val audit = NativeFastPath.coreAudit()
+        if (audit != null && audit.size >= 2) {
+            state.stageCounters[4]++
+            state.crc32c = audit[0].toInt()
+            state.entropyHint = audit[1].toInt()
+            return state.crc32c xor state.entropyHint
+        }
+        return 0
     }
 
     /**
