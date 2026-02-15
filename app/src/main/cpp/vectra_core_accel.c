@@ -5,7 +5,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdatomic.h>
-#include "engine/rmr/include/rmr_unified_kernel.h"
+#include "rmr_unified_kernel.h"
 
 #define VECTRA_KERNEL_CONTRACT_SIZE 8
 #define VECTRA_HW_CONTRACT_SIZE 10
