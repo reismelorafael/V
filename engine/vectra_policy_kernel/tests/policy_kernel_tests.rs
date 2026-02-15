@@ -1,10 +1,28 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Cursor;
 
 use vectra_policy_kernel::{
-    canonize, commit_tick, crc32c, deterministic_mutate, exec_bucket, resolve_op_by_code, Event,
-    Key, Op, Output, PipelineConfig, PolicyKernel, Stage, StageEvent, TriadStatus,
+    canonize, commit_tick, crc32c, deterministic_mutate, entropy_hint, entropy_milli, exec_bucket,
+    resolve_op_by_code, AnchorAddr, Event, Key, LogEntry, Op, Output, PipelineConfig, PolicyKernel,
+    Stage, StageEvent, TriadStatus,
 };
+
+#[derive(Default)]
+struct SchedulerState {
+    anchors: BTreeMap<AnchorAddr, u8>,
+}
+
+impl SchedulerState {
+    fn replay_log(&mut self, log: Vec<(u64, Output)>) {
+        for (_, out) in log {
+            if let Output::Anchor(anchor) = out {
+                let count = self.anchors.entry(anchor).or_default();
+                *count = count.saturating_add(1);
+            }
+        }
+    }
+}
 
 #[test]
 fn golden_crc32c_vectors_are_stable() {
