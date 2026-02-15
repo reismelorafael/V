@@ -370,7 +370,7 @@
     <string name="i_agree">I agree</string>
     <string name="dont_miss_out">Don\'t miss out!</string>
     <string name="disclaimer_here">When you import any ROM or use files that contain anything, you accept all of this. Click here to read it all.</string>
-    <string name="join_now_on_telegram_if_you_want">Join now on Telegram if you want.</string>
+    <string name="join_now_on_official_channel_if_you_want">Join now on the official community channel if you want.</string>
     <string name="donate">Donate</string>
     <string name="donatecontent">If you really like Vectras VM, you can donate to us on Patreon. Thanks a lot!</string>
     <string name="you_are_ready_to_go">You are ready to go!</string>
@@ -391,6 +391,9 @@
     <string name="automatically_check_for_updates">Automatically check for updates</string>
     <string name="check_on_startup">Check on startup.</string>
     <string name="join_the_beta_channel">Join the Beta channel</string>
+    <string name="official_community_channel">Official community channel</string>
+    <string name="official_community_channel_summary">News, support and feedback in the official Vectras community channel.</string>
+    <string name="official_community_channel_url">https://vectras.vercel.app/community.html</string>
     <string name="you_will_receive_updates_to_experience_the_latest_features_early">You will receive updates to experience the latest features early.</string>
     <string name="tap_here_to_select_language">Tap here to select language.</string>
     <string name="memory">Memory</string>
@@ -673,8 +676,8 @@
     <string name="back_to_the_display">Back to the Display</string>
     <string name="x11">X11</string>
     <string name="about_app">About App</string>
-    <string name="join_us_on_telegram">Join us on Telegram</string>
-    <string name="join_us_on_telegram_where_we_publish_all_the_news_and_updates_and_receive_your_opinions_and_bugs">Join us on Telegram where we publish all the news and updates and receive your opinions and bugs.</string>
+    <string name="join_us_on_the_official_community_channel">Join us on the official community channel</string>
+    <string name="join_us_on_the_official_community_channel_where_we_publish_all_the_news_and_updates_and_receive_your_opinions_and_bugs">Join us on the official community channel where we publish all the news and updates and receive your opinions and bugs.</string>
     <string name="join">Join</string>
     <string name="dont_show_again">Don\'t show again</string>
     <string name="getting_ready_for_you_please_don_t_disconnect_the_network">Getting ready for you…\nPlease don\'t disconnect the network.</string>

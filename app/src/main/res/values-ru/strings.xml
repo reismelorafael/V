@@ -268,8 +268,8 @@
     <string name="cancel">отмена</string>
     <string name="back_to_the_display">Вернуться к отображению</string>
     <string name="about_app">О приложении</string>
-    <string name="join_us_on_telegram">Присоединиться к нам в Telegram</string>
-    <string name="join_us_on_telegram_where_we_publish_all_the_news_and_updates_and_receive_your_opinions_and_bugs">Присоединяйтесь к нам в Telegram, где мы публикуем все новости и обновления, а также получаем ваши мнения и сообщения об ошибках</string>
+    <string name="join_us_on_the_official_community_channel">Присоединяйтесь к нашему официальному каналу сообщества</string>
+    <string name="join_us_on_the_official_community_channel_where_we_publish_all_the_news_and_updates_and_receive_your_opinions_and_bugs">Присоединяйтесь к нашему официальному каналу сообщества, где мы публикуем новости и обновления, а также принимаем ваши отзывы и сообщения об ошибках</string>
     <string name="join">Присоединиться</string>
     <string name="dont_show_again">Больше не показывать</string>
     <string name="getting_ready_for_you_please_don_t_disconnect_the_network">Подготавливаем всё для вас...\nПожалуйста, не отключайте сеть.</string>
