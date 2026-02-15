@@ -46,6 +46,34 @@ public class RafaeliaMvp {
   static final long IRQ_POLL_TIMEOUT_MS = 1_000L;
   private static final ThreadLocal<CRC32C> CRC32C_POOL = ThreadLocal.withInitial(CRC32C::new);
 
+  static final class DeterministicRng {
+    private static final long GOLDEN_GAMMA = 0x9E3779B97F4A7C15L;
+    private long state;
+
+    DeterministicRng(long seed) {
+      state = seed;
+    }
+
+    long nextLong() {
+      long z = (state += GOLDEN_GAMMA);
+      z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+      z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+      return z ^ (z >>> 31);
+    }
+
+    int nextInt(int boundExclusive) {
+      if (boundExclusive <= 0) {
+        throw new IllegalArgumentException("boundExclusive must be > 0");
+      }
+      long unsigned = nextLong() >>> 1;
+      return (int) (unsigned % boundExclusive);
+    }
+
+    double nextDouble() {
+      return (nextLong() >>> 11) * 0x1.0p-53;
+    }
+  }
+
   // meta layout (u32):
   // [  0.. 7] parity (8 bits)
   // [  8..15] whoOut (2 bits used) + flags
@@ -205,16 +233,28 @@ public class RafaeliaMvp {
     return 3;
   }
 
+  static int generatePayloadWithOptionalDrop(int payload, double bitDropProbability, DeterministicRng rng) {
+    int bits16 = payload & 0xFFFF;
+    if (rng.nextDouble() < bitDropProbability) {
+      int drop = rng.nextInt(BLOCK_BITS);
+      bits16 &= ~(1 << drop);
+    }
+    return bits16;
+  }
+
   // ========== MVP loop ==========
   public static void main(String[] args) throws Exception {
     File path = new File(args.length > 0 ? args[0] : "./bitstack.bin");
+    long seed = args.length > 1 ? Long.decode(args[1]) : System.nanoTime();
+    DeterministicRng radioRng = new DeterministicRng(seed ^ 0xA5A5A5A5A5A5A5A5L);
+    DeterministicRng dropRng = new DeterministicRng(seed ^ 0x5A5A5A5A5A5A5A5AL);
 
     IrqBus irq = new IrqBus();
 
     // Simulate “4G IRQ” bursts + timers
     ScheduledExecutorService sch = Executors.newScheduledThreadPool(2);
     sch.scheduleAtFixedRate(
-        () -> irq.fire(EventType.RADIO_4G, RADIO_PRIORITY, (int) (Math.random() * 0xFFFF)),
+        () -> irq.fire(EventType.RADIO_4G, RADIO_PRIORITY, radioRng.nextInt(0x10000)),
         RADIO_INITIAL_DELAY_MS,
         RADIO_PERIOD_MS,
         TimeUnit.MILLISECONDS);
@@ -241,13 +281,7 @@ public class RafaeliaMvp {
 
         // Build a 4x4 bits payload from event (toy mapping)
         // Seed from payload; introduce noise by random bit drop sometimes
-        int bits16 = ev.payload() & 0xFFFF;
-
-        // simulate leak/bit-missing: 2% chance drop one bit
-        if (Math.random() < BIT_DROP_PROBABILITY) {
-          int drop = (int)(Math.random() * 16);
-          bits16 &= ~(1 << drop);
-        }
+        int bits16 = generatePayloadWithOptionalDrop(ev.payload(), BIT_DROP_PROBABILITY, dropRng);
 
         // (2) Processing: compute parity + syndrome vs last known parity
         int computedParity8 = parity2D8(bits16);
