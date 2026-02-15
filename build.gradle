@@ -28,14 +28,38 @@ allprojects {
 ext {
     toolsVersion = properties.get('TOOLS_VERSION', '35.0.0')
     compileApi = Integer.parseInt(properties.get('COMPILE_API', '35').toString())
-    targetApi = Integer.parseInt(properties.get('TARGET_API', '34').toString())
+    targetApi = Integer.parseInt(properties.get('TARGET_API', '35').toString())
     minApi = Integer.parseInt(properties.get('MIN_API', '23').toString())
+    releaseMinTargetApi = Integer.parseInt(properties.get('RELEASE_MIN_TARGET_API', '34').toString())
     javaLanguageVersion = Integer.parseInt(properties.get('JAVA_LANGUAGE_VERSION', '17').toString())
     ndkVersion = properties.get('NDK_VERSION', '27.2.12479018')
     cmakeVersion = properties.get('CMAKE_VERSION', '3.22.1')
 }
 
 
+
+
+
+def validateReleaseTargetApi() {
+    if (targetApi < releaseMinTargetApi) {
+        throw new GradleException("TARGET_API (${targetApi}) must be >= RELEASE_MIN_TARGET_API (${releaseMinTargetApi}) for release builds.")
+    }
+}
+
+tasks.register("verifyTargetApiBaseline") {
+    group = "verification"
+    description = "Falha quando TARGET_API está abaixo do mínimo para release"
+    doLast {
+        validateReleaseTargetApi()
+        println "TARGET_API=${targetApi} atende ao baseline de release (${releaseMinTargetApi})."
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.name.toLowerCase().contains('release') }) {
+        validateReleaseTargetApi()
+    }
+}
 tasks.register("verifyRepoFileDependencies", Exec) {
     group = "verification"
     description = "Verifica se dependências locais de arquivos/módulos existem no repositório"

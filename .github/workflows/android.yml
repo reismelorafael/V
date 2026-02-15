@@ -79,7 +79,10 @@ jobs:
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew verifyRepoFileDependencies -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
+      run: ./gradlew verifyRepoFileDependencies -PCOMPILE_API=35 -PTARGET_API=35 -PRELEASE_MIN_TARGET_API=34 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
+
+    - name: Enforce release target API baseline
+      run: ./tools/check_target_api_baseline.sh gradle.properties
 
     - name: Validate local markdown links (optional)
       continue-on-error: true

@@ -4,6 +4,7 @@ Checklist objetivo para resolver “não compila” por desalinhamento de SDK/JD
 
 ## Correções cobertas no projeto
 - O build agora usa propriedades centralizadas para `compileSdk`, `buildTools`, `CMake`, `NDK` e Java em todos os módulos Android.
+- Baseline operacional de release definido: `TARGET_API=35` com guardrail `RELEASE_MIN_TARGET_API=34` para bloquear releases abaixo do mínimo oficial.
 - O módulo `shell-loader:stub` não fixa mais API 35 hardcoded: agora herda do root (`COMPILE_API` / `TOOLS_VERSION`).
 - `KOTLIN_VERSION` e `AGP_VERSION` também podem ser ajustados por propriedade.
 
@@ -43,8 +44,10 @@ Checklist objetivo para resolver “não compila” por desalinhamento de SDK/JD
 
 ```bash
 ./gradlew :app:assembleDebug \
-  -PCOMPILE_API=34 \
-  -PTOOLS_VERSION=34.0.0 \
+  -PCOMPILE_API=35 \
+  -PTARGET_API=35 \
+  -PRELEASE_MIN_TARGET_API=34 \
+  -PTOOLS_VERSION=35.0.0 \
   -PJAVA_LANGUAGE_VERSION=17 \
   -PCMAKE_VERSION=3.22.1
 ```
@@ -62,6 +65,7 @@ Checklist objetivo para resolver “não compila” por desalinhamento de SDK/JD
 java -version
 ./gradlew --version
 ./gradlew :app:tasks --all
+./tools/check_target_api_baseline.sh gradle.properties
 ./gradlew :app:assembleDebug --stacktrace --info
 ```
 
