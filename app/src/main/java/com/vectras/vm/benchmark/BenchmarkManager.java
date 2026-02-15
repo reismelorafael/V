@@ -7,6 +7,7 @@ import android.os.Debug;
 import android.os.Process;
 
 import com.vectras.vm.core.BareMetalProfile;
+import com.vectras.vm.core.ExecutionGovernance;
 import com.vectras.vm.core.NativeFastPath;
 
 import java.io.BufferedReader;
@@ -133,6 +134,7 @@ public class BenchmarkManager {
         public final ValidationReport validation;
         public final EnvironmentSnapshot environment;
         private final DiagnosticMetrics diagnostics;
+        public final ExecutionGovernance.PolicyTelemetry governanceTelemetry;
         public final long durationMs;
         public final boolean isValid;
         
@@ -140,14 +142,20 @@ public class BenchmarkManager {
                              ValidationReport validation,
                              EnvironmentSnapshot environment,
                              DiagnosticMetrics diagnostics,
+                             ExecutionGovernance.PolicyTelemetry governanceTelemetry,
                              long durationMs,
                              boolean isValid) {
             this.metrics = metrics;
             this.validation = validation;
             this.environment = environment;
             this.diagnostics = diagnostics;
+            this.governanceTelemetry = governanceTelemetry;
             this.durationMs = durationMs;
             this.isValid = isValid;
+        }
+
+        public BenchmarkResult withGovernanceTelemetry(ExecutionGovernance.PolicyTelemetry telemetry) {
+            return new BenchmarkResult(metrics, validation, environment, diagnostics, telemetry, durationMs, isValid);
         }
 
         public DiagnosticMetricsView getDiagnosticsView() {
@@ -416,7 +424,7 @@ public class BenchmarkManager {
 
             DiagnosticMetrics diagnostics = buildDiagnostics(envBefore, preflight);
             BenchmarkResult result = new BenchmarkResult(
-                results, validation, envAfter, diagnostics, duration, isValid);
+                results, validation, envAfter, diagnostics, null, duration, isValid);
             notifyProgress(PROGRESS_SCALE, PROGRESS_SCALE, "Benchmark complete");
             
             notifyComplete(result);

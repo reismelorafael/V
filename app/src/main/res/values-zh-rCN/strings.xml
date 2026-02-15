@@ -291,8 +291,8 @@
     <string name="back_to_the_display">返回显示界面</string>
     <string name="x11">X11</string>
     <string name="about_app">关于软件</string>
-    <string name="join_us_on_telegram">加入我们的电报频道</string>
-    <string name="join_us_on_telegram_where_we_publish_all_the_news_and_updates_and_receive_your_opinions_and_bugs">加入我们的电报群获取最新的信息，并且为软件的添砖加瓦畅所欲言</string>
+    <string name="join_us_on_the_official_community_channel">加入我们的官方社区频道</string>
+    <string name="join_us_on_the_official_community_channel_where_we_publish_all_the_news_and_updates_and_receive_your_opinions_and_bugs">加入我们的官方社区频道，获取最新资讯并提交你的建议与问题反馈</string>
     <string name="join">加入</string>
     <string name="dont_show_again">不再提示</string>
     <string name="getting_ready_for_you_please_don_t_disconnect_the_network">正在准备中…请保持网络连接</string>
@@ -484,7 +484,7 @@
     <string name="i_agree">我同意</string>
     <string name="dont_miss_out">看过来！</string>
     <string name="disclaimer_here">当你导入任何 ROM 或使用包含任何内容的文件时，即表示接受所有这些条款。点击此处阅读全文。</string>
-    <string name="join_now_on_telegram_if_you_want">加入Telegram群组! 多个人多双筷子</string>
+    <string name="join_now_on_official_channel_if_you_want">如果你愿意，现在就加入官方社区频道。</string>
     <string name="skip">跳过</string>
     <string name="donate">捐赠</string>
     <string name="donatecontent">如果你喜欢 Vectras VM，你可以在 Patreon 上支持我们。非常感谢！</string>
