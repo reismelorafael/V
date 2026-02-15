@@ -29,6 +29,7 @@ android {
 
         resValue "string", "app_version", versionName
         resValue "integer", "app_version_code", versionCode.toString()
+        buildConfigField "int", "VECTRA_CORE_SEED", "0"
     }
 
     def releaseStoreFile = providers.gradleProperty("android.injected.signing.store.file").orNull ?: System.getenv("VECTRAS_RELEASE_STORE_FILE")

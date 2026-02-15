@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdatomic.h>
+#include "rmr_unified_kernel.h"
 
 #include "rmr_unified_kernel.h"
 
@@ -123,6 +124,143 @@ JNIEXPORT jint JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeIngest(JNIE
 JNIEXPORT jlongArray JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeProcessRoute(JNIEnv* env, jclass clazz, jlong cpu, jlong sR, jlong sW, jlong inB, jlong outB, jlong m00, jlong m01, jlong m10, jlong m11){(void)clazz; if(vectra_kernel_ensure()!=RMR_UK_OK)return NULL; RmR_UnifiedProcessState p; RmR_UnifiedRouteState r; if(RmR_UnifiedKernel_Process(&g_kernel,(uint64_t)cpu,(uint64_t)sR,(uint64_t)sW,(uint64_t)inB,(uint64_t)outB,(int64_t)m00,(int64_t)m01,(int64_t)m10,(int64_t)m11,&p)!=RMR_UK_OK) return NULL; if(RmR_UnifiedKernel_Route(&g_kernel,&p,&r)!=RMR_UK_OK)return NULL; jlong out[5]={(jlong)p.cpu_pressure,(jlong)p.storage_pressure,(jlong)p.io_pressure,(jlong)p.matrix_determinant,(jlong)r.route_tag}; jlongArray arr=(*env)->NewLongArray(env,5); if(!arr)return NULL; (*env)->SetLongArrayRegion(env,arr,0,5,out); return arr;}
 JNIEXPORT jint JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeVerify(JNIEnv* env, jclass clazz, jbyteArray payload, jint expected){(void)clazz; if(vectra_kernel_ensure()!=RMR_UK_OK||!payload)return 0; jsize n=(*env)->GetArrayLength(env,payload); jbyte* p=(*env)->GetPrimitiveArrayCritical(env,payload,NULL); if(!p)return 0; RmR_UnifiedVerifyState v; int rc=RmR_UnifiedKernel_Verify(&g_kernel,(const uint8_t*)p,(size_t)n,(uint32_t)expected,&v); (*env)->ReleasePrimitiveArrayCritical(env,payload,p,JNI_ABORT); return (rc==RMR_UK_OK)?(jint)v.verify_ok:0;}
 JNIEXPORT jlong JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeAudit(JNIEnv* env, jclass clazz, jint crc, jlong matrixDet, jlong routeTag, jint verifyOk){(void)env;(void)clazz; if(vectra_kernel_ensure()!=RMR_UK_OK)return 0; RmR_UnifiedIngestState i={.crc32c=(uint32_t)crc,.entropy=(uint32_t)crc,.stage_counter=0}; RmR_UnifiedProcessState p={.cpu_pressure=0,.storage_pressure=0,.io_pressure=0,.matrix_determinant=(int64_t)matrixDet}; RmR_UnifiedRouteState r={.route_id=0,.route_tag=(uint64_t)routeTag}; RmR_UnifiedVerifyState v={.computed_crc32c=(uint32_t)crc,.verify_ok=(uint32_t)verifyOk}; RmR_UnifiedAuditState a; if(RmR_UnifiedKernel_Audit(&g_kernel,&i,&p,&r,&v,&a)!=RMR_UK_OK)return 0; return (jlong)a.audit_signature;}
+
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreInit(JNIEnv* env, jclass clazz, jint seed) {
+    (void)env;
+    (void)clazz;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_init(&g_unified_state, (uint32_t)seed);
+    pthread_mutex_unlock(&g_unified_lock);
+    return (jint)rc;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreShutdown(JNIEnv* env, jclass clazz) {
+    (void)env;
+    (void)clazz;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_shutdown(&g_unified_state);
+    pthread_mutex_unlock(&g_unified_lock);
+    return (jint)rc;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreIngest(JNIEnv* env, jclass clazz, jbyteArray payload) {
+    (void)clazz;
+    if (!payload) return RMR_KERNEL_ERR_ARG;
+    jsize len = (*env)->GetArrayLength(env, payload);
+    jbyte* ptr = (*env)->GetPrimitiveArrayCritical(env, payload, 0);
+    if (!ptr) return RMR_KERNEL_ERR_STATE;
+    uint32_t out = 0u;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_ingest(&g_unified_state, (const uint8_t*)ptr, (uint32_t)len, &out);
+    pthread_mutex_unlock(&g_unified_lock);
+    (*env)->ReleasePrimitiveArrayCritical(env, payload, ptr, JNI_ABORT);
+    return (jint)((rc == RMR_KERNEL_OK) ? (int32_t)out : rc);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreProcess(JNIEnv* env, jclass clazz, jint a, jint b, jint mode) {
+    (void)env;
+    (void)clazz;
+    int32_t out = 0;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_process(&g_unified_state, (int32_t)a, (int32_t)b, (uint32_t)mode, &out);
+    pthread_mutex_unlock(&g_unified_lock);
+    return (jint)((rc == RMR_KERNEL_OK) ? out : rc);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreRoute(JNIEnv* env, jclass clazz,
+                                                         jlong cpuCycles, jlong storageReadBytes,
+                                                         jlong storageWriteBytes, jlong inputBytes,
+                                                         jlong outputBytes, jlong m00, jlong m01,
+                                                         jlong m10, jlong m11) {
+    (void)env;
+    (void)clazz;
+    rmr_kernel_route_input_t in;
+    in.cpu_cycles = (uint64_t)cpuCycles;
+    in.storage_read_bytes = (uint64_t)storageReadBytes;
+    in.storage_write_bytes = (uint64_t)storageWriteBytes;
+    in.input_bytes = (uint64_t)inputBytes;
+    in.output_bytes = (uint64_t)outputBytes;
+    in.m00 = (int64_t)m00;
+    in.m01 = (int64_t)m01;
+    in.m10 = (int64_t)m10;
+    in.m11 = (int64_t)m11;
+    rmr_kernel_route_output_t out;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_route(&g_unified_state, &in, &out);
+    pthread_mutex_unlock(&g_unified_lock);
+    return (jint)((rc == RMR_KERNEL_OK) ? (int32_t)out.route : rc);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreVerify(JNIEnv* env, jclass clazz, jbyteArray payload, jint expected) {
+    (void)clazz;
+    if (!payload) return RMR_KERNEL_ERR_ARG;
+    jsize len = (*env)->GetArrayLength(env, payload);
+    jbyte* ptr = (*env)->GetPrimitiveArrayCritical(env, payload, 0);
+    if (!ptr) return RMR_KERNEL_ERR_STATE;
+    uint32_t out = 0u;
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_verify(&g_unified_state, (const uint8_t*)ptr, (uint32_t)len, (uint32_t)expected, &out);
+    pthread_mutex_unlock(&g_unified_lock);
+    (*env)->ReleasePrimitiveArrayCritical(env, payload, ptr, JNI_ABORT);
+    if (rc == RMR_KERNEL_OK) {
+        return 1;
+    }
+    if (rc == 1) {
+        return 0;
+    }
+    return (jint)rc;
+}
+
+JNIEXPORT jlongArray JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCoreAudit(JNIEnv* env, jclass clazz) {
+    (void)clazz;
+    uint64_t counters[7] = {0};
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_kernel_audit(&g_unified_state, counters, 7u);
+    pthread_mutex_unlock(&g_unified_lock);
+    if (rc != RMR_KERNEL_OK) {
+        return NULL;
+    }
+    jlongArray out = (*env)->NewLongArray(env, 7);
+    if (!out) {
+        return NULL;
+    }
+    jlong values[7];
+    for (int i = 0; i < 7; i++) values[i] = (jlong)counters[i];
+    (*env)->SetLongArrayRegion(env, out, 0, 7, values);
+    return out;
+}
+
+JNIEXPORT jintArray JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeReadUnifiedCapabilities(JNIEnv* env, jclass clazz) {
+    (void)clazz;
+    rmr_kernel_capabilities_t caps;
+    if (rmr_kernel_autodetect(&caps) != RMR_KERNEL_OK) {
+        return NULL;
+    }
+    jint values[8];
+    values[0] = (jint)caps.signature;
+    values[1] = (jint)caps.pointer_bits;
+    values[2] = (jint)caps.cache_line_bytes;
+    values[3] = (jint)caps.page_bytes;
+    values[4] = (jint)caps.feature_mask;
+    values[5] = (jint)caps.register_width_bits;
+    values[6] = (jint)caps.pin_count_hint;
+    values[7] = (jint)caps.feature_bits_hi;
+    jintArray out = (*env)->NewIntArray(env, 8);
+    if (!out) {
+        return NULL;
+    }
+    (*env)->SetIntArrayRegion(env, out, 0, 8, values);
+    return out;
+}
 
 #define LOGCAT_RING_MAX_ENTRIES 1024
 #define LOGCAT_ENTRY_MAX_BYTES 1024
