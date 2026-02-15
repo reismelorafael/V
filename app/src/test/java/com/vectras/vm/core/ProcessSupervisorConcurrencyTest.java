@@ -18,9 +18,9 @@ public class ProcessSupervisorConcurrencyTest {
     }
 
     @Test
-    public void qmpExecutorUsesSingleThreadAndCallerRunsPolicy() {
+    public void qmpExecutorUsesSingleThreadBudget() {
         Assert.assertEquals(1, ProcessSupervisor.getQmpExecutorMaxThreadsForTests());
-        Assert.assertTrue(ProcessSupervisor.isQmpExecutorCallerRunsPolicyForTests());
+        Assert.assertEquals("process-supervisor-qmp", ProcessSupervisor.getQmpExecutorSnapshot().domain);
     }
 
     @Test
