@@ -137,16 +137,7 @@ pub fn commit_tick(tick: u64, events: &[Event]) -> Vec<(u64, Output)> {
             a.id.cmp(&b.id).then_with(|| a_hash.cmp(&b_hash))
         });
     }
-    ordered.sort_by(|(a_key, _), (b_key, _)| {
-        a_key
-            .canon
-            .cmp(&b_key.canon)
-            .then_with(|| a_key.anchor.cmp(&b_key.anchor))
-            .then_with(|| a_key.args.cmp(&b_key.args))
-            .then_with(|| a_key.op.cmp(&b_key.op))
-            .then_with(|| a_key.anchor.cmp(&b_key.anchor))
-            .then_with(|| a_key.canon.cmp(&b_key.canon))
-    });
+    ordered.sort_by(|(a_key, _), (b_key, _)| a_key.cmp(b_key));
 
     let mut committed = Vec::new();
     for (key, bucket) in ordered {

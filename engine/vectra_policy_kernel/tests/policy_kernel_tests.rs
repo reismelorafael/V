@@ -511,3 +511,55 @@ fn commit_tick_uses_total_stable_ordering_by_op_code() {
     assert_eq!(committed[2], (30, Output::Focus("z".to_string())));
     assert_eq!(committed[3], (40, Output::Text("z".to_string())));
 }
+
+#[test]
+fn commit_tick_is_deterministic_across_repeated_runs() {
+    let events = vec![
+        Event {
+            id: 91,
+            op: Op::AnchorMark,
+            args: vec!["anchor-A".to_string()],
+            anchor: Some(AnchorAddr {
+                dev: 1,
+                block: 2,
+                page: 3,
+            }),
+        },
+        Event {
+            id: 12,
+            op: Op::TrimWs,
+            args: vec!["  same  ".to_string()],
+            anchor: None,
+        },
+        Event {
+            id: 77,
+            op: Op::TrimWs,
+            args: vec!["same".to_string()],
+            anchor: None,
+        },
+        Event {
+            id: 35,
+            op: Op::AnchorMark,
+            args: vec!["anchor-B".to_string()],
+            anchor: Some(AnchorAddr {
+                dev: 1,
+                block: 2,
+                page: 4,
+            }),
+        },
+        Event {
+            id: 56,
+            op: Op::ReplaceChar,
+            args: vec!["aba".to_string(), "a".to_string(), "x".to_string()],
+            anchor: Some(AnchorAddr {
+                dev: 9,
+                block: 8,
+                page: 7,
+            }),
+        },
+    ];
+
+    let committed_a = commit_tick(1, &events);
+    let committed_b = commit_tick(1, &events);
+    assert_eq!(committed_a, committed_b);
+}
