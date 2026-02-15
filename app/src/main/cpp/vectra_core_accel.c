@@ -71,6 +71,130 @@ static vectra_arena_slot_t g_arena_slots[VECTRA_ARENA_MAX_SLOTS];
 static pthread_mutex_t g_arena_lock = PTHREAD_MUTEX_INITIALIZER;
 static atomic_uint g_arena_active_slots = 0;
 
+static inline void vectra_kernel_copy_forward(uint8_t* dst, const uint8_t* src, uint32_t len) {
+#if defined(__x86_64__) || defined(__i386__)
+    if (len != 0u) {
+        __asm__ volatile("rep movsb"
+                         : "+D"(dst), "+S"(src), "+c"(len)
+                         :
+                         : "memory");
+    }
+#else
+    uint32_t i = 0u;
+    uint32_t end = len & ~31u;
+    while (i < end) {
+        dst[i] = src[i];
+        dst[i + 1u] = src[i + 1u];
+        dst[i + 2u] = src[i + 2u];
+        dst[i + 3u] = src[i + 3u];
+        dst[i + 4u] = src[i + 4u];
+        dst[i + 5u] = src[i + 5u];
+        dst[i + 6u] = src[i + 6u];
+        dst[i + 7u] = src[i + 7u];
+        dst[i + 8u] = src[i + 8u];
+        dst[i + 9u] = src[i + 9u];
+        dst[i + 10u] = src[i + 10u];
+        dst[i + 11u] = src[i + 11u];
+        dst[i + 12u] = src[i + 12u];
+        dst[i + 13u] = src[i + 13u];
+        dst[i + 14u] = src[i + 14u];
+        dst[i + 15u] = src[i + 15u];
+        dst[i + 16u] = src[i + 16u];
+        dst[i + 17u] = src[i + 17u];
+        dst[i + 18u] = src[i + 18u];
+        dst[i + 19u] = src[i + 19u];
+        dst[i + 20u] = src[i + 20u];
+        dst[i + 21u] = src[i + 21u];
+        dst[i + 22u] = src[i + 22u];
+        dst[i + 23u] = src[i + 23u];
+        dst[i + 24u] = src[i + 24u];
+        dst[i + 25u] = src[i + 25u];
+        dst[i + 26u] = src[i + 26u];
+        dst[i + 27u] = src[i + 27u];
+        dst[i + 28u] = src[i + 28u];
+        dst[i + 29u] = src[i + 29u];
+        dst[i + 30u] = src[i + 30u];
+        dst[i + 31u] = src[i + 31u];
+        i += 32u;
+    }
+    while (i < len) {
+        dst[i] = src[i];
+        i++;
+    }
+#endif
+}
+
+static inline void vectra_kernel_copy_backward(uint8_t* dst, const uint8_t* src, uint32_t len) {
+    while (len > 0u) {
+        len--;
+        dst[len] = src[len];
+    }
+}
+
+static inline void vectra_kernel_move(uint8_t* dst, const uint8_t* src, uint32_t len) {
+    if (len == 0u || dst == src) {
+        return;
+    }
+    if (dst > src && dst < src + len) {
+        vectra_kernel_copy_backward(dst, src, len);
+        return;
+    }
+    vectra_kernel_copy_forward(dst, src, len);
+}
+
+static inline void vectra_kernel_fill(uint8_t* dst, uint8_t value, uint32_t len) {
+#if defined(__x86_64__) || defined(__i386__)
+    if (len != 0u) {
+        __asm__ volatile("rep stosb"
+                         : "+D"(dst), "+c"(len)
+                         : "a"(value)
+                         : "memory");
+    }
+#else
+    uint32_t i = 0u;
+    uint32_t end = len & ~31u;
+    while (i < end) {
+        dst[i] = value;
+        dst[i + 1u] = value;
+        dst[i + 2u] = value;
+        dst[i + 3u] = value;
+        dst[i + 4u] = value;
+        dst[i + 5u] = value;
+        dst[i + 6u] = value;
+        dst[i + 7u] = value;
+        dst[i + 8u] = value;
+        dst[i + 9u] = value;
+        dst[i + 10u] = value;
+        dst[i + 11u] = value;
+        dst[i + 12u] = value;
+        dst[i + 13u] = value;
+        dst[i + 14u] = value;
+        dst[i + 15u] = value;
+        dst[i + 16u] = value;
+        dst[i + 17u] = value;
+        dst[i + 18u] = value;
+        dst[i + 19u] = value;
+        dst[i + 20u] = value;
+        dst[i + 21u] = value;
+        dst[i + 22u] = value;
+        dst[i + 23u] = value;
+        dst[i + 24u] = value;
+        dst[i + 25u] = value;
+        dst[i + 26u] = value;
+        dst[i + 27u] = value;
+        dst[i + 28u] = value;
+        dst[i + 29u] = value;
+        dst[i + 30u] = value;
+        dst[i + 31u] = value;
+        i += 32u;
+    }
+    while (i < len) {
+        dst[i] = value;
+        i++;
+    }
+#endif
+}
+
 static int vectra_arena_decode_handle(jint handle, uint32_t* slot_index, uint32_t* generation) {
     if (handle <= 0 || !slot_index || !generation) {
         return VECTRA_ARENA_ERR_BAD_HANDLE;
@@ -386,59 +510,10 @@ Java_com_vectras_vm_core_NativeFastPath_nativeCopyBytes(JNIEnv* env, jclass claz
     const uint8_t* in = (const uint8_t*)s + srcOffset;
     uint8_t* out = (uint8_t*)d + dstOffset;
 
-    if (sameArray && dstOffset > srcOffset && dstOffset < srcOffset + length) {
-        jint i = length;
-        while (i > 0) {
-            i--;
-            out[i] = in[i];
-        }
-
-        (*env)->ReleasePrimitiveArrayCritical(env, src, s, JNI_ABORT);
-        (*env)->ReleasePrimitiveArrayCritical(env, dst, d, 0);
-        return 0;
-    }
-
-    jint i = 0;
-    jint end = length & ~31;
-    while (i < end) {
-        out[i] = in[i];
-        out[i + 1] = in[i + 1];
-        out[i + 2] = in[i + 2];
-        out[i + 3] = in[i + 3];
-        out[i + 4] = in[i + 4];
-        out[i + 5] = in[i + 5];
-        out[i + 6] = in[i + 6];
-        out[i + 7] = in[i + 7];
-        out[i + 8] = in[i + 8];
-        out[i + 9] = in[i + 9];
-        out[i + 10] = in[i + 10];
-        out[i + 11] = in[i + 11];
-        out[i + 12] = in[i + 12];
-        out[i + 13] = in[i + 13];
-        out[i + 14] = in[i + 14];
-        out[i + 15] = in[i + 15];
-        out[i + 16] = in[i + 16];
-        out[i + 17] = in[i + 17];
-        out[i + 18] = in[i + 18];
-        out[i + 19] = in[i + 19];
-        out[i + 20] = in[i + 20];
-        out[i + 21] = in[i + 21];
-        out[i + 22] = in[i + 22];
-        out[i + 23] = in[i + 23];
-        out[i + 24] = in[i + 24];
-        out[i + 25] = in[i + 25];
-        out[i + 26] = in[i + 26];
-        out[i + 27] = in[i + 27];
-        out[i + 28] = in[i + 28];
-        out[i + 29] = in[i + 29];
-        out[i + 30] = in[i + 30];
-        out[i + 31] = in[i + 31];
-        i += 32;
-    }
-
-    while (i < length) {
-        out[i] = in[i];
-        i++;
+    if (sameArray) {
+        vectra_kernel_move(out, in, (uint32_t)length);
+    } else {
+        vectra_kernel_copy_forward(out, in, (uint32_t)length);
     }
 
     (*env)->ReleasePrimitiveArrayCritical(env, src, s, JNI_ABORT);
@@ -674,7 +749,7 @@ Java_com_vectras_vm_core_NativeFastPath_nativeAllocArena(JNIEnv* env, jclass cla
     slot->size = request;
     slot->generation = next_gen;
     slot->in_use = 1u;
-    memset(g_arena_base + offset, 0, (size_t)request);
+    vectra_kernel_fill(g_arena_base + offset, 0u, request);
     atomic_fetch_add(&g_arena_active_slots, 1u);
 
     jint handle = vectra_arena_make_handle(slot_index, slot->generation);
@@ -755,7 +830,7 @@ Java_com_vectras_vm_core_NativeFastPath_nativeArenaCopy(JNIEnv* env, jclass claz
         return rc;
     }
 
-    memmove(dst_ptr, src_ptr, (size_t)length);
+    vectra_kernel_move(dst_ptr, src_ptr, (uint32_t)length);
 
     pthread_mutex_unlock(&g_arena_lock);
     return VECTRA_ARENA_OK;
@@ -851,69 +926,7 @@ Java_com_vectras_vm_core_NativeFastPath_nativeArenaFill(JNIEnv* env, jclass claz
     }
 
     uint8_t fill = (uint8_t)(value & 0xFF);
-    size_t len = (size_t)length;
-
-    if (len < 64u) {
-        memset(ptr, fill, len);
-    } else {
-#if defined(__ARM_NEON)
-        uint8x16_t vec = vdupq_n_u8(fill);
-        size_t i = 0u;
-        size_t vec64_end = len & ~(size_t)63u;
-        for (; i < vec64_end; i += 64u) {
-            vst1q_u8(ptr + i, vec);
-            vst1q_u8(ptr + i + 16u, vec);
-            vst1q_u8(ptr + i + 32u, vec);
-            vst1q_u8(ptr + i + 48u, vec);
-        }
-
-        size_t vec16_end = len & ~(size_t)15u;
-        for (; i < vec16_end; i += 16u) {
-            vst1q_u8(ptr + i, vec);
-        }
-
-        if (i < len) {
-            memset(ptr + i, fill, len - i);
-        }
-#else
-        size_t i = 0u;
-        const size_t word_bytes = sizeof(uintptr_t);
-
-        while (i < len && (((uintptr_t)(ptr + i)) & (word_bytes - 1u)) != 0u) {
-            ptr[i++] = fill;
-        }
-
-        size_t rem = len - i;
-        if (rem >= 64u) {
-            uintptr_t pattern = (uintptr_t)fill;
-            pattern |= pattern << 8u;
-            pattern |= pattern << 16u;
-#if UINTPTR_MAX > 0xFFFFFFFFu
-            pattern |= pattern << 32u;
-#endif
-
-            uintptr_t* pword = (uintptr_t*)(ptr + i);
-            size_t words = rem / word_bytes;
-            size_t words_unrolled = words & ~(size_t)7u;
-            size_t w = 0u;
-            for (; w < words_unrolled; w += 8u) {
-                pword[w] = pattern;
-                pword[w + 1u] = pattern;
-                pword[w + 2u] = pattern;
-                pword[w + 3u] = pattern;
-                pword[w + 4u] = pattern;
-                pword[w + 5u] = pattern;
-                pword[w + 6u] = pattern;
-                pword[w + 7u] = pattern;
-            }
-            i += words_unrolled * word_bytes;
-        }
-
-        if (i < len) {
-            memset(ptr + i, fill, len - i);
-        }
-#endif
-    }
+    vectra_kernel_fill(ptr, fill, (uint32_t)length);
 
 
     pthread_mutex_unlock(&g_arena_lock);
