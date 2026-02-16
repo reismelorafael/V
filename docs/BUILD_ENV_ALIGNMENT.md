@@ -8,6 +8,24 @@ Checklist objetivo para resolver “não compila” por desalinhamento de SDK/JD
 - O módulo `shell-loader:stub` não fixa mais API 35 hardcoded: agora herda do root (`COMPILE_API` / `TOOLS_VERSION`).
 - `KOTLIN_VERSION` e `AGP_VERSION` também podem ser ajustados por propriedade.
 
+
+## Política de suporte (API x ABI)
+
+Política explicitada no build raiz (`build.gradle`):
+
+- `APP_ABI_POLICY=arm64-only` (padrão atual de distribuição).
+- `SUPPORTED_ABIS=arm64-v8a` quando `arm64-only`.
+- `MIN_API` deve ser compatível com a maior exigência mínima das ABIs empacotadas.
+
+### Matriz de compatibilidade para release/distribuição
+
+| Política | SUPPORTED_ABIS esperado | Baseline de API (mínimo técnico) | Recomendação de distribuição |
+|---|---|---:|---|
+| `arm64-only` | `arm64-v8a` | `MIN_API >= 21` | Padrão recomendado para footprint menor e foco em dispositivos modernos |
+| `with-32bit` | inclui ao menos uma ABI 32-bit (`armeabi-v7a` ou `x86`) | `MIN_API >= 21` se incluir `arm64-v8a`/`x86_64`; caso só 32-bit, `>= 16` | Usar apenas quando houver necessidade explícita de legado 32-bit |
+
+> No estado atual do projeto, a distribuição oficial permanece em **ARM64-only**, com `MIN_API=23`, portanto compatível com `arm64-v8a`.
+
 ## 30 checks rápidos
 1. Android API (`platforms;android-<api>`) instalada.
 2. Build-Tools (`build-tools;<versão>`) instalada.
@@ -46,6 +64,9 @@ Checklist objetivo para resolver “não compila” por desalinhamento de SDK/JD
 ./gradlew :app:assembleDebug \
   -PCOMPILE_API=35 \
   -PTARGET_API=35 \
+  -PMIN_API=23 \
+  -PAPP_ABI_POLICY=arm64-only \
+  -PSUPPORTED_ABIS=arm64-v8a \
   -PRELEASE_MIN_TARGET_API=34 \
   -PTOOLS_VERSION=35.0.0 \
   -PJAVA_LANGUAGE_VERSION=17 \

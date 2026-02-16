@@ -1,4 +1,9 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+def defaultSupportedAbisByPolicy = [
+    'arm64-only': 'arm64-v8a',
+    'with-32bit': 'arm64-v8a,armeabi-v7a'
+]
+
 buildscript {
     ext {
         kotlin_version = properties.get('KOTLIN_VERSION', '2.0.21')
@@ -29,13 +34,17 @@ ext {
     toolsVersion = properties.get('TOOLS_VERSION', '35.0.0')
     compileApi = Integer.parseInt(properties.get('COMPILE_API', '35').toString())
     targetApi = Integer.parseInt(properties.get('TARGET_API', '35').toString())
+    // Política atual: ARM64-only com baseline coerente para ABIs 64-bit.
     minApi = Integer.parseInt(properties.get('MIN_API', '23').toString())
     releaseMinTargetApi = Integer.parseInt(properties.get('RELEASE_MIN_TARGET_API', '34').toString())
     javaLanguageVersion = Integer.parseInt(properties.get('JAVA_LANGUAGE_VERSION', '17').toString())
     ndkVersion = properties.get('NDK_VERSION', '27.2.12479018')
     cmakeVersion = properties.get('CMAKE_VERSION', '3.22.1')
     appAbiPolicy = properties.get('APP_ABI_POLICY', 'arm64-only')
-    supportedAbis = properties.get('SUPPORTED_ABIS', 'arm64-v8a').split(',').collect { it.trim() }.findAll { !it.isEmpty() }
+    supportedAbis = properties.get('SUPPORTED_ABIS', defaultSupportedAbisByPolicy.get(appAbiPolicy, 'arm64-v8a'))
+        .split(',')
+        .collect { it.trim() }
+        .findAll { !it.isEmpty() }
 }
 
 
@@ -48,6 +57,42 @@ def validateReleaseTargetApi() {
     }
 }
 
+def validateMinApiAbiCompatibility() {
+    def abiMinApiRequirements = [
+        'armeabi-v7a': 16,
+        'x86': 16,
+        'arm64-v8a': 21,
+        'x86_64': 21
+    ]
+    def supportedPolicyNames = ['arm64-only', 'with-32bit'] as Set
+
+    if (!supportedPolicyNames.contains(appAbiPolicy)) {
+        throw new GradleException("APP_ABI_POLICY (${appAbiPolicy}) inválida. Use uma entre ${supportedPolicyNames}.")
+    }
+
+    if (supportedAbis.isEmpty()) {
+        throw new GradleException('SUPPORTED_ABIS não pode ficar vazia.')
+    }
+
+    def unknownAbis = supportedAbis.findAll { !abiMinApiRequirements.containsKey(it) }
+    if (!unknownAbis.isEmpty()) {
+        throw new GradleException("SUPPORTED_ABIS contém ABIs não reconhecidas: ${unknownAbis}.")
+    }
+
+    if (appAbiPolicy == 'arm64-only' && supportedAbis != ['arm64-v8a']) {
+        throw new GradleException("APP_ABI_POLICY=arm64-only exige SUPPORTED_ABIS=arm64-v8a (atual: ${supportedAbis}).")
+    }
+
+    if (appAbiPolicy == 'with-32bit' && !supportedAbis.any { it in ['armeabi-v7a', 'x86'] }) {
+        throw new GradleException("APP_ABI_POLICY=with-32bit exige ao menos uma ABI 32-bit em SUPPORTED_ABIS (atual: ${supportedAbis}).")
+    }
+
+    def requiredMinApi = supportedAbis.collect { abiMinApiRequirements[it] }.max()
+    if (minApi < requiredMinApi) {
+        throw new GradleException("MIN_API (${minApi}) incompatível com SUPPORTED_ABIS (${supportedAbis}). Mínimo requerido: ${requiredMinApi}.")
+    }
+}
+
 tasks.register("verifyTargetApiBaseline") {
     group = "verification"
     description = "Falha quando TARGET_API está abaixo do mínimo para release"
@@ -57,7 +102,25 @@ tasks.register("verifyTargetApiBaseline") {
     }
 }
 
+tasks.register("verifyMinApiAbiCompatibility") {
+    group = "verification"
+    description = "Falha quando MIN_API e SUPPORTED_ABIS ficam incompatíveis"
+    doLast {
+        validateMinApiAbiCompatibility()
+        println "MIN_API=${minApi}, APP_ABI_POLICY=${appAbiPolicy}, SUPPORTED_ABIS=${supportedAbis} estão coerentes."
+    }
+}
+
 gradle.taskGraph.whenReady { graph ->
+    def requestedTaskNames = graph.allTasks.collect { it.name.toLowerCase() }
+    def hasAndroidPackagingTask = requestedTaskNames.any { name ->
+        name.contains('assemble') || name.contains('bundle') || name.contains('package')
+    }
+
+    if (hasAndroidPackagingTask) {
+        validateMinApiAbiCompatibility()
+    }
+
     if (graph.allTasks.any { it.name.toLowerCase().contains('release') }) {
         validateReleaseTargetApi()
     }

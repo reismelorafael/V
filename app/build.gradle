@@ -38,11 +38,17 @@ android {
 
     packaging {
         jniLibs {
-            excludes += [
-                    "lib/armeabi-v7a/**",
-                    "lib/x86/**",
-                    "lib/x86_64/**"
-            ]
+            if (rootProject.ext.appAbiPolicy == 'arm64-only') {
+                excludes += [
+                        "lib/armeabi-v7a/**",
+                        "lib/x86/**",
+                        "lib/x86_64/**"
+                ]
+            } else if (rootProject.ext.appAbiPolicy == 'with-32bit') {
+                excludes += [
+                        "lib/x86_64/**"
+                ]
+            }
         }
     }
 
