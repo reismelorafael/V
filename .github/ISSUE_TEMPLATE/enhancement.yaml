@@ -1,6 +1,6 @@
 name: Enhancement Request
 description: Suggest a new feature or an improvement to an existing one.
-title: "[🚀]: "
+title: "🚀 [enhancement]: "
 labels: ["enhancement"]
 assignees: []
 body:
@@ -14,6 +14,8 @@ body:
       label: "Summary"
       description: "Briefly summarize the enhancement request."
       placeholder: "e.g., Add filter options to the search function"
+    validations:
+      required: true
 
   - type: textarea
     id: problem
@@ -21,6 +23,8 @@ body:
       label: "Problem Description"
       description: "Explain why this enhancement is needed or describe the problem with the current functionality."
       placeholder: "e.g., The search function currently lacks filtering options, making it hard to find specific results."
+    validations:
+      required: true
 
   - type: textarea
     id: solution
@@ -28,6 +32,8 @@ body:
       label: "Proposed Solution"
       description: "Describe how this enhancement should be implemented."
       placeholder: "e.g., Add dropdown filters for categories and date ranges in the search UI."
+    validations:
+      required: true
 
   - type: textarea
     id: alternatives
@@ -50,5 +56,7 @@ body:
       description: "Please check the following before submitting:"
       options:
         - label: "I have searched for similar enhancement requests."
+          required: true
         - label: "I have provided sufficient detail in the request."
+          required: true
         - label: "I understand that not all requests may be accepted."
