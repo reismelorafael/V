@@ -736,7 +736,7 @@ public class VMCreatorActivity extends AppCompatActivity {
 
     @SuppressLint("SetTextI18n")
     private void importRom(Uri fileUri, String filePath, String fileName) {
-        if (!(fileName.endsWith(".cvbi") || filePath.endsWith(".cvbi.zip"))) {
+        if (!(fileName.endsWith(".cvbi") || fileName.endsWith(".cvbi.zip") || filePath.endsWith(".cvbi") || filePath.endsWith(".cvbi.zip"))) {
             DialogUtils.oneDialog(this,
                     getResources().getString(R.string.problem_has_been_detected),
                     getResources().getString(R.string.format_not_supported_please_select_file_with_format_cvbi),
