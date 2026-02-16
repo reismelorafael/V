@@ -1366,7 +1366,7 @@ public class VMManager {
             return false;
         }
         try {
-            Process probe = new ProcessBuilder("sh", "-c", "kill -0 " + pid).start();
+            Process probe = new ProcessBuilder("kill", "-0", Long.toString(pid)).start();
             boolean finished = probe.waitFor(700, TimeUnit.MILLISECONDS);
             return !finished || probe.exitValue() == 0;
         } catch (Exception ignored) {
@@ -1378,8 +1378,13 @@ public class VMManager {
         if (pid <= 0) {
             return false;
         }
+        if (signal <= 0 || signal > 64) {
+            return false;
+        }
         try {
-            new ProcessBuilder("sh", "-c", "kill -" + signal + " " + pid).start().waitFor(700, TimeUnit.MILLISECONDS);
+            new ProcessBuilder("kill", "-" + signal, Long.toString(pid))
+                    .start()
+                    .waitFor(700, TimeUnit.MILLISECONDS);
         } catch (Exception ignored) {
             return false;
         }
