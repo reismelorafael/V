@@ -107,7 +107,9 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
     public static CallbackInterface.HomeCallToVmsListener homeCallToVmsListener;
 
     public static void refeshVMListNow() {
-        homeCallToVmsListener.refeshVMList();
+        if (homeCallToVmsListener != null) {
+            homeCallToVmsListener.refeshVMList();
+        }
     }
 
     @Override
@@ -314,6 +316,9 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
     @Override
     public void onDestroy() {
         isActivate = false;
+        if (isFinishing()) {
+            homeCallToVmsListener = null;
+        }
         super.onDestroy();
     }
 
