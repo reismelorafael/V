@@ -152,6 +152,17 @@ public class Terminal {
         }
     }
 
+    private static void dismissProgressDialogSafely(AlertDialog progressDialog) {
+        if (progressDialog == null) {
+            return;
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            progressDialog.dismiss();
+            return;
+        }
+        new Handler(Looper.getMainLooper()).post(progressDialog::dismiss);
+    }
+
     private boolean acquireVmStartSlot(Context dialogContext, String vmId) {
         if (!VMManager.tryMarkVmStarting(vmId)) {
             String message = "VM start already in progress or VM already running for id=" + vmId;
@@ -233,14 +244,14 @@ public class Terminal {
             } catch (IOException e) {
                 VMManager.clearVmStarting(vmId);
                 rotateTransientVmIdAfterBootstrapFailure(vmId);
-                progressDialog.dismiss(); // Dismiss ProgressDialog
+                dismissProgressDialogSafely(progressDialog);
                 output.get().append(e.getMessage());
                 errors.append(Log.getStackTraceString(e));
             } finally {
                 safeUnregisterVmProcess(vmId, qemuProcess);
                 VMManager.clearVmStarting(vmId);
                 new Handler(Looper.getMainLooper()).post(() -> {
-                    progressDialog.dismiss(); // Dismiss ProgressDialog
+                    dismissProgressDialogSafely(progressDialog);
                     String finalErrors = errors.toString();
                     String finalOutput = resolveOutputText(output);
                     AppConfig.temporaryLastedTerminalOutput = resolveFinalOutputText(output, finalErrors);
