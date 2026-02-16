@@ -125,6 +125,24 @@ gradle.taskGraph.whenReady { graph ->
         validateReleaseTargetApi()
     }
 }
+
+
+def validateArm64ToolchainCompatibility() {
+    def ndkMajor = ndkVersion.tokenize('.')[0] as Integer
+    if (ndkMajor < 23) {
+        throw new GradleException("NDK_VERSION (${ndkVersion}) does not support required arm64 toolchain baseline (-march=armv8-a). Use NDK r23+.")
+    }
+    println "NDK_VERSION=${ndkVersion} validated for arm64-v8a toolchain flags (-march=armv8-a)."
+}
+
+tasks.register("verifyArm64ToolchainCompatibility") {
+    group = "verification"
+    description = "Valida compatibilidade do NDK com flags nativas arm64 explícitas"
+    doLast {
+        validateArm64ToolchainCompatibility()
+    }
+}
+
 tasks.register("verifyRepoFileDependencies", Exec) {
     group = "verification"
     description = "Verifica se dependências locais de arquivos/módulos existem no repositório"
