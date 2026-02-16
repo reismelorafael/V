@@ -69,6 +69,29 @@ java -version
 ./gradlew :app:assembleDebug --stacktrace --info
 ```
 
+
+## Obfuscação (R8/ProGuard) — símbolos estáveis de release
+
+Para habilitar obfuscação sem quebrar reflexão/entry points declarativos, os símbolos abaixo devem permanecer estáveis:
+
+- `com.vectras.qemu.MainSettingsManager$AppPreferencesFragment` (referenciado por `android:name`/`android:fragment` em XML).
+- `com.vectras.qemu.MainSettingsManager$QemuPreferencesFragment` (referenciado por `android:fragment` em XML).
+- `com.vectras.vm.settings.LanguageModulesActivity` (`android:targetClass` em XML de preferências).
+- `com.vectras.vm.settings.VNCSettingsActivity` (`android:targetClass` em XML de preferências).
+- `com.vectras.vm.settings.X11DisplaySettingsActivity` (`android:targetClass` em XML de preferências).
+- `com.vectras.vm.settings.ImportExportSettingsActivity` (`android:targetClass` em XML de preferências).
+- `com.vectras.vm.settings.UpdaterActivity` (`android:targetClass` em XML de preferências).
+- `com.vectras.vm.x11.LoriePreferences` (`android:settingsActivity` em XML de acessibilidade).
+- `com.antlersoft.android.bc.BCActivityManagerV5`, `BCHapticDefault`, `BCMotionEvent4`, `BCMotionEvent5`, `BCStorageContext7`, `BCStorageContext8` (carregadas via `ClassLoader.loadClass(...)` em runtime).
+
+Validação mínima de pipeline para regressão de reflexão/obfuscação:
+
+```bash
+./gradlew :app:assembleRelease --stacktrace
+```
+
+Após gerar a APK/AAB de release, execute smoke test de inicialização em dispositivo/emulador (instalação + abertura da activity principal + navegação até tela de preferências).
+
 ## Wrapper JDK resiliente
 
 - `tools/gradle_with_jdk21.sh` agora tenta automaticamente JDK 21 e 17 em paths comuns antes de falhar.
