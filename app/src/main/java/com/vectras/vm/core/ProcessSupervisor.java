@@ -1,6 +1,7 @@
 package com.vectras.vm.core;
 
 import android.content.Context;
+import android.util.Log;
 import com.vectras.qemu.utils.QmpClient;
 import com.vectras.vm.audit.AuditEvent;
 import com.vectras.vm.audit.AuditLedger;
@@ -24,6 +25,7 @@ import java.util.concurrent.TimeoutException;
  * sempre com timeout explícito para preservar previsibilidade.</p>
  */
 public class ProcessSupervisor {
+    private static final String TAG = "ProcessSupervisor";
     interface QmpTransport {
         String sendPowerdown();
     }
@@ -116,7 +118,13 @@ public class ProcessSupervisor {
         }
         if (this.process != null) {
             long currentPid = ProcessRuntimeOps.safePid(this.process);
+            if (currentPid <= 0L) {
+                Log.w(TAG, "bindProcess: current bound PID unavailable for vmId=" + vmId);
+            }
             long incomingPid = ProcessRuntimeOps.safePid(process);
+            if (incomingPid <= 0L) {
+                Log.w(TAG, "bindProcess: incoming PID unavailable for vmId=" + vmId);
+            }
             boolean currentAlive = this.process.isAlive();
             if (currentPid > 0L && incomingPid > 0L && currentPid == incomingPid && currentAlive) {
                 // Em algumas reentrâncias Android, o processo pode ser reenvelopado
@@ -263,7 +271,11 @@ public class ProcessSupervisor {
     }
 
     public long getPid() {
-        return ProcessRuntimeOps.safePid(process);
+        long pid = ProcessRuntimeOps.safePid(process);
+        if (process != null && pid <= 0L) {
+            Log.w(TAG, "getPid: PID unavailable for vmId=" + vmId + " state=" + state);
+        }
+        return pid;
     }
 
     public boolean isProcessAlive() {

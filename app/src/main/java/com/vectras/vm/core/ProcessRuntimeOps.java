@@ -2,6 +2,7 @@ package com.vectras.vm.core;
 
 import android.os.SystemClock;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 /**
@@ -27,10 +28,30 @@ public final class ProcessRuntimeOps {
         try {
             Method method = Process.class.getMethod("pid");
             Object value = method.invoke(process);
-            return (value instanceof Long) ? (Long) value : -1L;
+            if (value instanceof Long) {
+                long pid = (Long) value;
+                if (pid > 0L) {
+                    return pid;
+                }
+            }
         } catch (Exception ignored) {
-            return -1L;
         }
+
+        try {
+            Field field = process.getClass().getDeclaredField("pid");
+            field.setAccessible(true);
+            try {
+                long reflectedPid = field.getLong(process);
+                if (reflectedPid > 0L) {
+                    return reflectedPid;
+                }
+            } finally {
+                field.setAccessible(false);
+            }
+        } catch (Exception ignored) {
+        }
+
+        return -1L;
     }
 
     public static boolean isQmpAck(String result) {

@@ -183,6 +183,7 @@ public class VMManager {
             if (pid > 0L) {
                 key = "unknown-pid-" + pid;
             } else {
+                Log.w(TAG, "registerVmProcess: PID unavailable for unknown vmId, using sequence fallback");
                 key = "unknown-seq-" + UNKNOWN_VM_SEQUENCE.getAndIncrement();
             }
         }
@@ -1354,6 +1355,7 @@ public class VMManager {
             if (pid > 0) {
                 vterm.executeShellCommand2("kill -15 " + pid + " || pkill -15 -f " + targetBinary, false, null);
             } else {
+                Log.w(TAG, "killcurrentqemuprocess: terminal PID unavailable, using binary fallback");
                 vterm.executeShellCommand2("pkill -15 -f " + targetBinary, false, null);
             }
         }
@@ -1416,6 +1418,9 @@ public class VMManager {
 
             if (!terminated && pid > 0) {
                 long terminalPid = ProcessRuntimeOps.safePid(Terminal.qemuProcess);
+                if (terminalPid <= 0) {
+                    Log.w(TAG, "killall fallback KILL: terminal PID unavailable for vmId=" + vmId);
+                }
                 if (terminalPid > 0 && terminalPid == pid) {
                     try {
                         Terminal.qemuProcess.destroyForcibly();
@@ -1442,6 +1447,9 @@ public class VMManager {
         Terminal vterm = new Terminal(context);
         if (Terminal.qemuProcess != null) {
             long pid = ProcessRuntimeOps.safePid(Terminal.qemuProcess);
+            if (pid <= 0) {
+                Log.w(TAG, "killallqemuprocesses: terminal PID unavailable, skip direct signal path");
+            }
             if (pid > 0 && isPidAlive(pid)) {
                 vterm.executeShellCommand2("kill -15 " + pid, false, null);
                 if (!signalPidAndAwait(pid, 15, 2_000)) {
