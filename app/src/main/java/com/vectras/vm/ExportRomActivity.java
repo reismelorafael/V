@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -11,6 +12,8 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -41,7 +44,16 @@ public class ExportRomActivity extends AppCompatActivity {
     public String diskfile = "";
     public String cdromfile = "";
     private boolean isExporting = false;
+    private String[] pendingExportFilePaths = new String[0];
+    private String pendingExportDisplayName = "vm-export.cvbi";
 
+    private final ActivityResultLauncher<String> exportCvbiLauncher =
+            registerForActivityResult(new ActivityResultContracts.CreateDocument("application/octet-stream"), uri -> {
+                if (uri == null) {
+                    return;
+                }
+                runExport(pendingExportFilePaths, uri, pendingExportDisplayName);
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -189,6 +201,22 @@ public class ExportRomActivity extends AppCompatActivity {
             }
         }
 
+        String outputFileName = Objects.requireNonNull(mapForGetData.get("title")).toString().trim();
+        if (outputFileName.isEmpty()) {
+            outputFileName = "vm-export";
+        }
+        if (!outputFileName.endsWith(".cvbi")) {
+            outputFileName += ".cvbi";
+        }
+
+        pendingExportFilePaths = filePaths;
+        pendingExportDisplayName = outputFileName;
+
+        exportCvbiLauncher.launch(outputFileName);
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void runExport(String[] filePaths, Uri outputUri, String outputDisplayName) {
         View progressView = LayoutInflater.from(this).inflate(R.layout.dialog_progress_style, null);
         TextView progressText = progressView.findViewById(R.id.progress_text);
         progressText.setText(getString(R.string.exporting) + "\n" + getString(R.string.please_stay_here));
@@ -200,43 +228,45 @@ public class ExportRomActivity extends AppCompatActivity {
 
         progressDialog.show();
 
-        String[] finalFilePaths = filePaths;
         new Thread(() -> {
             isExporting = true;
 
-            String outputPath;
-            if (!FileUtils.isFileExists(AppConfig.cvbiFolder + Objects.requireNonNull(mapForGetData.get("title")) + ".cvbi")) {
-                outputPath = AppConfig.cvbiFolder + Objects.requireNonNull(mapForGetData.get("title")) + ".cvbi";
-            } else {
-                String outputFileName = Objects.requireNonNull(mapForGetData.get("title")).toString();
-                int prefix = 0;
-                while (true) {
-                    if (!FileUtils.isFileExists(AppConfig.cvbiFolder + outputFileName + "_" + prefix + ".cvbi")) {
-                        outputPath = AppConfig.cvbiFolder + outputFileName + "_" + prefix + ".cvbi";
-                        break;
-                    } else {
-                        prefix++;
-                    }
-                }
-            }
-
-            boolean result = ZipUtils.compress(
+            boolean result = ZipUtils.compressToUri(
                     this,
-                    finalFilePaths,
-                    outputPath,
+                    filePaths,
+                    outputUri,
                     progressText,
                     progressBar
             );
 
+            Uri savedUri = outputUri;
+            if (!result && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                Uri fallback = ZipUtils.createMediaStoreDownloadUri(this, outputDisplayName);
+                if (fallback != null) {
+                    result = ZipUtils.compressToUri(
+                            this,
+                            filePaths,
+                            fallback,
+                            progressText,
+                            progressBar
+                    );
+                    if (result) {
+                        savedUri = fallback;
+                    }
+                }
+            }
+
+            final boolean finalResult = result;
+            final Uri finalSavedUri = savedUri;
             runOnUiThread(() -> {
                 isExporting = false;
                 progressDialog.dismiss();
 
                 String title;
                 String content;
-                if (result) {
+                if (finalResult) {
                     title = getString(R.string.done);
-                    content = getString(R.string.saved_in) + ": " + outputPath + ".";
+                    content = getString(R.string.saved_in) + ": " + finalSavedUri + ".";
                 } else {
                     title = getString(R.string.oops);
                     content = getString(R.string.something_went_wrong) + ":\n\n" + ZipUtils.lastErrorContent;
@@ -245,19 +275,14 @@ public class ExportRomActivity extends AppCompatActivity {
                 DialogUtils.twoDialog(this,
                         title,
                         content,
-                        getString(result ? R.string.show_in_folder : R.string.ok),
-                        getString(result ? R.string.close : R.string.exit),
+                        getString(R.string.ok),
+                        getString(finalResult ? R.string.close : R.string.exit),
                         true,
-                        result ? R.drawable.check_24px : R.drawable.error_96px,
+                        finalResult ? R.drawable.check_24px : R.drawable.error_96px,
                         true,
+                        null,
                         () -> {
-                            if (result) {
-                                File file = new File(outputPath);
-                                FileUtils.openFolder(this, file.getParent());
-                            }
-                        },
-                        () -> {
-                            if (!result) {
+                            if (!finalResult) {
                                 finish();
                             }
                         },

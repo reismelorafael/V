@@ -1,8 +1,10 @@
 package com.vectras.vm.utils;
 
 import android.app.Activity;
+import android.content.ContentValues;
 import android.content.Context;
 import android.net.Uri;
+import android.provider.MediaStore;
 import android.os.Build;
 import android.util.Log;
 import android.widget.ProgressBar;
@@ -17,6 +19,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Enumeration;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
@@ -257,72 +260,121 @@ public class ZipUtils {
             TextView statusTextView,
             ProgressBar progressBar
     ) {
-        try {
-            long totalBytes = 0;
-            for (String path : filePaths) {
-                File f = new File(path);
-                if (f.isFile()) totalBytes += f.length();
-            }
-
-            long bytesWritten = 0;
-            byte[] buffer;
-
-            try (FileOutputStream fos = new FileOutputStream(outputZip);
-                 ZipOutputStream zos = new ZipOutputStream(fos)) {
-
-                for (String filePath : filePaths) {
-                    File file = new File(filePath);
-                    long size = file.length();
-                    long crc = calculateCrc(context, file);
-
-                    try (FileInputStream fis = new FileInputStream(file)) {
-                        ZipEntry entry = new ZipEntry(file.getName());
-
-                        entry.setMethod(ZipEntry.DEFLATED);
-                        entry.setSize(size);
-
-                        if (MainSettingsManager.getCyclicRedundancyCheck(context))
-                            entry.setCrc(crc);
-
-                        zos.putNextEntry(entry);
-
-                        if (DeviceUtils.totalMemoryCapacity(context) < 4L * 1024 * 1024 * 1024)
-                            buffer = new byte[64 * 1024];
-                        else
-                            buffer = new byte[128 * 1024];
-
-                        int len;
-                        long lastProgress = -1;
-                        while ((len = fis.read(buffer)) != -1) {
-                            zos.write(buffer, 0, len);
-                            bytesWritten += len;
-
-                            final int progress = (int) ((bytesWritten * 100L) / totalBytes);
-
-                            if (progress > lastProgress) {
-                                lastProgress = progress;
-                                updateStatus(
-                                        statusTextView,
-                                        progressBar,
-                                        (progress == 0 || progress > 100 ?
-                                                context.getString(R.string.exporting) :
-                                                context.getString(R.string.completed) + " " + progress + "%")
-                                                + "\n" + context.getString(R.string.please_stay_here),
-                                        progress
-                                );
-                            }
-                        }
-
-                        zos.closeEntry();
-                    }
-                }
-            }
-            return true;
+        try (FileOutputStream fos = new FileOutputStream(outputZip)) {
+            return compressToStream(context, filePaths, fos, statusTextView, progressBar);
         } catch (Exception e) {
             Log.e(TAG, "compress: ", e);
             lastErrorContent = e.toString();
             return false;
         }
+    }
+
+
+    public static boolean compressToUri(
+            Context context,
+            String[] filePaths,
+            Uri outputUri,
+            TextView statusTextView,
+            ProgressBar progressBar
+    ) {
+        try (OutputStream os = context.getContentResolver().openOutputStream(outputUri, "w")) {
+            if (os == null) {
+                lastErrorContent = "Could not open destination output stream";
+                return false;
+            }
+            return compressToStream(context, filePaths, os, statusTextView, progressBar);
+        } catch (Exception e) {
+            Log.e(TAG, "compressToUri: ", e);
+            lastErrorContent = e.toString();
+            return false;
+        }
+    }
+
+    public static Uri createMediaStoreDownloadUri(Context context, String displayName) {
+        try {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Downloads.DISPLAY_NAME, displayName);
+            values.put(MediaStore.Downloads.MIME_TYPE, "application/octet-stream");
+            values.put(MediaStore.Downloads.IS_PENDING, 1);
+            Uri collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+            Uri uri = context.getContentResolver().insert(collection, values);
+            if (uri == null) return null;
+            ContentValues complete = new ContentValues();
+            complete.put(MediaStore.Downloads.IS_PENDING, 0);
+            context.getContentResolver().update(uri, complete, null, null);
+            return uri;
+        } catch (Exception e) {
+            Log.e(TAG, "createMediaStoreDownloadUri: ", e);
+            return null;
+        }
+    }
+
+    private static boolean compressToStream(
+            Context context,
+            String[] filePaths,
+            OutputStream outputStream,
+            TextView statusTextView,
+            ProgressBar progressBar
+    ) throws IOException {
+        long totalBytes = 0;
+        for (String path : filePaths) {
+            File f = new File(path);
+            if (f.isFile()) totalBytes += f.length();
+        }
+
+        long bytesWritten = 0;
+        byte[] buffer;
+
+        try (ZipOutputStream zos = new ZipOutputStream(outputStream)) {
+
+            for (String filePath : filePaths) {
+                File file = new File(filePath);
+                long size = file.length();
+                long crc = calculateCrc(context, file);
+
+                try (FileInputStream fis = new FileInputStream(file)) {
+                    ZipEntry entry = new ZipEntry(file.getName());
+
+                    entry.setMethod(ZipEntry.DEFLATED);
+                    entry.setSize(size);
+
+                    if (MainSettingsManager.getCyclicRedundancyCheck(context))
+                        entry.setCrc(crc);
+
+                    zos.putNextEntry(entry);
+
+                    if (DeviceUtils.totalMemoryCapacity(context) < 4L * 1024 * 1024 * 1024)
+                        buffer = new byte[64 * 1024];
+                    else
+                        buffer = new byte[128 * 1024];
+
+                    int len;
+                    long lastProgress = -1;
+                    while ((len = fis.read(buffer)) != -1) {
+                        zos.write(buffer, 0, len);
+                        bytesWritten += len;
+
+                        final int progress = totalBytes <= 0 ? 0 : (int) ((bytesWritten * 100L) / totalBytes);
+
+                        if (progress > lastProgress) {
+                            lastProgress = progress;
+                            updateStatus(
+                                    statusTextView,
+                                    progressBar,
+                                    (progress == 0 || progress > 100 ?
+                                            context.getString(R.string.exporting) :
+                                            context.getString(R.string.completed) + " " + progress + "%")
+                                            + "\n" + context.getString(R.string.please_stay_here),
+                                    progress
+                            );
+                        }
+                    }
+
+                    zos.closeEntry();
+                }
+            }
+        }
+        return true;
     }
 
     private static void updateStatus(TextView statusTextView, ProgressBar progressbar, String msg, int progress) {
