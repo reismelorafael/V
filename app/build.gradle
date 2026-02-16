@@ -26,7 +26,12 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags "-O3 -ffast-math -fno-exceptions -fno-rtti"
+                def nativeMcpu = providers.gradleProperty("NATIVE_MCPU").orNull
+                def arm64CppFlags = ["-O3", "-ffast-math", "-fno-exceptions", "-fno-rtti", "-march=armv8-a"]
+                if (nativeMcpu) {
+                    arm64CppFlags += "-mcpu=${nativeMcpu}"
+                }
+                cppFlags arm64CppFlags.join(" ")
                 cFlags "-O3 -ffast-math"
             }
         }

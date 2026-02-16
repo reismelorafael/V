@@ -73,3 +73,18 @@ java -version
 
 - `tools/gradle_with_jdk21.sh` agora tenta automaticamente JDK 21 e 17 em paths comuns antes de falhar.
 - O script também dispara uma validação rápida de toolchain (`--quick`) para antecipar erros de JNI/NDK/CMake/SDK.
+
+
+## Notas de build nativo (arm64-v8a)
+
+- `app/build.gradle` fixa `defaultConfig.externalNativeBuild.cmake.cppFlags` com `-march=armv8-a` para tornar explícita a arquitetura alvo e evitar variação silenciosa por mudança de toolchain padrão.
+- `NATIVE_MCPU` pode ser fornecido via `-PNATIVE_MCPU=<cpu>` para tuning específico por perfil/dispositivo quando necessário, sem remover o baseline portátil `-march=armv8-a`.
+- O projeto valida `ext.ndkVersion` com a task `verifyArm64ToolchainCompatibility`, exigindo NDK r23+ para garantir suporte consistente ao alvo `arm64-v8a`.
+- Em CI, a verificação `Validate native binaries are arm64-v8a` inspeciona os `.so` gerados e falha se não forem ELF `Machine: AArch64`.
+
+### Comandos recomendados (regressão)
+
+```bash
+./gradlew verifyArm64ToolchainCompatibility -PNDK_VERSION=27.2.12479018
+./gradlew :app:assembleDebug -PNDK_VERSION=27.2.12479018
+```
