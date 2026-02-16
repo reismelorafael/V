@@ -11,8 +11,12 @@ import com.vectras.vterm.Terminal;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class LibraryChecker {
+    private enum PackageManagerType { APK, PKG, UNKNOWN }
+
     private final Context context;
 
     public LibraryChecker(Context context) {
@@ -21,14 +25,18 @@ public class LibraryChecker {
 
     public void checkMissingLibraries(Activity activity) {
         // List of required libraries
-        String[] requiredLibraries = DeviceUtils.is64bit() ? AppConfig.neededPkgs().split(" ") : AppConfig.neededPkgs32bit().split(" ");
+        PackageManagerType managerType = detectPackageManagerType();
+        String[] requiredLibraries = resolveRequiredLibraries(managerType);
 
         // Get the list of installed packages
         isPackageInstalled(null, (output, errors) -> {
             // Split the installed packages output into an array and convert to a set for fast lookup
             Set<String> installedPackages = new HashSet<>();
             for (String installedPackage : output.split("\n")) {
-                installedPackages.add(installedPackage.trim());
+                String normalizedName = normalizeInstalledPackageName(installedPackage);
+                if (!normalizedName.isEmpty()) {
+                    installedPackages.add(normalizedName);
+                }
             }
 
             // StringBuilder to collect missing libraries
@@ -43,7 +51,7 @@ public class LibraryChecker {
 
             // Show dialog if any libraries are missing
             if (missingLibraries.toString().trim().length() > 0) {
-                showMissingLibrariesDialog(activity, missingLibraries.toString());
+                showMissingLibrariesDialog(activity, missingLibraries.toString(), managerType);
             } else {
                 // show a dialog if all libraries are installed
                 // showAllLibrariesInstalledDialog(activity);
@@ -52,14 +60,15 @@ public class LibraryChecker {
     }
 
     // Method to show the missing libraries dialog
-    private void showMissingLibrariesDialog(Activity activity, String missingLibraries) {
+    private void showMissingLibrariesDialog(Activity activity, String missingLibraries, PackageManagerType managerType) {
         new AlertDialog.Builder(activity, R.style.MainDialogTheme)
                 .setTitle("Missing Libraries")
                 .setMessage("The following libraries are missing:\n\n" + missingLibraries)
                 .setCancelable(false)
                 .setPositiveButton("Install", (dialog, which) -> {
                     // Create the installation command
-                    String installCommand = "apk add " + missingLibraries.replace("\n", " ");
+                    String installCommandPrefix = managerType == PackageManagerType.PKG ? "pkg install -y " : "apk add ";
+                    String installCommand = installCommandPrefix + missingLibraries.replace("\n", " ");
                     new Terminal(context).executeShellCommand(installCommand, true, true, activity);
                 })
                 .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss())
@@ -73,6 +82,28 @@ public class LibraryChecker {
                 .setMessage("All required libraries are already installed.")
                 .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
                 .show();
+    }
+
+    private PackageManagerType detectPackageManagerType() {
+        Terminal terminal = new Terminal(context);
+        String output = terminal.executeShellCommandWithResult("command -v apk >/dev/null 2>&1 && echo apk || (command -v pkg >/dev/null 2>&1 && echo pkg)", context);
+        String normalized = output == null ? "" : output.trim().toLowerCase();
+        if (normalized.contains("apk")) {
+            return PackageManagerType.APK;
+        }
+        if (normalized.contains("pkg")) {
+            return PackageManagerType.PKG;
+        }
+        return PackageManagerType.UNKNOWN;
+    }
+
+    private static String[] resolveRequiredLibraries(PackageManagerType managerType) {
+        if (managerType == PackageManagerType.PKG) {
+            String required = DeviceUtils.is64bit() ? AppConfig.neededPkgsTermux() : AppConfig.neededPkgs32bitTermux();
+            return required.split(" ");
+        }
+        String required = DeviceUtils.is64bit() ? AppConfig.neededPkgs() : AppConfig.neededPkgs32bit();
+        return required.split(" ");
     }
 
     // Method to check if the package is installed
@@ -91,20 +122,69 @@ public class LibraryChecker {
         }
 
         Terminal terminal = new Terminal(context);
-        String pkgOutput = terminal.executeShellCommandWithResult("pkg list-installed", context);
 
-        if (pkgOutput != null && !pkgOutput.trim().isEmpty() && !containsShellNotFound(pkgOutput)) {
-            callback.onCommandCompleted(pkgOutput, "");
+        String dpkgOutput = terminal.executeShellCommandWithResult("dpkg-query -W -f='${binary:Package}\n'", context);
+        if (isUsablePackageOutput(dpkgOutput)) {
+            callback.onCommandCompleted(normalizeInstalledPackageOutput(dpkgOutput), "");
             return;
         }
 
-        String apkOutput = terminal.executeShellCommandWithResult("apk info", context);
-        if (apkOutput != null && !apkOutput.trim().isEmpty() && !containsShellNotFound(apkOutput)) {
-            callback.onCommandCompleted(apkOutput, "");
+        String pkgOutput = terminal.executeShellCommandWithResult("pkg list-installed", context);
+        if (isUsablePackageOutput(pkgOutput)) {
+            callback.onCommandCompleted(normalizeInstalledPackageOutput(pkgOutput), "");
+            return;
+        }
+
+        String apkOutput = terminal.executeShellCommandWithResult("apk info -v", context);
+        if (isUsablePackageOutput(apkOutput)) {
+            callback.onCommandCompleted(normalizeInstalledPackageOutput(apkOutput), "");
             return;
         }
 
         callback.onCommandCompleted("", "No supported package manager detected in current distro/runtime.");
+    }
+
+    private static boolean isUsablePackageOutput(String output) {
+        return output != null && !output.trim().isEmpty() && !containsShellNotFound(output);
+    }
+
+    private static String normalizeInstalledPackageOutput(String output) {
+        StringBuilder normalized = new StringBuilder();
+        for (String line : output.split("\n")) {
+            String packageName = normalizeInstalledPackageName(line);
+            if (!packageName.isEmpty()) {
+                normalized.append(packageName).append("\n");
+            }
+        }
+        return normalized.toString();
+    }
+
+    private static String normalizeInstalledPackageName(String rawLine) {
+        if (rawLine == null) {
+            return "";
+        }
+        String line = rawLine.trim();
+        if (line.isEmpty() || line.startsWith("WARNING:") || line.startsWith("ERROR:")) {
+            return "";
+        }
+
+        int slashIndex = line.indexOf('/');
+        if (slashIndex > 0) {
+            line = line.substring(0, slashIndex);
+        }
+
+        int firstSpace = line.indexOf(' ');
+        if (firstSpace > 0) {
+            line = line.substring(0, firstSpace);
+        }
+
+        Pattern alpineVersionPattern = Pattern.compile("^(.+)-\\d.*$");
+        Matcher matcher = alpineVersionPattern.matcher(line);
+        if (matcher.matches()) {
+            line = matcher.group(1);
+        }
+
+        return line.trim();
     }
 
     private static boolean containsShellNotFound(String output) {
