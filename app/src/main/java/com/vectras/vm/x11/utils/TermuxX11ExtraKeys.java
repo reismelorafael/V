@@ -138,7 +138,7 @@ public class TermuxX11ExtraKeys implements ExtraKeysView.IExtraKeysView {
 
     @Override
     public boolean performExtraKeyButtonHapticFeedback(View view, ExtraKeyButton buttonInfo, Button button) {
-        X11Activity.handler.postDelayed(() -> {
+        mActivity.postToMainHandlerDelayed(() -> {
             boolean pressed;
             switch (buttonInfo.key) {
                 case "CTRL":

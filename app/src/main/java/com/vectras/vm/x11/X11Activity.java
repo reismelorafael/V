@@ -96,7 +96,7 @@ import java.util.Objects;
 public class X11Activity extends AppCompatActivity implements View.OnApplyWindowInsetsListener {
     static final String ACTION_STOP = "com.vectras.vm.x11.ACTION_STOP";
 
-    public static Handler handler = new Handler();
+    private final Handler handler = new Handler(Looper.getMainLooper());
     FrameLayout frm;
     private TouchInputHandler mInputHandler;
     private ICmdEntryInterface service = null;
@@ -752,7 +752,12 @@ public class X11Activity extends AppCompatActivity implements View.OnApplyWindow
     @Override
     protected void onDestroy() {
         unregisterReceiver(receiver);
+        handler.removeCallbacksAndMessages(null);
         super.onDestroy();
+    }
+
+    public void postToMainHandlerDelayed(Runnable runnable, long delayMillis) {
+        handler.postDelayed(runnable, delayMillis);
     }
 
     // Register the needed events to handle stylus as left, middle and right click
