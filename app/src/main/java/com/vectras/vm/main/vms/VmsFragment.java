@@ -207,4 +207,22 @@ public class VmsFragment extends Fragment implements CallbackInterface.HomeCallT
         spanCount = isLandscape ? 3 : 2;
         binding.rvRomlist.setLayoutManager(new GridLayoutManager(getContext(), spanCount));
     }
+
+    @Override
+    public void onDestroyView() {
+        if (MainActivity.homeCallToVmsListener == this) {
+            MainActivity.homeCallToVmsListener = null;
+        }
+        binding = null;
+        super.onDestroyView();
+    }
+
+    @Override
+    public void onDestroy() {
+        if (MainActivity.homeCallToVmsListener == this) {
+            MainActivity.homeCallToVmsListener = null;
+        }
+        executor.shutdownNow();
+        super.onDestroy();
+    }
 }
