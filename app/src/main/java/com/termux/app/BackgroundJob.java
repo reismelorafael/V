@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.util.Log;
 
 import com.vectras.vm.BuildConfig;
+import com.vectras.vm.core.BoundedStringRingBuffer;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -29,6 +30,7 @@ public final class BackgroundJob {
     private static final String LOG_TAG = "termux-task";
     private static final int MAX_CAPTURE_CHARS = 256 * 1024;
     private static final int MAX_LINE_CHARS = 4096;
+    private static final String CAPTURE_TRUNCATED_MARKER = BoundedStringRingBuffer.TRUNCATED_MARKER;
 
     final Process mProcess;
 
@@ -139,6 +141,7 @@ public final class BackgroundJob {
     private static void appendBounded(StringBuilder builder, String line) {
         if (builder == null) return;
         if (builder.length() >= MAX_CAPTURE_CHARS) {
+            appendCaptureMarkerIfNeeded(builder);
             return;
         }
         String sanitized = sanitizeLine(line);
@@ -148,9 +151,20 @@ public final class BackgroundJob {
                 builder.append(sanitized, 0, remaining - 1);
             }
             builder.append('\n');
+            appendCaptureMarkerIfNeeded(builder);
             return;
         }
         builder.append(sanitized).append('\n');
+    }
+
+    private static void appendCaptureMarkerIfNeeded(StringBuilder builder) {
+        if (builder == null || builder.length() == 0) {
+            return;
+        }
+        if (builder.lastIndexOf(CAPTURE_TRUNCATED_MARKER) >= 0) {
+            return;
+        }
+        builder.append(CAPTURE_TRUNCATED_MARKER).append('\n');
     }
 
     private static void addToEnvIfPresent(List<String> environment, String name) {

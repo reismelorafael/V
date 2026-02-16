@@ -13,6 +13,8 @@ import java.util.Deque;
  * Thread-safe ring buffer with line and byte quotas.
  */
 public class BoundedStringRingBuffer {
+    public static final String TRUNCATED_MARKER = "...[TRUNCATED]";
+
     private static final class LineEntry {
         private final String line;
         private final int utf8Bytes;
@@ -28,6 +30,7 @@ public class BoundedStringRingBuffer {
     private final Deque<LineEntry> lines = new ArrayDeque<>();
     private int totalBytes;
     private int totalChars;
+    private boolean truncated;
 
     public BoundedStringRingBuffer(int maxLines, int maxBytes) {
         this.maxLines = Math.max(1, maxLines);
@@ -50,9 +53,15 @@ public class BoundedStringRingBuffer {
     }
 
     public synchronized String snapshot() {
-        StringBuilder sb = new StringBuilder(totalChars + lines.size());
+        int markerExtra = truncated ? TRUNCATED_MARKER.length() + 1 : 0;
+        StringBuilder sb = new StringBuilder(totalChars + lines.size() + markerExtra);
+        String lastLine = null;
         for (LineEntry entry : lines) {
+            lastLine = entry.line;
             sb.append(entry.line).append('\n');
+        }
+        if (truncated && !TRUNCATED_MARKER.equals(lastLine)) {
+            sb.append(TRUNCATED_MARKER).append('\n');
         }
         return sb.toString();
     }
@@ -63,6 +72,7 @@ public class BoundedStringRingBuffer {
             if (removed == null) return;
             totalBytes -= removed.utf8Bytes + 1;
             totalChars -= removed.line.length();
+            truncated = true;
         }
     }
 
