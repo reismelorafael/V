@@ -122,22 +122,39 @@ public final class QemuArgsBuilder {
         params.add("user,model=virtio-net-pci");
     }
 
-    public static KvmProbe.ProbeResult applyAcceleration(ArrayList<String> params) {
+    public static KvmProbe.ProbeResult applyAcceleration(ArrayList<String> params, String extras) {
         KvmProbe.ProbeResult probe = KvmProbe.probe();
+        if (hasAccelerationInExtras(extras)) {
+            params.add("-name");
+            params.add("KVM=EXTERNAL");
+            return probe;
+        }
+
         if (probe.enabled) {
             params.add("-accel");
             params.add("kvm");
             if (!hasMachineDeclaration(params)) {
                 params.add("-machine");
-                params.add("accel=kvm:tcg");
+                params.add("accel=kvm:tcg,kernel-irqchip=on");
             }
             params.add("-name");
             params.add("KVM=ON");
         } else {
+            params.add("-accel");
+            params.add("tcg,thread=multi");
             params.add("-name");
             params.add("KVM=OFF(" + probe.reason.replace(" ", "_") + ")");
         }
         return probe;
+    }
+
+    private static boolean hasAccelerationInExtras(String extras) {
+        if (extras == null || extras.isEmpty()) {
+            return false;
+        }
+        return extras.contains("-accel")
+                || extras.contains("accel=")
+                || extras.contains("-enable-kvm");
     }
 
     private static boolean hasMachineDeclaration(ArrayList<String> params) {
