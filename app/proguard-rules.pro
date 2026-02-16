@@ -19,14 +19,28 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
--dontobfuscate
+
 -dontwarn org.slf4j.impl.StaticLoggerBinder
--keep class com.vectras.qemu.MainSettingsManager$UserInterfacePreferencesFragment { *; }
--keep class com.vectras.qemu.MainSettingsManager$QemuPreferencesFragment { *; }
--keep class com.vectras.qemu.MainSettingsManager$VncPreferencesFragment { *; }
--keep class com.vectras.vm.network.RequestNetwork { *; }
--keep class com.vectras.vm.network.RequestNetworkController { *; }
--keep class android.media.LoudnessCodecController { *; }
--keepclassmembers class com.google.firebase.database.GenericTypeIndicator{*;}
--keep class * extends com.google.firebase.database.GenericTypeIndicator{*;}
--keep class com.google.firebase.database.GenericTypeIndicator{*;}
+
+# Preference fragments instantiated by class name from XML.
+-keep class com.vectras.qemu.MainSettingsManager$AppPreferencesFragment { public <init>(); }
+-keep class com.vectras.qemu.MainSettingsManager$QemuPreferencesFragment { public <init>(); }
+
+# Legacy compatibility layer loaded reflectively in BCFactory.
+-keep class com.antlersoft.android.bc.BCActivityManagerV5 { public <init>(); }
+-keep class com.antlersoft.android.bc.BCHapticDefault { public <init>(); }
+-keep class com.antlersoft.android.bc.BCMotionEvent4 { public <init>(); }
+-keep class com.antlersoft.android.bc.BCMotionEvent5 { public <init>(); }
+-keep class com.antlersoft.android.bc.BCStorageContext7 { public <init>(); }
+-keep class com.antlersoft.android.bc.BCStorageContext8 { public <init>(); }
+
+# Class names consumed by XML intent/accessibility metadata.
+-keepnames class com.vectras.vm.settings.LanguageModulesActivity
+-keepnames class com.vectras.vm.settings.VNCSettingsActivity
+-keepnames class com.vectras.vm.settings.X11DisplaySettingsActivity
+-keepnames class com.vectras.vm.settings.ImportExportSettingsActivity
+-keepnames class com.vectras.vm.settings.UpdaterActivity
+-keepnames class com.vectras.vm.x11.LoriePreferences
+
+# Firebase Realtime Database generic mapper.
+-keep class * extends com.google.firebase.database.GenericTypeIndicator { *; }
