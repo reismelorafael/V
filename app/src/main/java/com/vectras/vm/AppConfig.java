@@ -113,6 +113,17 @@ public class AppConfig {
         }
     }
 
+    public static String neededPkgsTermux() {
+        if (DeviceUtils.isArm()) {
+            return "bash aria2 tar xterm proot pulseaudio";
+        }
+        return "bash aria2 tar xterm proot pulseaudio";
+    }
+
+    public static String neededPkgs32bitTermux() {
+        return neededPkgsTermux();
+    }
+
     public static boolean needreinstallsystem = false;
 
     public static String temporaryLastedTerminalOutput = "";

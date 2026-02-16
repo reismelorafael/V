@@ -131,6 +131,19 @@ public class Terminal {
         return resolveCurrentVmId();
     }
 
+    private static void safeRegisterVmProcess(Context context, String vmId, Process process, StringBuilder errors) {
+        try {
+            VMManager.registerVmProcess(context, vmId, process);
+        } catch (Exception e) {
+            Log.e(TAG, "registerVmProcess failed for vmId=" + vmId, e);
+            com.vectras.vm.logger.VectrasStatus.logError("<font color='red'>VTERM registerVmProcess failed: vmId="
+                    + vmId + " error=" + e.getMessage() + "</font>");
+            if (errors != null) {
+                errors.append("registerVmProcess failed: ").append(e.getMessage()).append("\n");
+            }
+        }
+    }
+
     private boolean acquireVmStartSlot(Context dialogContext, String vmId) {
         if (!VMManager.tryMarkVmStarting(vmId)) {
             String message = "VM start already in progress or VM already running for id=" + vmId;
@@ -206,7 +219,7 @@ public class Terminal {
                 processBuilder.command(prootCommand);
                 qemuProcess = processBuilder.start();
                 Terminal.resetStreamingStopToken();
-                VMManager.registerVmProcess(getContext(), vmId, qemuProcess);
+                safeRegisterVmProcess(getContext(), vmId, qemuProcess, errors);
 
                 output.set(streamLog(userCommand, qemuProcess, false));
             } catch (IOException e) {
@@ -288,7 +301,7 @@ public class Terminal {
                 processBuilder.command(prootCommand);
                 qemuProcess = processBuilder.start();
                 Terminal.resetStreamingStopToken();
-                VMManager.registerVmProcess(getContext(), vmId, qemuProcess);
+                safeRegisterVmProcess(getContext(), vmId, qemuProcess, errors);
 
                 output.set(streamLog(userCommand, qemuProcess, false));
             } catch (IOException e) {
@@ -366,7 +379,7 @@ public class Terminal {
             processBuilder.command(prootCommand);
             qemuProcess = processBuilder.start();
             Terminal.resetStreamingStopToken();
-            VMManager.registerVmProcess(context, vmId, qemuProcess);
+            safeRegisterVmProcess(context, vmId, qemuProcess, errors);
 
             output = streamLog(userCommand, qemuProcess, false);
         } catch (IOException e) {
@@ -449,7 +462,7 @@ public class Terminal {
                 processBuilder.command(prootCommand);
                 qemuProcess = processBuilder.start();
                 Terminal.resetStreamingStopToken();
-                VMManager.registerVmProcess(getContext(), vmId, qemuProcess);
+                safeRegisterVmProcess(getContext(), vmId, qemuProcess, errors);
 
                 output.set(streamLog(userCommand, qemuProcess, true));
 
