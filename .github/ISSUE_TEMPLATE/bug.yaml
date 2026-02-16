@@ -1,5 +1,5 @@
 name: Bug Report
-description: bug report
+description: Report a reproducible bug.
 title: "🐛 [bug]: "
 labels: ["bug"]
 body:
@@ -42,7 +42,7 @@ body:
     validations:
       required: true
   - type: dropdown
-    id: device_info 
+    id: device_info
     attributes:
       label: What device are you seeing the problem on?
       multiple: true
@@ -70,8 +70,8 @@ body:
   - type: checkboxes
     id: terms
     attributes:
-      label: duplication
-      description: By submitting this issue, you didn't saw any issues duplicate with this issue
+      label: Duplicate Check
+      description: By submitting this issue, you confirm there is no duplicate issue already open.
       options:
         - label: I Agree
           required: true

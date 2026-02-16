@@ -171,12 +171,20 @@ jobs:
         name: android-release-apk
         path: app/build/outputs/apk/release/app-release.apk
 
-    - name: Upload to Telegram 
+    - name: Upload to Telegram
       run: |
+          set -euo pipefail
           if [[ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]]; then
+            shopt -s nullglob
             success=true
 
-            for file in app/build/outputs/apk/release/*.apk; do
+            release_apks=(app/build/outputs/apk/release/*.apk)
+            if [ ${#release_apks[@]} -eq 0 ]; then
+              echo "No release APK found to upload" >&2
+              success=false
+            fi
+
+            for file in "${release_apks[@]}"; do
               echo "Uploading $(basename "$file")"
               tries=0
               success_file=false
