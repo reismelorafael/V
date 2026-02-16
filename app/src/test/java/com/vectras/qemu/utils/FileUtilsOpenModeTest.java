@@ -19,6 +19,18 @@ public class FileUtilsOpenModeTest {
     }
 
     @Test
+    public void resolveContentOpenMode_shouldHonorWritableBackendModesForNonIso() {
+        assertEquals("w", FileUtils.resolveContentOpenMode("content://disk.qcow2", "w"));
+        assertEquals("rw", FileUtils.resolveContentOpenMode("content://disk.qcow2", "rw"));
+    }
+
+    @Test
+    public void resolveContentOpenMode_shouldFallbackSafelyWhenBackendModeIsNullOrEmpty() {
+        assertEquals("rw", FileUtils.resolveContentOpenMode("content://disk.qcow2", null));
+        assertEquals("rw", FileUtils.resolveContentOpenMode("content://disk.qcow2", ""));
+    }
+
+    @Test
     public void resolveParcelOpenMode_shouldForceIsoToReadOnly() {
         assertEquals(ParcelFileDescriptor.MODE_READ_ONLY,
                 FileUtils.resolveParcelOpenMode("/storage/emulated/0/vm/disk.ISO", "rw"));

@@ -128,15 +128,18 @@ public class FileUtils {
         }
     }
     public static InputStream getStreamFromFilePath(Context context, String importFilePath) throws FileNotFoundException {
-        InputStream stream = null;
+        return getStreamFromFilePath(context, importFilePath, null);
+    }
+
+    public static InputStream getStreamFromFilePath(Context context, String importFilePath,
+                                                     String backendMode) throws FileNotFoundException {
         if (importFilePath.startsWith("content://")) {
             Uri uri = Uri.parse(importFilePath);
-            String mode = "rw";
+            String mode = resolveContentOpenMode(importFilePath, backendMode);
             ParcelFileDescriptor pfd = context.getContentResolver().openFileDescriptor(uri, mode);
             return new FileInputStream(pfd.getFileDescriptor());
-        } else {
-            return new FileInputStream(importFilePath);
         }
+        return new FileInputStream(importFilePath);
     }
 
     public static String getFileContents(String filePath) {
