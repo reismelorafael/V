@@ -27,6 +27,8 @@ import java.util.List;
 public final class BackgroundJob {
 
     private static final String LOG_TAG = "termux-task";
+    private static final int MAX_CAPTURE_CHARS = 256 * 1024;
+    private static final int MAX_LINE_CHARS = 4096;
 
     final Process mProcess;
 
@@ -66,8 +68,9 @@ public final class BackgroundJob {
                 try {
                     // FIXME: Long lines.
                     while ((line = reader.readLine()) != null) {
-                        errResult.append(line).append('\n');
-                        Log.i(LOG_TAG, "[" + pid + "] stderr: " + line);
+                        String safeLine = sanitizeLine(line);
+                        appendBounded(errResult, safeLine);
+                        Log.i(LOG_TAG, "[" + pid + "] stderr: " + safeLine);
                     }
                 } catch (IOException e) {
                     // Ignore.
@@ -87,8 +90,9 @@ public final class BackgroundJob {
                 try {
                     // FIXME: Long lines.
                     while ((line = reader.readLine()) != null) {
-                        Log.i(LOG_TAG, "[" + pid + "] stdout: " + line);
-                        outResult.append(line).append('\n');
+                        String safeLine = sanitizeLine(line);
+                        Log.i(LOG_TAG, "[" + pid + "] stdout: " + safeLine);
+                        appendBounded(outResult, safeLine);
                     }
                 } catch (IOException e) {
                     Log.e(LOG_TAG, "Error reading output", e);
@@ -124,6 +128,29 @@ public final class BackgroundJob {
                 }
             }
         }.start();
+    }
+
+    private static String sanitizeLine(String line) {
+        if (line == null) return "";
+        if (line.length() <= MAX_LINE_CHARS) return line;
+        return line.substring(0, MAX_LINE_CHARS) + " …[truncated]";
+    }
+
+    private static void appendBounded(StringBuilder builder, String line) {
+        if (builder == null) return;
+        if (builder.length() >= MAX_CAPTURE_CHARS) {
+            return;
+        }
+        String sanitized = sanitizeLine(line);
+        int remaining = MAX_CAPTURE_CHARS - builder.length();
+        if (sanitized.length() + 1 > remaining) {
+            if (remaining > 1) {
+                builder.append(sanitized, 0, remaining - 1);
+            }
+            builder.append('\n');
+            return;
+        }
+        builder.append(sanitized).append('\n');
     }
 
     private static void addToEnvIfPresent(List<String> environment, String name) {

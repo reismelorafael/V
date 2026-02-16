@@ -147,6 +147,26 @@ public class VMManager {
         }
     }
 
+    public static synchronized void unregisterVmProcess(String vmId, Process process) {
+        String key = normalizeVmLifecycleId(vmId);
+        ProcessSupervisor supervisor = SUPERVISORS.get(key);
+        if (supervisor == null) {
+            VM_STATES.put(key, VmRuntimeState.STOPPED);
+            return;
+        }
+
+        if (process != null && !supervisor.isBoundTo(process)) {
+            return;
+        }
+
+        SUPERVISORS.remove(key, supervisor);
+        VM_STATES.put(key, VmRuntimeState.STOPPED);
+    }
+
+    public static synchronized void unregisterVmProcess(String vmId) {
+        unregisterVmProcess(vmId, null);
+    }
+
     /**
      * Registra o processo da VM no supervisor associado ao identificador.
      *
@@ -189,6 +209,11 @@ public class VMManager {
 
         ProcessSupervisor previous = SUPERVISORS.remove(key);
         if (previous != null) {
+            if (previous.isBoundTo(process) && previous.isProcessAlive()) {
+                SUPERVISORS.put(key, previous);
+                VM_STATES.put(key, VmRuntimeState.RUNNING);
+                return;
+            }
             previous.stopGracefully(false);
         }
 

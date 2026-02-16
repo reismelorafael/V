@@ -15,7 +15,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class LibraryChecker {
-    private enum PackageManagerType { APK, PKG, UNKNOWN }
+    private enum PackageManagerType { APK, PKG, APT, UNKNOWN }
 
     private final Context context;
 
@@ -67,8 +67,7 @@ public class LibraryChecker {
                 .setCancelable(false)
                 .setPositiveButton("Install", (dialog, which) -> {
                     // Create the installation command
-                    String installCommandPrefix = managerType == PackageManagerType.PKG ? "pkg install -y " : "apk add ";
-                    String installCommand = installCommandPrefix + missingLibraries.replace("\n", " ");
+                    String installCommand = buildInstallCommand(managerType, missingLibraries.replace("\n", " "));
                     new Terminal(context).executeShellCommand(installCommand, true, true, activity);
                 })
                 .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss())
@@ -86,7 +85,7 @@ public class LibraryChecker {
 
     private PackageManagerType detectPackageManagerType() {
         Terminal terminal = new Terminal(context);
-        String output = terminal.executeShellCommandWithResult("command -v apk >/dev/null 2>&1 && echo apk || (command -v pkg >/dev/null 2>&1 && echo pkg)", context);
+        String output = terminal.executeShellCommandWithResult("command -v apk >/dev/null 2>&1 && echo apk || (command -v pkg >/dev/null 2>&1 && echo pkg || (command -v apt-get >/dev/null 2>&1 && echo apt))", context);
         String normalized = output == null ? "" : output.trim().toLowerCase();
         if (normalized.contains("apk")) {
             return PackageManagerType.APK;
@@ -94,7 +93,28 @@ public class LibraryChecker {
         if (normalized.contains("pkg")) {
             return PackageManagerType.PKG;
         }
+        if (normalized.contains("apt")) {
+            return PackageManagerType.APT;
+        }
         return PackageManagerType.UNKNOWN;
+    }
+
+    private String buildInstallCommand(PackageManagerType managerType, String packages) {
+        String sanitizedPackages = packages == null ? "" : packages.trim();
+        if (sanitizedPackages.isEmpty()) {
+            return "echo 'No packages requested for installation'";
+        }
+        switch (managerType) {
+            case PKG:
+                return "pkg install -y " + sanitizedPackages;
+            case APT:
+                return "apt-get install -y " + sanitizedPackages;
+            case APK:
+                return "apk add " + sanitizedPackages;
+            case UNKNOWN:
+            default:
+                return "pkg install -y " + sanitizedPackages;
+        }
     }
 
     private static String[] resolveRequiredLibraries(PackageManagerType managerType) {
@@ -227,7 +247,8 @@ public class LibraryChecker {
                 .setMessage("XFCE4 is not installed. Would you like to install it?")
                 .setCancelable(false)
                 .setPositiveButton("Install", (dialog, which) -> {
-                    String installCommand = "apk add " + packageName;
+                    PackageManagerType managerType = detectPackageManagerType();
+                    String installCommand = buildInstallCommand(managerType, packageName);
                     new Terminal(context).executeShellCommand(installCommand, true, true, activity);
                 })
                 .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss())

@@ -50,6 +50,18 @@ public class DisplaySystem {
             activity.startActivity(new Intent(activity, MainVNCActivity.class));
     }
 
+    private static String resolveInstallCommand(String packageName, Context context) {
+        String probe = Terminal.executeShellCommandWithResult("command -v apk >/dev/null 2>&1 && echo apk || (command -v pkg >/dev/null 2>&1 && echo pkg || (command -v apt-get >/dev/null 2>&1 && echo apt))", context);
+        String normalized = probe == null ? "" : probe.trim().toLowerCase();
+        if (normalized.contains("pkg")) {
+            return "pkg install -y " + packageName;
+        }
+        if (normalized.contains("apt")) {
+            return "apt-get install -y " + packageName;
+        }
+        return "apk add " + packageName;
+    }
+
     public static void launchX11(Context context, boolean isKill) {
         if (!isUseBuiltInX11() && !PackageUtils.isInstalled("com.termux.x11", context)) {
             DialogUtils.needInstallTermuxX11(context);
@@ -85,7 +97,7 @@ public class DisplaySystem {
                         R.drawable.desktop_24px,
                         true,
                         () -> {
-                            String installCommand = "apk add " + necessaryPackage;
+                            String installCommand = resolveInstallCommand(necessaryPackage, context);
                             new Terminal(context).executeShellCommand(installCommand, true, true, context.getString(R.string.just_a_moment), context);
                         },
                         null,

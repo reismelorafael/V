@@ -131,6 +131,14 @@ public class Terminal {
         return resolveCurrentVmId();
     }
 
+    private static void safeUnregisterVmProcess(String vmId, Process process) {
+        try {
+            VMManager.unregisterVmProcess(vmId, process);
+        } catch (Exception e) {
+            Log.w(TAG, "unregisterVmProcess failed for vmId=" + vmId, e);
+        }
+    }
+
     private static void safeRegisterVmProcess(Context context, String vmId, Process process, StringBuilder errors) {
         try {
             VMManager.registerVmProcess(context, vmId, process);
@@ -229,6 +237,7 @@ public class Terminal {
                 output.get().append(e.getMessage());
                 errors.append(Log.getStackTraceString(e));
             } finally {
+                safeUnregisterVmProcess(vmId, qemuProcess);
                 VMManager.clearVmStarting(vmId);
                 new Handler(Looper.getMainLooper()).post(() -> {
                     progressDialog.dismiss(); // Dismiss ProgressDialog
@@ -311,6 +320,7 @@ public class Terminal {
                 errors.append(Log.getStackTraceString(e));
                 NotificationUtils.clearAll(VectrasApp.getContext());
             } finally {
+                safeUnregisterVmProcess(vmId, qemuProcess);
                 VMManager.clearVmStarting(vmId);
                 // Switch to main thread after execution
                 new Handler(Looper.getMainLooper()).post(() -> {
@@ -388,6 +398,7 @@ public class Terminal {
             output.append(e.getMessage());
             errors.append(Log.getStackTraceString(e));
         } finally {
+            safeUnregisterVmProcess(vmId, qemuProcess);
             VMManager.clearVmStarting(vmId);
         }
         return output.toString();
@@ -471,6 +482,7 @@ public class Terminal {
                 output.get().append(e.getMessage());
                 errors.append(Log.getStackTraceString(e));
             } finally {
+                safeUnregisterVmProcess(vmId, qemuProcess);
                 VMManager.clearVmStarting(vmId);
                 // Dismiss ProgressDialog on the main thread
                 new Handler(Looper.getMainLooper()).post(progressDialog::dismiss);
