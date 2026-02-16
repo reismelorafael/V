@@ -1,0 +1,1224 @@
+================================================================================
+VECTRAS-VM ANDROID MASTER - GUIA DE CORREÇÕES TÉCNICAS
+Descrição Detalhada de Fixes para 20 Bugs Identificados
+================================================================================
+
+CORREÇÃO #1: ProcessSupervisor Race Condition - Sincronização de Failover
+────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/java/com/vectras/vm/core/ProcessSupervisor.java
+Linhas Afetadas: 85-88, 24-25, 101-110
+Tipo: Race Condition em ciclo de vida de processo
+
+Problema Atual:
+O campo volatile Process é acessado em métodos diferentes sem sincronização adequada.
+Quando stopProcess() e killProcess() executam simultaneamente durante transição DEGRADED
+para FAILOVER, ocorre acesso concorrente ao mesmo objeto Process causando double-free ou
+null-pointer dereference. A volatilidade sozinha não garante segurança em operações multi-passo.
+
+Solução Detalhada:
+Implementar synchronized block em torno de todas as transições de estado do processo.
+Criar método privado sincronizado chamado stopProcessSafely() que encapsula a lógica de
+parada com garantia de que apenas uma thread executa destroy() ou destroyForcibly() por vez.
+
+Código a Adicionar:
+Após linha 84, adicionar novo campo para lock exclusivo:
+private final Object processLock = new Object();
+
+Após linha 110, adicionar novo método sincronizado:
+private void stopProcessSafely(int timeoutSeconds) {
+    synchronized (processLock) {
+        if (process != null && process.isAlive()) {
+            try {
+                process.destroy();
+                if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
+                    process.destroyForcibly();
+                    process.waitFor(3, TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            process = null;
+        }
+    }
+}
+
+Modificar linhas 85-88 para chamar novo método:
+Remover:
+if (process != null && process.isAlive()) {
+    process.destroy();
+    if (!process.waitFor(3, TimeUnit.SECONDS)) {
+        process.destroyForcibly();
+        process.waitFor(2, TimeUnit.SECONDS);
+    }
+}
+
+Substituir por:
+stopProcessSafely(3);
+
+Impacto: Elimina race condition, garante teardown ordentado, reduz ANRs em failover.
+
+
+CORREÇÃO #2: AndroidManifest allowBackup=true - Desabilitar ou Implementar Encriptação
+────────────────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/AndroidManifest.xml
+Linha Afetada: 42
+Tipo: Vulnerabilidade de exposição de dados
+
+Problema Atual:
+android:allowBackup="true" permite que ferramentas como adb backup extraiam dados completos
+da aplicação sem criptografia, incluindo arquivos de VM, configurações persistidas, e credenciais.
+Não há implementação de BackupAgent para controlar quais dados são backed up.
+
+Solução Detalhada (Opção A - Recomendado para produção):
+Desabilitar backup completamente mudando a configuração no manifesto.
+
+Modificar linha 42 de:
+android:allowBackup="true"
+
+Para:
+android:allowBackup="false"
+
+Solução Detalhada (Opção B - Se backup for necessário):
+Implementar BackupAgent com exclusão de dados sensíveis.
+
+Criar novo arquivo: app/src/main/java/com/vectras/vm/backup/VectrasBackupAgent.java
+com conteúdo:
+package com.vectras.vm.backup;
+
+import android.app.backup.BackupAgent;
+import android.app.backup.BackupDataInput;
+import android.app.backup.BackupDataOutput;
+import android.os.ParcelFileDescriptor;
+
+public class VectrasBackupAgent extends BackupAgent {
+    @Override
+    public void onBackup(ParcelFileDescriptor oldState, BackupDataOutput data,
+                        ParcelFileDescriptor newState) throws IOException {
+        // Implementar apenas backup de dados não-sensíveis (UI preferences, themes)
+        // Excluir: /data/data/com.vectras.vm/files/vms/*
+        // Excluir: /data/data/com.vectras.vm/databases/*
+    }
+
+    @Override
+    public void onRestore(BackupDataInput data, int appVersionCode,
+                         ParcelFileDescriptor newState) throws IOException {
+        // Restaurar apenas dados permitidos
+    }
+}
+
+Adicionar ao manifesto dentro do elemento <application>:
+<meta-data
+    android:name="com.google.android.backup.api_key"
+    android:value="BackupAgentMetadata" />
+
+<service
+    android:name=".backup.VectrasBackupAgent"
+    android:permission="android.permission.BACKUP"
+    android:exported="false" />
+
+Impacto: Remove exposição de dados críticos, mantém conformidade com GDPR/CCPA.
+
+
+CORREÇÃO #3: RomReceiverActivity Intent Filter Wildcard - Validação Rigorosa
+────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/AndroidManifest.xml
+Linhas Afetadas: 102-120
+Tipo: Injeção de intent implícito permitindo payload malicioso
+
+Problema Atual:
+RomReceiverActivity está exportada com mimeType="*/*" e pathPattern=".*\.cvbi" que aceita
+qualquer arquivo de qualquer app. Não há validação de assinatura ou verificação de integridade
+antes do arquivo ser processado. Permite injeção de ROM compilado maliciosamente.
+
+Solução Detalhada:
+Restringir intent filter a apenas aplicações confiáveis usando assinatura de app.
+Implementar verificação de integridade de arquivo com hash criptográfico.
+
+Modificar manifesto linhas 102-120 de:
+<activity
+    android:name=".RomReceiverActivity"
+    android:exported="true"
+    android:grantUriPermissions="true"
+    android:label="@string/importRom">
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="file" />
+        <data android:scheme="content" />
+        <data android:mimeType="*/*" />
+        <data android:host="*" />
+        <data android:pathPattern=".*\\.cvbi" />
+        <data android:pathPattern=".*\\..*\\.cvbi" />
+        <data android:pathPattern=".*\\..*\\..*\\.cvbi" />
+        <data android:pathPattern=".*\\..*\\..*\\..*\\.cvbi" />
+    </intent-filter>
+</activity>
+
+Para:
+<activity
+    android:name=".RomReceiverActivity"
+    android:exported="false"
+    android:label="@string/importRom" />
+
+Criar novo broadcast receiver com permissão personalizada:
+<permission
+    android:name="com.vectras.vm.RECEIVE_ROM"
+    android:protectionLevel="signature" />
+
+<receiver
+    android:name=".receiver.RomImportReceiver"
+    android:exported="true"
+    android:permission="com.vectras.vm.RECEIVE_ROM">
+    <intent-filter>
+        <action android:name="com.vectras.vm.action.IMPORT_ROM" />
+    </intent-filter>
+</receiver>
+
+Implementar RomImportReceiver com validação:
+Criar arquivo: app/src/main/java/com/vectras/vm/receiver/RomImportReceiver.java
+package com.vectras.vm.receiver;
+
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import java.io.InputStream;
+import java.security.MessageDigest;
+
+public class RomImportReceiver extends BroadcastReceiver {
+    private static final String EXPECTED_ROM_HASH = "sha256hashvalue..."; // Definido em BuildConfig
+
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        Uri romUri = intent.getData();
+        if (romUri == null) return;
+
+        try {
+            InputStream is = context.getContentResolver().openInputStream(romUri);
+            String romHash = computeSHA256(is);
+
+            if (!EXPECTED_ROM_HASH.equals(romHash)) {
+                // Rejeitar ROM com hash inválido
+                return;
+            }
+
+            // Proceder com importação apenas se hash válido
+            Intent importIntent = new Intent(context, RomInfo.class);
+            importIntent.setData(romUri);
+            context.startActivity(importIntent);
+        } catch (Exception e) {
+            // Log erro de segurança
+        }
+    }
+
+    private String computeSHA256(InputStream is) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] buffer = new byte[8192];
+        int count;
+        while ((count = is.read(buffer)) > 0) {
+            digest.update(buffer, 0, count);
+        }
+        byte[] hash = digest.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : hash) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+}
+
+Impacto: Elimina vetor de injeção, restringe importação a apps assinados apenas.
+
+
+CORREÇÃO #4: SetupFeatureCore Command Injection - ProcessBuilder Array-Based
+────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/java/com/vectras/vm/setupwizard/SetupFeatureCore.java
+Linha Afetada: 233
+Tipo: Command injection via shell metacharacter interpretation
+
+Problema Atual:
+Runtime.getRuntime().exec(cmdline) executa string única que é interpretada pelo sistema.
+Se cmdline contiver dados não-sanitizados com caracteres shell (;, |, &&, ||), a injeção
+ocorre permitindo execução de comandos arbitrários. Exemplo: "cmd; rm -rf /" seria executado.
+
+Solução Detalhada:
+Substituir Runtime.exec(String) por ProcessBuilder com array de argumentos separados.
+ProcessBuilder não interpreta metacaracteres quando argumentos estão em array separado.
+
+Localizar linha 233 e contexto circundante que contém:
+process = Runtime.getRuntime().exec(cmdline);
+
+Substituir por:
+String[] commandArray = parseCommandLine(cmdline);
+ProcessBuilder pb = new ProcessBuilder(commandArray);
+pb.redirectErrorStream(true);
+process = pb.start();
+
+Adicionar método helper para análise segura de linha de comando:
+private String[] parseCommandLine(String cmdline) {
+    // Usa algoritmo de parsing que respeita espaço/quotes sem interpretar shell operators
+    java.util.List<String> parts = new java.util.ArrayList<>();
+    StringBuilder current = new StringBuilder();
+    boolean inQuotes = false;
+
+    for (int i = 0; i < cmdline.length(); i++) {
+        char c = cmdline.charAt(i);
+
+        if (c == '"' || c == '\'') {
+            inQuotes = !inQuotes;
+        } else if (c == ' ' && !inQuotes) {
+            if (current.length() > 0) {
+                parts.add(current.toString());
+                current = new StringBuilder();
+            }
+        } else {
+            current.append(c);
+        }
+    }
+
+    if (current.length() > 0) {
+        parts.add(current.toString());
+    }
+
+    return parts.toArray(new String[0]);
+}
+
+Ou usar biblioteca utilitária confiável como Apache Commons Lang WordUtils.
+
+Impacto: Elimina injeção shell completamente, comando executa exatamente como especificado.
+
+
+CORREÇÃO #5: NativeFastPath.nativeCopyBytes() Integer Overflow - Bounds Check
+────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/cpp/vectra_core_accel.c
+Linha Afetada: 85
+Tipo: Buffer overflow via integer overflow em aritmética de ponteiro
+
+Problema Atual:
+Pointers são calculados como (uint8_t*)d + dstOffset e (uint8_t*)s + srcOffset sem verificação
+de overflow. Se dstOffset + length > array_length, escrita ocorre fora do heap causando
+memory corruption. Verificações em linha 77 apenas checam se valores são negativos, não se
+a soma ultrapassa bounds.
+
+Solução Detalhada:
+Adicionar verificação de bounds ANTES de qualquer aritmética de ponteiro.
+Modificar função a partir de linha 75 para:
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_nativeCopyBytes(JNIEnv* env, jclass clazz,
+    jbyteArray src, jint srcOffset, jbyteArray dst, jint dstOffset, jint length) {
+    (void)clazz;
+
+    // Validação inicial
+    if (vectra_kernel_ensure() != RMR_UK_OK || !src || !dst) return -1;
+    if (srcOffset < 0 || dstOffset < 0 || length < 0) return -2;
+
+    // Obter comprimentos reais dos arrays
+    jsize srcLen = (*env)->GetArrayLength(env, src);
+    jsize dstLen = (*env)->GetArrayLength(env, dst);
+
+    // Verificar overflow: srcOffset + length não deve exceder srcLen
+    if (srcOffset > srcLen || (srcLen - srcOffset) < length) return -3;
+
+    // Verificar overflow: dstOffset + length não deve exceder dstLen
+    if (dstOffset > dstLen || (dstLen - dstOffset) < length) return -4;
+
+    // Agora é seguro acessar arrays
+    jbyte* s = (*env)->GetPrimitiveArrayCritical(env, src, NULL);
+    jbyte* d = (*env)->GetPrimitiveArrayCritical(env, dst, NULL);
+
+    if (!s || !d) {
+        if (s) (*env)->ReleasePrimitiveArrayCritical(env, src, s, JNI_ABORT);
+        if (d) (*env)->ReleasePrimitiveArrayCritical(env, dst, d, JNI_ABORT);
+        return -5;
+    }
+
+    // Cópia segura
+    int rc = RmR_UnifiedKernel_Copy(&g_unified_state,
+        (uint8_t*)d + dstOffset,
+        (const uint8_t*)s + srcOffset,
+        (size_t)length);
+
+    (*env)->ReleasePrimitiveArrayCritical(env, src, s, JNI_ABORT);
+    (*env)->ReleasePrimitiveArrayCritical(env, dst, d, 0);
+
+    return (jint)rc;
+}
+
+Impacto: Elimina exploração de buffer overflow, garante acesso dentro de bounds.
+
+
+CORREÇÃO #6: Manifest WRITE_SECURE_SETTINGS Permission - Remover ou Justificar
+────────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/AndroidManifest.xml
+Linhas Afetadas: 30-31
+Tipo: Permissão privilegiada desnecessária
+
+Problema Atual:
+android.permission.WRITE_SECURE_SETTINGS é permissão protegida que permite modificar
+configurações globais do sistema. Não é típica para app de VM. Presença desta permissão
+aumenta superfície de ataque se qualquer componente exportado for comprometido.
+
+Solução Detalhada (Recomendado):
+Remover permissão completamente se não for absolutamente necessária.
+
+Localizar e remover linhas 30-31:
+<uses-permission
+    android:name="android.permission.WRITE_SECURE_SETTINGS"
+    tools:ignore="ProtectedPermissions" />
+
+Se a permissão for realmente necessária para funcionalidade crítica:
+Documentar razão clara em comentário no manifesto, implementar verificação de assinatura
+antes de usar permissão, e solicitar aprovação de segurança.
+
+Adicionar comentário:
+<!-- SECURITY NOTE: WRITE_SECURE_SETTINGS necessária apenas para [função específica].
+     Requer assinatura de plataforma. Removida em versões futuras quando [alternativa] estiver disponível. -->
+
+Impacto: Reduz superfície de ataque, simplifica modelo de permissões.
+
+
+CORREÇÃO #7: VncCanvasActivity Multi-touch Race Condition - Defensive Copy
+─────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/java/android/androidVNC/VncCanvasActivity.java
+Linha Afetada: 699
+Tipo: Race condition em processamento de eventos mutáveis
+
+Problema Atual:
+O comentário XXX (linha 699) indica que event objects são compartilhados entre threads
+sem fazer cópias defensivas. Quando múltiplos threads processam touch events simultaneamente,
+um thread pode modificar evento enquanto outro ainda está lendo, causando estado inconsistente.
+
+Solução Detalhada:
+Criar cópia defensiva de event object antes de passar para handlers.
+Localizar trecho em torno de linha 699 que contém:
+// XXX: We make a copy of the event because we have some...
+
+Substituir estrutura atual de processamento por:
+private void processTouchEvent(MotionEvent event) {
+    // Criar cópia defensiva para evitar mutação concurrent
+    MotionEvent eventCopy = MotionEvent.obtain(event);
+
+    try {
+        // Processar todos os pointers da cópia defensiva
+        for (int i = 0; i < eventCopy.getPointerCount(); i++) {
+            float x = eventCopy.getX(i);
+            float y = eventCopy.getY(i);
+            int actionIndex = eventCopy.getActionIndex();
+
+            // Passar dados copiados aos handlers, nunca event original
+            handlePointerEvent(x, y, actionIndex);
+        }
+    } finally {
+        eventCopy.recycle();
+    }
+}
+
+Adicionar sincronização em torno de estruturas de estado compartilhadas:
+private final Object inputLock = new Object();
+
+private void handlePointerEvent(float x, float y, int actionIndex) {
+    synchronized (inputLock) {
+        // Atualizar estado compartilhado com garantia de serialização
+        updateVNCPointerPosition(x, y, actionIndex);
+    }
+}
+
+Impacto: Elimina race condition, garante consistência de estado de entrada.
+
+
+CORREÇÃO #8: ProcessBuilder Environment Inheritance - Sanitizar Variáveis
+────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/java/com/vectras/vterm/Terminal.java
+Linhas Afetadas: 205-207, 279-282, 367-370, 451-454
+Tipo: Environment variable poisoning (LD_LIBRARY_PATH, etc)
+
+Problema Atual:
+ProcessBuilder() sem argumento Map de environment herda todas variáveis do processo pai,
+incluindo LD_LIBRARY_PATH que pode ser explorado para carregamento de bibliotecas maliciosas.
+Sem sanitização explícita, binários nativos lancados podem ser hijacked.
+
+Solução Detalhada:
+Criar mapa de environment sanitizado contendo apenas variáveis seguras.
+Aplicar para todos 4 pontos onde ProcessBuilder é instanciado.
+
+Padrão a aplicar em cada localização:
+Substituir de:
+ProcessBuilder processBuilder = new ProcessBuilder();
+
+Para:
+ProcessBuilder processBuilder = new ProcessBuilder();
+Map<String, String> env = processBuilder.environment();
+
+// Limpar variáveis perigosas
+env.remove("LD_LIBRARY_PATH");
+env.remove("LD_PRELOAD");
+env.remove("LD_ELF_LIBRARIES");
+env.remove("DYLD_LIBRARY_PATH");
+env.remove("DYLD_FALLBACK_LIBRARY_PATH");
+
+// Manter apenas variáveis seguras necessárias para operação
+String path = env.get("PATH");
+if (path != null && !path.isEmpty()) {
+    // Caminho preservado
+} else {
+    env.put("PATH", "/system/bin:/system/xbin");
+}
+
+env.put("HOME", filesDir);
+env.put("TMPDIR", tmpDir.getAbsolutePath());
+// NÃO incluir LD_LIBRARY_PATH
+// NÃO incluir variáveis de usuário perigosas
+
+Implementar método reutilizável:
+private Map<String, String> createSafeEnvironment(String filesDir, String tmpDir) {
+    Map<String, String> env = new java.util.HashMap<>();
+
+    // Whitelist de variáveis seguras
+    String[] safeVars = {"PATH", "LANG", "TZ", "TERM"};
+    Map<String, String> parentEnv = System.getenv();
+
+    for (String var : safeVars) {
+        String value = parentEnv.get(var);
+        if (value != null) env.put(var, value);
+    }
+
+    // Adicionar variáveis específicas da app
+    env.put("HOME", filesDir);
+    env.put("TMPDIR", tmpDir);
+    env.put("ANDROID_DATA", filesDir);
+
+    return env;
+}
+
+Usar em todas as instâncias:
+Map<String, String> env = createSafeEnvironment(filesDir, tmpDir.getAbsolutePath());
+processBuilder.environment().clear();
+processBuilder.environment().putAll(env);
+
+Impacto: Elimina LD_LIBRARY_PATH injection, previne library hijacking.
+
+
+CORREÇÃO #9: QemuArgsBuilder Unchecked availableProcessors() - Bounds Check
+────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/java/com/vectras/vm/qemu/QemuArgsBuilder.java
+Linhas Afetadas: 59-62
+Tipo: Argument construction failure via out-of-bounds processor count
+
+Problema Atual:
+Runtime.getRuntime().availableProcessors() é usado diretamente em construção de QEMU
+arguments sem validação. Dispositivos exóticos ou com sparse SoCs podem reportar valores
+inesperados (0, 1, 256+) que quando inseridos em string de comando causam QEMU startup failure.
+
+Solução Detalhada:
+Adicionar bounds check com fallback inteligente baseado em disponibilidade de memória.
+Localizar linhas 59-62 contendo:
+int cpuCount = Runtime.getRuntime().availableProcessors();
+
+Substituir por:
+private static final int MIN_CPU_COUNT = 1;
+private static final int MAX_CPU_COUNT = 8;
+private static final int DEFAULT_CPU_COUNT = 4;
+
+private int getSafeProcessorCount() {
+    int available = Runtime.getRuntime().availableProcessors();
+
+    // Validação de bounds
+    if (available < MIN_CPU_COUNT) {
+        Log.w(TAG, "availableProcessors returned " + available + ", using minimum " + MIN_CPU_COUNT);
+        return MIN_CPU_COUNT;
+    }
+
+    if (available > MAX_CPU_COUNT) {
+        // Em dispositivos com muitos cores, limitar a QEMU para evitar overhead
+        Log.w(TAG, "availableProcessors returned " + available + ", limiting to " + MAX_CPU_COUNT);
+        return MAX_CPU_COUNT;
+    }
+
+    return available;
+}
+
+Aplicar no código:
+int cpuCount = getSafeProcessorCount();
+// Agora cpuCount é garantidamente entre 1 e 8
+addArgument("-smp", String.valueOf(cpuCount));
+
+Impacto: Garante comando QEMU válido, previne startup failure em dispositivos anormais.
+
+
+CORREÇÃO #10: VncCanvasActivity InputHandler Thread Leak - Cleanup em onDestroy()
+──────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/java/android/androidVNC/VncCanvasActivity.java
+Linhas Afetadas: 1863 total, método onDestroy()
+Tipo: Thread leak causando memory exhaustion
+
+Problema Atual:
+Nenhuma cleanup visível de threads do input handler quando Activity é destruída.
+Se rotation ocorre durante processamento de input, threads persistem consumindo memória.
+Após 10-15 rotações, OOM exception causa crash.
+
+Solução Detalhada:
+Implementar proper lifecycle management com shutdown de threads em onDestroy().
+Localizar ou criar método onDestroy() em VncCanvasActivity:
+
+Se já existe:
+Adicionar ao fim de onDestroy():
+// Cleanup de threads de input handler
+if (inputHandlerThread != null) {
+    inputHandlerThread.interrupt();
+    try {
+        inputHandlerThread.join(5000); // Aguardar até 5s
+    } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+    }
+    inputHandlerThread = null;
+}
+
+if (inputExecutor != null && !inputExecutor.isShutdown()) {
+    inputExecutor.shutdownNow();
+    try {
+        if (!inputExecutor.awaitTermination(3, TimeUnit.SECONDS)) {
+            Log.w(TAG, "Input executor did not terminate in time");
+        }
+    } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+    }
+    inputExecutor = null;
+}
+
+Se não existe, criar método novo:
+@Override
+protected void onDestroy() {
+    super.onDestroy();
+
+    // Cleanup de threads
+    cleanupInputHandlers();
+}
+
+private void cleanupInputHandlers() {
+    // Parar processamento de input
+    if (inputHandlerThread != null && inputHandlerThread.isAlive()) {
+        inputHandlerThread.interrupt();
+        try {
+            if (!inputHandlerThread.join(2000)) {
+                Log.e(TAG, "Input handler thread did not terminate");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    // Shutdown executor
+    if (inputExecutor != null) {
+        inputExecutor.shutdown();
+        try {
+            if (!inputExecutor.awaitTermination(3, TimeUnit.SECONDS)) {
+                List<Runnable> pending = inputExecutor.shutdownNow();
+                Log.w(TAG, "Forced shutdown of " + pending.size() + " pending input tasks");
+            }
+        } catch (InterruptedException e) {
+            inputExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+}
+
+Adicionar também em onPause() para cleanup parcial:
+@Override
+protected void onPause() {
+    super.onPause();
+    // Suspender processamento heavy de input, mas não destruir threads
+    if (inputExecutor != null) {
+        inputExecutor.setMaximumPoolSize(0); // Pausar novas tasks
+    }
+}
+
+@Override
+protected void onResume() {
+    super.onResume();
+    // Reativar processamento
+    if (inputExecutor != null) {
+        inputExecutor.setMaximumPoolSize(4);
+    }
+}
+
+Impacto: Elimina thread leak, previne OOM após múltiplas rotações.
+
+
+CORREÇÃO #11: BackgroundJob Runtime.exec() Array Validation - Sanitizar Elementos
+───────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/java/com/termux/app/BackgroundJob.java
+Linha Afetada: 50
+Tipo: Unsafe array construction leading to unpredictable exec() behavior
+
+Problema Atual:
+progArray e env arrays são construídos de fontes externas sem validação de elementos.
+Se qualquer string contém null bytes ou caracteres controle, comportamento de exec() é undefined.
+Buffer overflow em libc pode ocorrer com inputs malformados.
+
+Solução Detalhada:
+Validar cada elemento de array antes de passar para Runtime.exec().
+Localizar linha 50 e contexto:
+
+Substituir de:
+process = Runtime.getRuntime().exec(progArray, env, new File(cwd));
+
+Para:
+// Validar array de programa
+if (!validateCommandArray(progArray)) {
+    throw new IOException("Invalid command array: contains null or control characters");
+}
+
+// Validar array de environment
+if (env != null && !validateEnvironmentArray(env)) {
+    throw new IOException("Invalid environment array: contains null or control characters");
+}
+
+process = Runtime.getRuntime().exec(progArray, env, new File(cwd));
+
+Adicionar métodos de validação:
+private boolean validateCommandArray(String[] cmd) {
+    if (cmd == null || cmd.length == 0) return false;
+
+    for (int i = 0; i < cmd.length; i++) {
+        String part = cmd[i];
+        if (part == null || part.isEmpty()) {
+            Log.e(TAG, "Command array element " + i + " is null or empty");
+            return false;
+        }
+
+        // Verificar caracteres controle e null bytes
+        if (containsControlCharacters(part)) {
+            Log.e(TAG, "Command array element " + i + " contains control characters");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+private boolean validateEnvironmentArray(String[] env) {
+    if (env == null) return true; // null é válido (herda parent)
+
+    for (int i = 0; i < env.length; i++) {
+        String entry = env[i];
+        if (entry == null || !entry.contains("=")) {
+            Log.e(TAG, "Environment entry " + i + " is not valid KEY=VALUE format");
+            return false;
+        }
+
+        String[] parts = entry.split("=", 2);
+        if (parts[0].isEmpty() || parts.length != 2) {
+            Log.e(TAG, "Environment entry " + i + " has invalid format");
+            return false;
+        }
+
+        if (containsControlCharacters(entry)) {
+            Log.e(TAG, "Environment entry " + i + " contains control characters");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+private boolean containsControlCharacters(String s) {
+    for (int i = 0; i < s.length(); i++) {
+        char c = s.charAt(i);
+        if (c < 32 || (c >= 127 && c <= 159)) {
+            return true; // Encontrou controle/null character
+        }
+    }
+    return false;
+}
+
+Impacto: Previne buffer overflow em libc, falha early com erro claro.
+
+
+CORREÇÃO #12: ShellExecutor String Concatenation - Shell Escaping ou Array Invocation
+──────────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/java/com/vectras/vm/core/ShellExecutor.java
+Linha Afetada: 146
+Tipo: Shell operator injection via unescaped concatenation
+
+Problema Atual:
+(command + "\n") é passada diretamente ao shell. Se command contém operadores shell
+como "cmd1 || cmd2" ou "cmd; rm -rf /", segunda parte executa. Não há quoting.
+
+Solução Detalhada:
+Implementar shell escaping adequado ou usar array-based invocation.
+Localizar linha 146 em método run():
+
+Opção A - Shell Escaping (Simples):
+Substituir de:
+outputStream.write((command + "\n").getBytes(StandardCharsets.UTF_8));
+
+Para:
+String escapedCommand = escapeShellCommand(command);
+outputStream.write((escapedCommand + "\n").getBytes(StandardCharsets.UTF_8));
+
+Adicionar método helper:
+private String escapeShellCommand(String command) {
+    // Envolver comando inteiro entre single quotes, escapando single quotes presentes
+    return "'" + command.replace("'", "'\\''") + "'";
+}
+
+Opção B - Array-Based Invocation (Mais seguro):
+Modificar bloco inteiro contendo ProcessBuilder:
+
+Localizar:
+localProcess = new ProcessBuilder(shellPath).start();
+
+Substituir bloco por:
+// Array-based invocation - cada argumento é separado, sem interpretação shell
+String[] cmdArray = {shellPath, "-c", command};
+ProcessBuilder pb = new ProcessBuilder(cmdArray);
+localProcess = pb.start();
+
+// Usar mesma lógica de output drain
+OutputStream outputStream = localProcess.getOutputStream();
+outputStream.close(); // Comando é passado via -c argument, não stdin
+
+Usando array com -c é mais seguro pois toda interpretação é controlada pelo escaping
+do programa que cria array, não pelo shell.
+
+Impacto: Elimina operator injection, comando executa exatamente como fornecido.
+
+
+CORREÇÃO #13: ExecutionExecutors RejectedExecutionHandler - Configurar Policy
+────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/java/com/vectras/vm/core/ExecutionExecutors.java
+Tipo: Deadlock via CallerRunsPolicy em recursive task submission
+
+Problema Atual:
+ThreadPoolExecutor instances criadas sem RejectedExecutionHandler explícito usam default
+CallerRunsPolicy. Em scenario de saturação onde executor task tenta submeter para mesmo
+executor, deadlock ocorre (executor thread esperando por si mesmo).
+
+Solução Detalhada:
+Implementar RejectedExecutionHandler customizado que rejeita gracefully.
+Localizar onde ThreadPoolExecutor é criada (provavelmente em método newShellExecutorPool()
+ou similar). Modificar para:
+
+Substituir construtor de:
+new ThreadPoolExecutor(coreSize, maxSize, keepAliveTime, unit, queue);
+
+Para:
+new ThreadPoolExecutor(
+    coreSize,
+    maxSize,
+    keepAliveTime,
+    unit,
+    queue,
+    new ThreadPoolExecutor.RejectedExecutionHandler() {
+        @Override
+        public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+            if (!executor.isShutdown()) {
+                Log.w(TAG, "Task rejected by executor, queue is full. Discarding: " + r);
+                // NÃO executar em caller thread (default CallerRunsPolicy)
+                // Simplesmente rejeitar para evitar deadlock
+            }
+        }
+    }
+);
+
+Ou usar política nomeada:
+ThreadPoolExecutor.DiscardPolicy discardPolicy = new ThreadPoolExecutor.DiscardPolicy() {
+    @Override
+    public void rejectedExecution(Runnable r, ThreadPoolExecutor e) {
+        if (!e.isShutdown()) {
+            Log.w("ExecutionExecutors", "Executor " + e.toString() + " rejected task. " +
+                "Queue full with " + e.getQueue().size() + " pending tasks");
+        }
+    }
+};
+
+new ThreadPoolExecutor(core, max, keepAlive, unit, queue, discardPolicy);
+
+Impacto: Previne deadlock, falhas futuras em saturation são graceful.
+
+
+CORREÇÃO #14: AllowBackup + DocumentFile - Configurar Exclusão de Backup
+─────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/AndroidManifest.xml
+Tipo: Data loss via backup/restore cycle de URIs gerenciadas
+
+Problema Atual:
+allowBackup=true inclui todos os arquivos da app incluindo DocumentFile URIs.
+Na restauração, grants de URI não persistem corretamente, causando FileNotFoundException
+em sequências críticas de startup da VM.
+
+Solução Detalhada:
+Criar arquivo de configuração de backup exclusão e referenciar no manifesto.
+Criar novo arquivo: app/src/main/xml/backup_rules.xml com conteúdo:
+<?xml version="1.0" encoding="utf-8"?>
+<backup-scheme xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Excluir diretórios de VM da backup -->
+    <exclude domain="database" path="app_database.xml" />
+    <exclude domain="file" path="vms/" />
+    <exclude domain="file" path="rom_cache/" />
+    <exclude domain="file" path="qemu/" />
+
+    <!-- Incluir apenas preferências e temas -->
+    <include domain="sharedpref" path="." />
+</backup-scheme>
+
+Modificar manifesto linha 42 (ou próximo) de:
+android:allowBackup="true"
+
+Para:
+android:allowBackup="true"
+android:backupAgent=".backup.VectrasBackupAgent"
+
+Dentro do elemento <application> adicionar:
+<meta-data
+    android:name="android.app.backup.agent.SCHEDULE_BACKUP_SERVICE"
+    android:value="true" />
+
+Implementar BackupAgent customizado: app/src/main/java/com/vectras/vm/backup/VectrasBackupAgent.java
+package com.vectras.vm.backup;
+
+import android.app.backup.BackupAgentHelper;
+import android.app.backup.FileBackupHelper;
+import android.app.backup.SharedPreferencesBackupHelper;
+
+public class VectrasBackupAgent extends BackupAgentHelper {
+    static final String PREFS_BACKUP_KEY = "prefs";
+    static final String FILES_BACKUP_KEY = "files";
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+
+        // Backup apenas preferences e temas, excluir dados sensíveis
+        SharedPreferencesBackupHelper prefsHelper =
+            new SharedPreferencesBackupHelper(this, "app_preferences");
+        addHelper(PREFS_BACKUP_KEY, prefsHelper);
+
+        // Backup apenas arquivos de configuração, não VMs ou roms
+        FileBackupHelper filesHelper = new FileBackupHelper(this,
+            "config.json",
+            "user_settings.json");
+        addHelper(FILES_BACKUP_KEY, filesHelper);
+    }
+}
+
+Impacto: Garante backup/restore consistente, previne FileNotFoundException.
+
+
+CORREÇÃO #15: QmpClient sendCommandForStopPath() - Visibilidade de Exceção e Retry Logic
+────────────────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/java/com/vectras/vm/core/ProcessSupervisor.java
+Linhas Afetadas: 44, 24-25
+Tipo: Silent failure em QMP communication permitindo QEMU orphaned
+
+Problema Atual:
+QmpClient.sendCommandForStopPath() é chamada mas exception handling não é visível.
+Se comunicação QMP falha (socket fechado, JSON malformado), falha ocorre silenciosamente
+deixando QEMU processo rodando indefinidamente.
+
+Solução Detalhada:
+Implementar try-catch explícito e fallback para destroy() se QMP falhar.
+Localizar linha 44:
+DEFAULT_QMP_TRANSPORT = () -> QmpClient.sendCommandForStopPath("{ \"execute\": \"system_powerdown\" }");
+
+Criar versão com error handling:
+private static final QmpTransport DEFAULT_QMP_TRANSPORT = () -> {
+    try {
+        String response = QmpClient.sendCommandForStopPath("{ \"execute\": \"system_powerdown\" }");
+        if (response == null || response.contains("error")) {
+            Log.w(TAG, "QMP powerdown failed or returned error: " + response);
+            throw new IOException("QMP command failed");
+        }
+        return response;
+    } catch (IOException | TimeoutException e) {
+        Log.e(TAG, "QMP communication failed, will fallback to process.destroy()", e);
+        throw new RuntimeException("QMP communication failed, triggering fallback", e);
+    }
+};
+
+Modificar sequência de parada em ProcessSupervisor.stopProcess():
+private void stopProcessSafely(long timeoutMs) {
+    synchronized (processLock) {
+        if (process == null) return;
+
+        try {
+            // Tentar via QMP primeiro
+            try {
+                qmpTransport.sendPowerdown();
+                Log.i(TAG, "QMP powerdown sent successfully");
+
+                // Aguardar processo terminar via QMP (graceful)
+                if (process.waitFor(5, TimeUnit.SECONDS)) {
+                    Log.i(TAG, "Process terminated via QMP");
+                    return;
+                }
+            } catch (Exception qmpError) {
+                Log.w(TAG, "QMP method failed, falling back to process.destroy()", qmpError);
+                // Continuar para destroy() fallback abaixo
+            }
+
+            // Fallback: destroy() se QMP falhou
+            process.destroy();
+            if (!process.waitFor(3, TimeUnit.SECONDS)) {
+                Log.w(TAG, "Process not terminated by destroy(), forcing destroyForcibly()");
+                process.destroyForcibly();
+                process.waitFor(2, TimeUnit.SECONDS);
+            }
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Log.e(TAG, "Interrupted while stopping process", e);
+        } finally {
+            process = null;
+        }
+    }
+}
+
+Impacto: Garante processo termina sempre, nenhum QEMU órfão.
+
+
+CORREÇÃO #16: BuildConfig.VECTRA_CORE_ENABLED - Remover de Public API
+───────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/build.gradle
+Linhas Afetadas: 75, 80
+Tipo: Information leakage via reflection
+
+Problema Atual:
+BuildConfig.VECTRA_CORE_ENABLED é exposto como campo public static final que pode ser
+acessado por reflection sem permissão. Permite malware detectar feature flags internos.
+
+Solução Detalhada:
+Mover feature flag de BuildConfig para classe privada com getter sincronizado.
+No build.gradle linhas 75, 80 remover:
+buildConfigField "boolean", "VECTRA_CORE_ENABLED", "false/true"
+
+Criar novo arquivo: app/src/main/java/com/vectras/vm/config/FeatureFlags.java
+package com.vectras.vm.config;
+
+public final class FeatureFlags {
+    private static final boolean VECTRA_CORE_ENABLED = BuildConfig.DEBUG;
+
+    private FeatureFlags() {
+        // Utility class
+    }
+
+    // Getter sem reflection bypass (Private class não expõe field diretamente)
+    public static boolean isVectraCoreEnabled() {
+        return VECTRA_CORE_ENABLED;
+    }
+}
+
+Substituir todas as referências de BuildConfig.VECTRA_CORE_ENABLED para:
+FeatureFlags.isVectraCoreEnabled()
+
+Impacto: Elimina information leakage, força acesso através de API controlada.
+
+
+CORREÇÃO #17: ProGuard Release Build - Obfuscação de BuildConfig
+────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/build.gradle e app/proguard-rules.pro
+Linhas Afetadas: 79
+Tipo: Bytecode exposure de lógica sensível
+
+Problema Atual:
+Debug build não minificado expõe names de classes sensíveis como VMManager, QemuArgsBuilder.
+Release build é minificado mas proguard-rules.pro pode conter keep rules que preservam
+nomes de classes críticas, visíveis em decompilação.
+
+Solução Detalhada:
+Implementar ofuscação mais agressiva em release build.
+No app/build.gradle linhas 75-76 modificar:
+buildTypes {
+    release {
+        minifyEnabled = true
+        shrinkResources = true
+        proguardFiles(getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro')
+
+        // Adicionar configuração agressiva de ofuscação
+        buildConfigField "boolean", "VECTRA_CORE_ENABLED", "false"
+    }
+
+No arquivo app/proguard-rules.pro adicionar:
+# Ofuscação agressiva de classes VM-relacionadas
+-keep,allowobfuscation class com.vectras.vm.qemu.** { *; }
+-keep,allowobfuscation class com.vectras.vm.core.** { *; }
+-keep,allowobfuscation class com.vectras.vm.benchmark.** { *; }
+
+# Remover logging de método em release
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+}
+
+# Remover asserts
+-assumenosideeffects class java.lang.Class {
+    public static boolean desiredAssertionStatus();
+}
+
+# Agressivamente ofuscar nomes de strings
+-obfuscationdictionary strings.txt
+-packageobfuscationdictionary strings.txt
+
+Criar arquivo app/strings.txt com símbolos de ofuscação:
+a
+b
+c
+d
+(... caracteres únicos para renaming)
+
+Impacto: Aumenta dificuldade de reverse engineering, proteção de IP.
+
+
+CORREÇÃO #18: FileUtils Deprecated getApplicationInfo().dataDir - Usar context.dataDir
+───────────────────────────────────────────────────────────────────────────────────────
+Arquivo: app/src/main/java/com/vectras/vm/utils/FileUtils.java
+Linha Afetada: 475
+Tipo: Deprecated API usage
+
+Problema Atual:
+context.getApplicationInfo().dataDir é deprecated desde API 29. Embora funcione em
+Android 15, não é garantido trabalhar em versões futuras.
+
+Solução Detalhada:
+Substituir por context.dataDir quando disponível, com fallback para versões antigas.
+Localizar linha 475:
+String dataDir = context.getApplicationInfo().dataDir;
+
+Substituir por:
+String dataDir;
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    // API 29+: usar context.dataDir diretamente
+    dataDir = context.dataDir != null ? context.dataDir.getAbsolutePath() : null;
+} else {
+    // API < 29: usar getApplicationInfo().dataDir
+    dataDir = context.getApplicationInfo().dataDir;
+}
+
+Ou implementar método helper:
+private static String getApplicationDataDir(Context context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        File dataDirFile = context.dataDir;
+        return dataDirFile != null ? dataDirFile.getAbsolutePath() : null;
+    } else {
+        return context.getApplicationInfo().dataDir;
+    }
+}
+
+Usar em linha 475:
+String dataDir = getApplicationDataDir(context);
+
+Impacto: Futureproof, elimina deprecated warning.
+
+
+CORREÇÃO #19: minSdk=23 com ARM64-Only ABI Exclusion - Alinhamento de Compatibilidade
+──────────────────────────────────────────────────────────────────────────────────────
+Arquivo: build.gradle root e app/build.gradle
+Linhas Afetadas: 32 (MIN_API=23), 42-45
+Tipo: Incompatibilidade de deployment em Android 6-7 de 32-bit
+
+Problema Atual:
+MIN_API=23 (Android 6.0) mas packaging exclui armeabi-v7a. Android 6 não suporta ARM64.
+Resultado: Installation failure em todos Android 6-7 devices.
+
+Solução Detalhada (Opção A - Recomendado: ARM64-Only):
+Aumentar minSdk para API 24 (Android 7.0) que foi quando ARM64 tornou-se mais comum.
+No build.gradle raiz linha 32 modificar:
+minApi = Integer.parseInt(properties.get('MIN_API', '23').toString())
+
+Para:
+minApi = Integer.parseInt(properties.get('MIN_API', '24').toString())
+
+Ou se suporte a Android 6 é necessário:
+Solução Detalhada (Opção B - Fallback 32-bit):
+Remover exclusão de armeabi-v7a e incluir compilação multi-ABI.
+No app/build.gradle linhas 42-45 modificar:
+packaging {
+    jniLibs {
+        excludes += [
+                "lib/armeabi-v7a/**",
+                "lib/x86/**",
+                "lib/x86_64/**"
+        ]
+    }
+}
+
+Para:
+packaging {
+    jniLibs {
+        excludes += [
+                "lib/x86/**",      // Manter apenas ARM
+                "lib/x86_64/**"
+        ]
+        // armeabi-v7a está INCLUÍDO para compatibilidade com Android 6-7
+    }
+}
+
+Recompilar código nativo C++ para armeabi-v7a (32-bit ARM):
+No app/build.gradle ndk section adicionar:
+ndk {
+    abiFilters "armeabi-v7a", "arm64-v8a"  // Suportar ambos
+}
+
+Impacto: Garante instalação em Android 6-7, mantém suporte 32-bit.
+
+
+CORREÇÃO #20: CMake cppFlags - Adicionar -march=armv8-a Explícito
+──────────────────────────────────────────────────────────────────
+Arquivo: app/build.gradle
+Linha Afetada: 29
+Tipo: Ausência de explícita ARM64 architecture specification
+
+Problema Atual:
+CMake flags "-O3 -ffast-math" sem -march=armv8-a explícito podem permitir NDK compilar
+para ARMv7 genérico ao invés de ARM64 específico se NDK tem default diferente.
+
+Solução Detalhada:
+Adicionar -march=armv8-a aos C++ flags para garantir ARM64 codegen.
+Localizar linhas 28-31:
+externalNativeBuild {
+    cmake {
+        cppFlags "-O3 -ffast-math -fno-exceptions -fno-rtti"
+        cFlags "-O3 -ffast-math"
+    }
+}
+
+Modificar para:
+externalNativeBuild {
+    cmake {
+        cppFlags "-O3 -ffast-math -fno-exceptions -fno-rtti -march=armv8-a"
+        cFlags "-O3 -ffast-math -march=armv8-a"
+    }
+}
+
+Também adicionar no CMakeLists.txt se controle fino é desejado:
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv8-a")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8-a")
+
+Impacto: Garante compilação ARM64, previne fallback accidental.
+
+
+================================================================================
+FIM DO GUIA DE CORREÇÕES TÉCNICAS
+================================================================================
+
+Resumo de Ação:
+Este documento fornece 20 correções técnicas estruturadas para eliminar todos os bugs
+identificados na análise. Cada correção inclui: arquivo exato, linhas afetadas, problema
+descrição e solução de código implementação.
+
+Prioridade de Implementação:
+1. Correções 1-4 (CRITICAL): Sincronização, backup, intent filter, command injection
+2. Correções 5-10 (HIGH): JNI bounds, permissões, race conditions, thread leaks
+3. Correções 11-20 (MEDIUM/LOW): Validação, escaping, executor policy, deprecation
+
+Tempo Estimado de Implementação:
+- Crítico: 4-6 horas de desenvolvimento
+- Alto: 6-8 horas de desenvolvimento
+- Médio/Baixo: 4-6 horas de desenvolvimento
+- Total: 14-20 horas de desenvolvimento + teste
+
+Recomendação Final:
+Implementar correções em ordem de prioridade, com testes de regressão após cada correção.
+Considerar executar análise estática (lint, FindBugs) após implementação para validar fixes.

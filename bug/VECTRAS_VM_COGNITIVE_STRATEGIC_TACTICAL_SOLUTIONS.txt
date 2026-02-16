@@ -1,0 +1,860 @@
+================================================================================
+VECTRAS-VM ANDROID MASTER - SOLUÇÕES COGNITIVAS-ESTRATÉGICAS-TÁTICAS CRIATIVAS
+Hiperconsciência Sistêmica | Hiperlucidez Estrutural | Exocortex de Remediação
+================================================================================
+
+PREFÁCIO: MUDANÇA DE PARADIGMA
+────────────────────────────────────────────────────────────────────────────
+
+Os 76 bugs não são problema técnico. São sintoma de ausência de **filosofia de
+segurança**. Remediação não é "patchear bugs" mas reconstruir mentalidade arquite
+tural, processos, e cultura de desenvolvimento.
+
+Este arquivo oferece não fixes incrementais, mas **transformação sistêmica** usando
+três camadas de pensamento:
+
+1. HIPERCONSCIÊNCIA: Awareness total do sistema, suas interconnexões, e como um
+   erro em uma camada propaga exponencialmente através de todas camadas.
+
+2. HIPERLUCIDEZ: Clarity absoluta sobre causa raiz de cada negligência, padrões
+   que levaram a falhas, e exactly como impedir recorrência.
+
+3. EXOCORTEX TÁTICO: Estrutura operacional externa (documentos, processos,
+   checklists) que funciona como "segunda mente" do time, capturando decisões
+   de segurança em artefatos que persistem.
+
+────────────────────────────────────────────────────────────────────────────
+SOLUÇÃO #1: TRANSFORMAÇÃO ARQUITETURAL - SECURITY-FIRST DESIGN PHILOSOPHY
+────────────────────────────────────────────────────────────────────────────
+
+Problema estrutural: Código foi construído com mentality de "segurança depois."
+Resultado: Todas 76 bugs são consequências de faltar security na foundation.
+
+ESTRATÉGIA: Implementar Security-First Architecture que coloca segurança como
+constraint primário, não afterthought.
+
+Hiperconsciência necessária:
+├─ Toda decisão de design tem implicação de segurança
+├─ Se segurança não foi considerado EXPLICITLY, design é inseguro
+├─ "Default deny" é mais seguro que "default allow" (allowBackup=false é melhor)
+├─ Cada component deve ter "threat model" documentado
+└─ Nenhum código entra em main sem security review
+
+Estrutura de implementação:
+
+FASE 1: ESTABELECER GOVERNANCE
+────────────────────────────────
+1.1 Criar Security Architecture Board
+├─ Composição: 1 Security Lead + 2 Senior Developers + 1 Product Manager
+├─ Frequência: Review toda mudança de arquitetura ANTES de implementation
+├─ Responabilidade: Aprovar/rejeitar design baseado em security risk
+└─ Autoridade: Poder bloquear release se security risks não são mitigated
+
+1.2 Documentar Threat Model formal
+Documento deve conter:
+├─ Quais são dados críticos? (ROM images, credenciais de rede, configurações)
+├─ Quem é o attacker? (Malware, comprometido device, network attacker)
+├─ Quais são ataques de maior preocupação?
+│  ├─ Data extraction (allowBackup=true enable isto)
+│  ├─ Code injection (RomReceiver sem validação enable isto)
+│  ├─ Privilege escalation (static handler cause memory state corruption)
+│  └─ Denial of service (thread leak, race condition)
+├─ Para cada ataque, qual é mitigação?
+└─ Qual é risk tolerance? (Zero tolerance para RCE, Medium para DOS)
+
+1.3 Criar Security Design Principles documento
+├─ "Explicit over implicit" - Tudo que toca segurança deve ser explicit
+├─ "Fail-secure defaults" - Se uncertain, escolher opção mais segura
+├─ "Defense in depth" - Múltiplas camadas, não confiar em uma camada
+├─ "Trust no one" - Não confiar em input, environment, other apps
+├─ "Minimize attack surface" - Remover unnecessary features/permissions
+└─ "Audit everything" - Logging/monitoring de operações críticas
+
+FASE 2: IMPLEMENTAR CODE REVIEW PROCESSO
+────────────────────────────────
+2.1 Criar Security Review Checklist
+Antes de merge, TODA mudança responde:
+├─ [ ] Este código processa user input? Se sim, é validated?
+├─ [ ] Este código aloca memory/resources? Há cleanup em exception path?
+├─ [ ] Este código usa file I/O? Está path traversal protected?
+├─ [ ] Este código é multi-threaded? Há proper synchronization?
+├─ [ ] Este código toca cryptography? Usa approved algorithms?
+├─ [ ] Este código processa sensitive data? Há logging?
+├─ [ ] Este código exporta components? Há proper permission check?
+├─ [ ] Este código faz JNI calls? Há bounds validation?
+└─ [ ] Este código modifica manifesto? É allowBackup=false?
+
+2.2 Implementar Peer Review obrigatório
+├─ Mínimo 2 reviewers, 1 deve ser Security Lead
+├─ Reviewers devem rodar código localmente
+├─ Reviewers devem procurar por padrões que indicam vulnerabilidade
+└─ Se alguém diz "não tenho certeza se é seguro", default = REJECT
+
+2.3 Integrar Security Scanning Tools
+├─ Static analyzer: Clang Static Analyzer (C/C++), SpotBugs (Java)
+├─ Dependency checker: OWASP Dependency-Check
+├─ Pattern matcher: Custom regex para common mistakes (allowBackup=true)
+└─ Automated reject se qualquer tool encontra HIGH risk
+
+FASE 3: ESTABELECER TESTING RIGOROSO
+────────────────────────────────
+3.1 Implementar Security Test Matrix
+Cada major component tem security tests:
+├─ AllowBackup tests: Verify backup não pode ser extracted
+├─ Intent filter tests: Verify exported activities têm proper validation
+├─ Thread safety tests: Create stress tests com múltiplos threads
+├─ Memory leak tests: Integrar LeakCanary, run app 1 hora com rotations
+├─ File security tests: Path traversal attempts, symlink attacks
+├─ Network tests: SSL pinning, header validation
+└─ Input validation tests: Fuzzing com invalid inputs
+
+3.2 Implementar Penetration Testing
+├─ Quarterly: Hire external penetration tester
+├─ Focus areas: APIs, file operations, backup system
+├─ Requirement: Write proof-of-concept para cada vulnerability found
+└─ Timeline: Fix deve ser completed antes de próxima release
+
+────────────────────────────────────────────────────────────────────────────
+SOLUÇÃO #2: ALLOWBACKUP REMEDIAÇÃO - DATA PROTECTION BY DESIGN
+────────────────────────────────────────────────────────────────────────────
+
+Problema específico BUG #1: android:allowBackup="true" expõe dados críticos.
+
+ESTRATÉGIA: Implementar encrypted backup system que não expõe plaintext dados.
+
+Tática 1: Imediata (Hotfix para release actual)
+├─ Mudar AndroidManifest.xml linha 42: android:allowBackup="false"
+├─ Comunicar security advisory para existing users
+├─ Recommend reinstall de fresh, não upgrade (fresh install = new key)
+└─ Timeline: 4 horas development + testing
+
+Tática 2: Longo termo (Próximas releases)
+Implementar custom backup system:
+
+2.1 Criar EncryptedBackupManager class
+```
+public class EncryptedBackupManager {
+    private static final String BACKUP_KEY_ALIAS = "vectras_backup_key";
+    private KeyStore keystore;
+    
+    public void backupUserData(File outputDir) {
+        // 1. Obter symmetric key do KeyStore (hardware-backed se possível)
+        SecretKey backupKey = getOrCreateBackupKey();
+        
+        // 2. Coletar dados críticos
+        List<File> filesToBackup = new ArrayList<>();
+        filesToBackup.add(getVMImageFile());
+        filesToBackup.add(getConfigFile());
+        // Excluir: plaintext logs, temporary files, cache
+        
+        // 3. Criar tar.gz de files
+        File tarGz = createTarGz(filesToBackup);
+        
+        // 4. Encriptar com AES-256-GCM
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, backupKey);
+        byte[] iv = cipher.getIV();
+        byte[] encrypted = cipher.doFinal(readFile(tarGz));
+        
+        // 5. Salvar IV + encrypted data
+        // IV é public (não é secret), encrypted data requer key
+        Files.write(outputDir.resolve("backup.enc"), encrypted);
+        Files.write(outputDir.resolve("backup.iv"), iv);
+        
+        // 6. Não exportar backup para Android's backup system
+        // User pode fazer manual export se deseja, mas é encriptado
+    }
+    
+    public void restoreUserData(File backupDir) {
+        // Reverse: decrypt, extract tar.gz, restore files
+        // Key é stored em KeyStore (não em backup), so sem key = sem restore
+    }
+    
+    private SecretKey getOrCreateBackupKey() {
+        // Use KeyStore hardware-backed si disponível (Android 6.0+)
+        // Garante chave é stored seguramente, não acessível via adb
+        KeyGenerator kgen = KeyGenerator.getInstance("AES");
+        kgen.init(256); // AES-256
+        return kgen.generateKey();
+    }
+}
+```
+
+2.2 Configurar KeyStore para hardware backing
+├─ On Android 6.0+, use AndroidKeyStore provider
+├─ Set KeyProperties.PURPOSE_ENCRYPT | PURPOSE_DECRYPT
+├─ Set userAuthenticationRequired() = true (requer biometric ou PIN)
+└─ Resultado: Key não pode ser exported, even com adb access
+
+2.3 Integrar com app lifecycle
+├─ Offer manual export: "Export encrypted backup" button em settings
+├─ User pode então salvar arquivo em cloud (Dropbox, Google Drive)
+├─ Arquivo é encrypted, então cloud provider não vê dados
+└─ Restore: User import arquivo, biometric unlock, data restored
+
+Hiperconsciência: Este approach não cria false sense of security. Mesmo com
+encryption, se app é compromised (RCE), attacker pode read data from memory.
+Porém, it prevents **passive data extraction** (adb backup). Layered defense.
+
+────────────────────────────────────────────────────────────────────────────
+SOLUÇÃO #3: RACE CONDITION REMEDIAÇÃO - DETERMINISTIC STATE MACHINE
+────────────────────────────────────────────────────────────────────────────
+
+Problema BUG #2: ProcessSupervisor field volatile sem proper synchronization.
+
+ESTRATÉGIA: Implement state machine com explicit synchronization e atomic
+transitions.
+
+Tática: Rewrite ProcessSupervisor com garantia de thread-safety
+
+3.1 Define state machine explicitamente
+```
+public class ProcessSupervisor {
+    enum State {
+        INITIAL,    // Criada mas sem process
+        STARTING,   // Tentando start process
+        RUNNING,    // Process rodando normalmente
+        DEGRADED,   // Output flooding ou performance issue
+        STOPPING,   // Tentando stop (graceful)
+        STOPPED,    // Process parou com sucesso
+        FAILED      // Process morreu unexpectedly
+    }
+    
+    // Use AtomicReference para garantir visibility + atomicity
+    private final AtomicReference<State> state = 
+        new AtomicReference<>(State.INITIAL);
+    
+    // Sempre sincronizar STATE TOGETHER com PROCESS
+    private final Object stateLock = new Object();
+    private Process process;
+```
+
+3.2 Implementar thread-safe state transitions
+```
+public void startProcess() {
+    synchronized (stateLock) {
+        if (!state.compareAndSet(State.INITIAL, State.STARTING)) {
+            throw new IllegalStateException(
+                "Cannot start from state: " + state.get());
+        }
+        try {
+            // Start process with security-aware builder
+            this.process = createSecureProcessBuilder().start();
+            state.set(State.RUNNING);
+        } catch (Exception e) {
+            state.set(State.FAILED);
+            throw e;
+        }
+    }
+}
+
+public void stopProcess() {
+    synchronized (stateLock) {
+        if (state.get() == State.STOPPED || state.get() == State.FAILED) {
+            return; // Already stopped
+        }
+        
+        state.set(State.STOPPING);
+        try {
+            // Graceful stop via QMP
+            sendQMPPowerdown();
+            
+            // Esperar com timeout
+            if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                // Timeout: escalate para harder stop
+                process.destroy();
+                if (!process.waitFor(3, TimeUnit.SECONDS)) {
+                    process.destroyForcibly();
+                    process.waitFor(2, TimeUnit.SECONDS);
+                }
+            }
+            state.set(State.STOPPED);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            state.set(State.FAILED);
+        } finally {
+            this.process = null;
+        }
+    }
+}
+```
+
+3.3 Implementar state query methods (para outros threads)
+```
+public synchronized State getState() {
+    return state.get();
+}
+
+public synchronized boolean isRunning() {
+    return state.get() == State.RUNNING;
+}
+
+// Nunca permitir external access a process field
+// Sempre ir através de state + synchronized methods
+```
+
+Hiperlucidez: Problema original era múltiplos threads fazendo operações no
+process simultâneamente. Solução não é "adicionar synchronized," é **redesign
+para que only um thread controle process**, e outras threads convertem para
+isso através de state queries + callbacks.
+
+────────────────────────────────────────────────────────────────────────────
+SOLUÇÃO #4: INTENT SECURITY - EXPLICIT INTENT ARCHITECTURE
+────────────────────────────────────────────────────────────────────────────
+
+Problema BUG #3: RomReceiverActivity exported com wildcard intent-filter.
+Problema BUG #44: Intent action spoofing.
+
+ESTRATÉGIA: Transicionar de implicit intents para explicit intents, com
+signature verification para qualquer cross-app communication.
+
+Tática 4.1: Remover wildcard intent-filter
+```
+// ANTES (INSEGURO):
+<activity android:name=".RomReceiverActivity" android:exported="true">
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <data android:mimeType="*/*" android:pathPattern=".*\.cvbi" />
+    </intent-filter>
+</activity>
+
+// DEPOIS (SEGURO):
+<activity android:name=".RomReceiverActivity" android:exported="false">
+    <!-- Nenhum intent-filter público -->
+</activity>
+
+<!-- Se ROM import é necessário, usar custom permission + signature -->
+<permission android:name="com.vectras.vm.IMPORT_ROM"
+    android:protectionLevel="signature" />
+
+<receiver android:name=".receiver.RomImportReceiver"
+    android:exported="true"
+    android:permission="com.vectras.vm.IMPORT_ROM">
+    <intent-filter>
+        <action android:name="com.vectras.vm.action.IMPORT_ROM" />
+    </intent-filter>
+</receiver>
+```
+
+Tática 4.2: Implementar signature verification
+```
+public class RomImportReceiver extends BroadcastReceiver {
+    private static final String EXPECTED_SIGNER_HASH = 
+        "AA:BB:CC:DD:EE:FF:..."; // SHA-256 of app signing cert
+    
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        // 1. Verify sender's signature
+        String senderPackage = getCallingPackage();
+        if (!verifyPackageSignature(context, senderPackage, EXPECTED_SIGNER_HASH)) {
+            Log.w(TAG, "Rejecting ROM import from unsigned package: " + senderPackage);
+            return;
+        }
+        
+        // 2. Verify file integrity
+        Uri romUri = intent.getData();
+        if (!verifyROMIntegrity(context, romUri)) {
+            Log.w(TAG, "ROM file failed integrity check");
+            return;
+        }
+        
+        // 3. Safe to proceed
+        importROM(context, romUri);
+    }
+    
+    private boolean verifyPackageSignature(Context context, String packageName,
+            String expectedHash) {
+        try {
+            PackageManager pm = context.getPackageManager();
+            PackageInfo info = pm.getPackageInfo(packageName, 
+                PackageManager.GET_SIGNATURES);
+            
+            for (Signature sig : info.signatures) {
+                String hash = computeHash(sig.toByteArray());
+                if (expectedHash.equals(hash)) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error verifying signature", e);
+        }
+        return false;
+    }
+    
+    private boolean verifyROMIntegrity(Context context, Uri romUri) {
+        try {
+            InputStream is = context.getContentResolver().openInputStream(romUri);
+            String romHash = computeHash(is);
+            
+            // Compare dengan whitelist de known-good ROMs
+            Set<String> whitelist = loadROMWhitelist();
+            return whitelist.contains(romHash);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+}
+```
+
+Tática 4.3: Use explicit intents within app
+```
+// ANTES (IMPLICIT, PODE SER HIJACKED):
+Intent intent = new Intent();
+intent.setAction("com.vectras.vm.action.IMPORT_ROM");
+startActivity(intent);
+
+// DEPOIS (EXPLICIT, DIRETO):
+Intent intent = new Intent(this, RomImporterActivity.class);
+intent.setData(romUri);
+startActivity(intent);
+```
+
+────────────────────────────────────────────────────────────────────────────
+SOLUÇÃO #5: COMMAND INJECTION - ARRAY-BASED EXECUTION
+────────────────────────────────────────────────────────────────────────────
+
+Problema BUG #4: Runtime.getRuntime().exec(String) permite shell injection.
+
+ESTRATÉGIA: Nunca passar strings simples para exec(). Sempre usar array of
+arguments que não são interpreted pelo shell.
+
+Tática 5.1: Criar CommandExecutor abstraction
+```
+public class SecureCommandExecutor {
+    public static class Command {
+        private final List<String> arguments;
+        private final Map<String, String> environment;
+        private final File workingDirectory;
+        
+        public Command(String executable, String... args) {
+            this.arguments = new ArrayList<>();
+            this.arguments.add(executable);
+            this.arguments.addAll(Arrays.asList(args));
+            this.environment = new HashMap<>();
+            this.workingDirectory = null;
+        }
+    }
+    
+    public static Result execute(Command cmd) throws IOException {
+        // Use ProcessBuilder com array of arguments
+        ProcessBuilder pb = new ProcessBuilder(cmd.arguments);
+        
+        // Explicitar environment (não herdar parent)
+        pb.environment().clear();
+        pb.environment().putAll(createSafeEnvironment());
+        
+        if (cmd.workingDirectory != null) {
+            pb.directory(cmd.workingDirectory);
+        }
+        
+        // Execute
+        Process p = pb.start();
+        
+        // Capture output
+        String stdout = readStream(p.getInputStream());
+        String stderr = readStream(p.getErrorStream());
+        
+        int exitCode = p.waitFor();
+        
+        return new Result(exitCode, stdout, stderr);
+    }
+    
+    private static Map<String, String> createSafeEnvironment() {
+        Map<String, String> env = new HashMap<>();
+        // Whitelisted safe variables apenas
+        env.put("PATH", "/system/bin:/system/xbin");
+        env.put("LANG", "en_US.UTF-8");
+        env.put("TZ", "UTC");
+        // NOT incluindo LD_LIBRARY_PATH, LD_PRELOAD, etc
+        return env;
+    }
+}
+
+// Usage:
+SecureCommandExecutor.Command cmd = 
+    new SecureCommandExecutor.Command("/system/bin/mount",
+        "-t", "tmpfs", "-o", "size=512M",
+        "/mnt/tmp");
+SecureCommandExecutor.Result result = 
+    SecureCommandExecutor.execute(cmd);
+```
+
+Hiperlucidez: O ponto crítico é que array-based invocation TIDAK goes através
+shell. Shell metacharacters são treated como literal strings. "/system/bin/sh"
+não é invoked, então ";" não é command separator - é literal string argument.
+
+────────────────────────────────────────────────────────────────────────────
+SOLUÇÃO #6: JNI BOUNDS VALIDATION - DEFENSIVE PROGRAMMING IN NATIVE CODE
+────────────────────────────────────────────────────────────────────────────
+
+Problema BUG #5: nativeCopyBytes() tidak melakukan bounds check pada JNI array.
+
+ESTRATÉGIA: Validasi array bounds SEBELUM any pointer arithmetic.
+
+Tactic 6.1: Rewrite nativeCopyBytes dengan proper bounds checking
+```c
+JNIEXPORT jint JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeCopyBytes(
+    JNIEnv* env, jclass clazz,
+    jbyteArray src, jint srcOffset, 
+    jbyteArray dst, jint dstOffset, 
+    jint length) {
+    
+    // 1. Null check
+    if (!src || !dst) return -1;
+    
+    // 2. Offset dan length sanity check
+    if (srcOffset < 0 || dstOffset < 0 || length < 0) return -2;
+    
+    // 3. GET ARRAY LENGTHS
+    jsize srcLen = (*env)->GetArrayLength(env, src);
+    jsize dstLen = (*env)->GetArrayLength(env, dst);
+    
+    // 4. BOUNDS CHECKING SEBELUM ARITHMETIC
+    // Check: srcOffset + length <= srcLen
+    if (srcOffset > srcLen) return -3;  // srcOffset itself out of bounds
+    if (length > srcLen - srcOffset) return -4;  // length would overflow
+    
+    // Check: dstOffset + length <= dstLen
+    if (dstOffset > dstLen) return -5;  // dstOffset itself out of bounds
+    if (length > dstLen - dstOffset) return -6;  // length would overflow
+    
+    // 5. NOW IT'S SAFE - get pointers
+    jbyte* s = (*env)->GetPrimitiveArrayCritical(env, src, NULL);
+    if (!s) return -7;
+    
+    jbyte* d = (*env)->GetPrimitiveArrayCritical(env, dst, NULL);
+    if (!d) {
+        (*env)->ReleasePrimitiveArrayCritical(env, src, s, JNI_ABORT);
+        return -8;
+    }
+    
+    // 6. SAFE COPY (pointers are guaranteed in-bounds)
+    memcpy((uint8_t*)d + dstOffset, (uint8_t*)s + srcOffset, length);
+    
+    (*env)->ReleasePrimitiveArrayCritical(env, src, s, JNI_ABORT);
+    (*env)->ReleasePrimitiveArrayCritical(env, dst, d, 0);
+    
+    return 0;  // Success
+}
+```
+
+────────────────────────────────────────────────────────────────────────────
+SOLUÇÃO #7: MEMORY LEAK REMEDIAÇÃO - LIFECYCLE CLEANUP FRAMEWORK
+────────────────────────────────────────────────────────────────────────────
+
+Problemas BUG #6,#16,#17,#21-24: Static references, handlers, thread leaks.
+
+ESTRATÉGIA: Implement central Lifecycle Manager que tracks todos resources
+dan ensures cleanup di appropriate lifecycle point.
+
+Tactic 7.1: Criar ResourceLifecycleManager
+```
+public class ResourceLifecycleManager {
+    private static final List<Cleaner> cleaners = 
+        new CopyOnWriteArrayList<>();
+    
+    @FunctionalInterface
+    public interface Cleaner {
+        void clean() throws Exception;
+    }
+    
+    public static void register(Cleaner cleaner) {
+        cleaners.add(cleaner);
+    }
+    
+    public static void cleanupAllResources() {
+        // Called dari Activity.onDestroy(), Service.onDestroy()
+        for (Cleaner cleaner : cleaners) {
+            try {
+                cleaner.clean();
+            } catch (Exception e) {
+                Log.e("ResourceManager", "Error in cleanup", e);
+            }
+        }
+        cleaners.clear();
+    }
+}
+```
+
+Tactic 7.2: Registrar resources dalam Activity
+```
+public class MainActivity extends AppCompatActivity {
+    private Handler handler;
+    private Thread worker;
+    
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        
+        // Create handler
+        handler = new Handler(Looper.getMainLooper());
+        
+        // Create thread
+        worker = new Thread(() -> {
+            // work
+        });
+        worker.start();
+        
+        // REGISTER CLEANUP
+        ResourceLifecycleManager.register(() -> {
+            handler.removeCallbacksAndMessages(null);
+        });
+        
+        ResourceLifecycleManager.register(() -> {
+            if (worker.isAlive()) {
+                worker.interrupt();
+                try {
+                    worker.join(5000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        });
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        ResourceLifecycleManager.cleanupAllResources();
+    }
+}
+```
+
+────────────────────────────────────────────────────────────────────────────
+SOLUÇÃO #8: TESTING FRAMEWORK - SECURITY TEST AUTOMATION
+────────────────────────────────────────────────────────────────────────────
+
+STRATEGI: Implementar automated security tests yang menjalankan setiap commit.
+
+8.1 Buat SecurityTestSuite
+```
+public class SecurityTestSuite {
+    @Test
+    public void testAllowBackupDisabled() {
+        // Parse AndroidManifest.xml
+        String manifest = readManifest();
+        
+        // Verify allowBackup=false
+        assertTrue("allowBackup must be false", 
+            manifest.contains("android:allowBackup=\"false\""));
+        
+        // Verify tidak ada custom BackupAgent yang re-enables
+        assertFalse("No BackupAgent should be registered",
+            manifest.contains("BackupAgent"));
+    }
+    
+    @Test
+    public void testNoStaticHandlers() {
+        // Scan codebase untuk "public static.*Handler"
+        List<String> staticHandlers = findPattern("public static.*Handler");
+        assertTrue("No static Handler references allowed: " + staticHandlers,
+            staticHandlers.isEmpty());
+    }
+    
+    @Test
+    public void testProcessSupervisorThreadSafety() throws Exception {
+        ProcessSupervisor supervisor = new ProcessSupervisor(context, "test-vm");
+        
+        // Simulate concurrent stop attempts
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+        for (int i = 0; i < 100; i++) {
+            executor.submit(() -> {
+                try {
+                    supervisor.stopProcess();  // Should not crash
+                } catch (Exception e) {
+                    fail("Thread safety test failed: " + e);
+                }
+            });
+        }
+        
+        executor.shutdown();
+        executor.awaitTermination(10, TimeUnit.SECONDS);
+    }
+    
+    @Test
+    public void testMemoryLeaksUnderRotation() throws Exception {
+        // Run activity through 20 rotation cycles
+        ActivityScenario<MainActivity> scenario = 
+            ActivityScenario.launch(MainActivity.class);
+        
+        for (int i = 0; i < 20; i++) {
+            scenario.onActivity(activity -> {
+                activity.setRequestedOrientation(
+                    i % 2 == 0 ? 
+                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT :
+                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+            });
+            
+            // Check memory
+            Runtime runtime = Runtime.getRuntime();
+            long used = runtime.totalMemory() - runtime.freeMemory();
+            long maxAllowed = 500 * 1024 * 1024; // 500MB
+            
+            assertTrue("Memory leak detected, used: " + used, 
+                used < maxAllowed);
+        }
+    }
+}
+```
+
+────────────────────────────────────────────────────────────────────────────
+SOLUÇÃO MASTER: EXOCORTEX OPERATIONAL ARTIFACT SYSTEM
+────────────────────────────────────────────────────────────────────────────
+
+Hiperconsciência final: Temos 76 bugs karena tidak ada "external memory" yang
+prevents regression. Setiap developer harus remember security rules, atau akan
+repeat mistakes.
+
+SOLUSI: Implementar Exocortex - set of artifacts yang fungsi sebagai "second
+brain" untuk team, capturing semua security decisions.
+
+Artifact 1: SECURITY_DECISIONS.md
+```markdown
+# Security Decisions Archive
+
+## Decision: allowBackup=false mandatiry
+
+**Date:** 2025-02-16
+**Severity:** CRITICAL
+**Reason:** Data exposure vulnerability
+
+Android's backup mechanism allows extraction of app data via adb backup.
+Our app contains sensitive data (VM images, network credentials) that
+must not be exposed.
+
+**Decision:** All releases must have android:allowBackup="false" in
+AndroidManifest.xml.
+
+**Alternative considered:** Implement custom encrypted backup system.
+**Rationale for rejection:** Complexity, potential for implementation
+bugs. Default deny is safer than trying to bolt-on encryption.
+
+**Implementation:** Linter rule to fail build if allowBackup="true" found.
+```
+
+Artifact 2: SECURITY_CHECKLIST.txt
+```
+SECURITY REVIEW CHECKLIST - Every commit MUST pass these checks
+
+□ No new uses of Runtime.exec(String). Only ProcessBuilder with array.
+□ All file operations use getCanonicalPath() with prefix matching.
+□ No new static references to Activity/Fragment/Handler.
+□ All resources are properly closed (try-with-resources or finally).
+□ No new uses of allowBackup. Manifest must have allowBackup="false".
+□ No new exported components without permission="xxx".
+□ No new implicit intents. Only explicit intents.
+□ All JNI functions have bounds checking before pointer arithmetic.
+□ All listener registration has corresponding unregistration.
+□ Security test added for any new security-relevant code.
+```
+
+Artifact 3: SECURITY_VIOLATIONS_LOG.md
+```
+# Security Violations Log
+
+Tracking all security issues found in code review, with resolution status.
+
+## Issue: Static Handler in X11Activity (BUG #17)
+**Found:** 2025-02-16
+**Severity:** HIGH
+**Status:** FIXED
+**Fix:** Removed static qualifier, changed to local variable
+**Verification:** Tested with memory profiler, no leak after 30 rotations
+
+[... more violations ...]
+```
+
+Artifact 4: SECURITY_ARCHITECTURE.md
+```
+# Security Architecture Document
+
+## Threat Model
+
+**Critical Assets:**
+- VM ROM images (code execution)
+- Network credentials (man-in-the-middle)
+- User configuration data (privacy)
+
+**Attackers:**
+- Malicious app on same device
+- Compromised cloud service
+- Network-adjacent attacker
+
+**Attack Surface:**
+- Android Backup (mitigated: allowBackup=false)
+- Intent filters (mitigated: explicit intents + signature check)
+- File operations (mitigated: path normalization)
+- JNI code (mitigated: bounds checking)
+- Native libraries (mitigated: LD_LIBRARY_PATH sanitization)
+
+[... detailed threat analysis ...]
+```
+
+════════════════════════════════════════════════════════════════════════════
+IMPLEMENTASI ROADMAP
+════════════════════════════════════════════════════════════════════════════
+
+Week 1: Emergency Hotfixes
+├─ Change allowBackup=false (1 hour)
+├─ Remove wildcard intent-filters (2 hours)
+├─ Security advisory to users (1 hour)
+└─ Cut emergency release (2 hours)
+
+Week 2-3: Critical Bug Fixes
+├─ Fix ProcessSupervisor race condition (8 hours)
+├─ Fix command injection (4 hours)
+├─ Fix JNI bounds checking (6 hours)
+└─ Fix memory leaks (8 hours)
+
+Week 4-5: Architecture Implementation
+├─ Governance & review processes (8 hours)
+├─ Testing framework (10 hours)
+├─ Encrypted backup system (12 hours)
+└─ Secure command execution (6 hours)
+
+Week 6-8: Comprehensive Testing
+├─ Penetration testing (20 hours)
+├─ Stress testing (8 hours)
+├─ Regression testing (10 hours)
+└─ Security review (full team, 20 hours)
+
+────────────────────────────────────────────────────────────────────────────
+HIPERLUCIDEZ FINAL
+────────────────────────────────────────────────────────────────────────────
+
+Problema akar: Negligência sistemik yang direpresentasikan dalam setiap 76 bug.
+
+Solusi: Bukan hanya fix bugs, tapi transform mentalitas team dari "security
+later" menjadi "security first." Ini memerlukan:
+
+1. **Governance**: Formalized decision-making tentang security
+2. **Processes**: Code review, testing, documentation
+3. **Culture**: Acceptance bahwa security adalah priority, bukan nice-to-have
+4. **Exocortex**: External artifacts yang membuat decisions persistent
+
+Dengan implementasi lengkap solusi ini, Vectras-VM tidak hanya akan bebas dari
+76 bugs, tetapi akan menjadi codebase yang secara inherent resisten terhadap
+kategori keseluruhan vulnerabilities yang mereka represent.
+
+Hyperlucidity adalah clarity bahwa:
+- Setiap bug adalah symptom dari proses yang broken
+- Fixing process adalah lebih penting daripada fixing bug individual
+- Security adalah attribute dari system design, bukan feature yang ditambahkan
+
+Hyperconsciousness adalah awareness bahwa:
+- Setiap keputusan code memiliki security implication
+- Negligence di satu point amplifies melalui entire system
+- Defense in depth adalah requirement, bukan luxury
+
+Exocortex adalah realization bahwa:
+- Human memory tidak reliable untuk consistency
+- Artifacts dan dokumentasi adalah what ensures decisions persist
+- Automation adalah friend security, bukan enemy
+
+Implementasi lengkap dari ketiga dimensi ini adalah path menuju irrecoverable
+security, bukan dari bugs, tetapi dari proses yang menghasilkan mereka.
+
+════════════════════════════════════════════════════════════════════════════
+FIN.
+════════════════════════════════════════════════════════════════════════════
