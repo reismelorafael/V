@@ -48,6 +48,7 @@ import com.vectras.vm.utils.ListUtils;
 import com.vectras.vm.utils.PermissionUtils;
 import com.vectras.vm.utils.TarUtils;
 import com.vectras.vm.utils.UIUtils;
+import com.vectras.vterm.Terminal;
 import com.vectras.vterm.TerminalBottomSheetDialog;
 
 import java.io.BufferedReader;
@@ -474,13 +475,17 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 }
                 String escapedVncPassword = vncPassword.replace("'", "'\\''");
 
+                PackageManagerType packageManagerType = detectPackageManagerType();
+                String updateCommand = resolveUpdateCommand(packageManagerType);
+                String installCommand = resolveInstallCommand(packageManagerType);
+                String requiredPackages = resolveRequiredPackages(packageManagerType);
+
                 String cmd = selectedMirrorCommand + ";" +
                         " set -e;" +
                         " echo \"Starting setup...\";" +
-                        " apk update;" +
+                        " " + updateCommand + ";" +
                         " echo \"Installing packages...\";" +
-                        " apk add " + (DeviceUtils.is64bit() ? AppConfig.neededPkgs()
-                        : AppConfig.neededPkgs32bit()) + ";" +
+                        " " + installCommand + " " + requiredPackages + ";" +
                         " echo \"Downloading Qemu...\";";
 
                 if (isCustomSetupMode) {
@@ -508,6 +513,64 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 executeShellCommand(cmd);
             });
         }).start();
+    }
+
+    private enum PackageManagerType { APK, PKG, APT, UNKNOWN }
+
+    private PackageManagerType detectPackageManagerType() {
+        String output = Terminal.executeShellCommandWithResult(
+                "command -v apk >/dev/null 2>&1 && echo apk || (command -v pkg >/dev/null 2>&1 && echo pkg || (command -v apt-get >/dev/null 2>&1 && echo apt))",
+                this
+        );
+        String normalized = output == null ? "" : output.trim().toLowerCase();
+        if (normalized.contains("apk")) {
+            return PackageManagerType.APK;
+        }
+        if (normalized.contains("pkg")) {
+            return PackageManagerType.PKG;
+        }
+        if (normalized.contains("apt")) {
+            return PackageManagerType.APT;
+        }
+        return PackageManagerType.UNKNOWN;
+    }
+
+    private String resolveUpdateCommand(PackageManagerType packageManagerType) {
+        switch (packageManagerType) {
+            case PKG:
+                return "pkg update";
+            case APT:
+                return "apt-get update";
+            case APK:
+                return "apk update";
+            case UNKNOWN:
+            default:
+                return "pkg update";
+        }
+    }
+
+    private String resolveInstallCommand(PackageManagerType packageManagerType) {
+        switch (packageManagerType) {
+            case PKG:
+                return "pkg install -y";
+            case APT:
+                return "apt-get install -y";
+            case APK:
+                return "apk add";
+            case UNKNOWN:
+            default:
+                return "pkg install -y";
+        }
+    }
+
+    private String resolveRequiredPackages(PackageManagerType packageManagerType) {
+        if (packageManagerType == PackageManagerType.PKG || packageManagerType == PackageManagerType.UNKNOWN) {
+            return DeviceUtils.is64bit() ? AppConfig.neededPkgsTermux() : AppConfig.neededPkgs32bitTermux();
+        }
+        if (packageManagerType == PackageManagerType.APT) {
+            return DeviceUtils.is64bit() ? AppConfig.neededPkgsDebian() : AppConfig.neededPkgs32bitDebian();
+        }
+        return DeviceUtils.is64bit() ? AppConfig.neededPkgs() : AppConfig.neededPkgs32bit();
     }
 
     private final ActivityResultLauncher<String> bootstrapFilePicker =

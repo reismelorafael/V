@@ -170,6 +170,14 @@ public class AppConfig {
         return neededPkgsTermux();
     }
 
+    public static String neededPkgsDebian() {
+        return "bash aria2 tar xterm proot pulseaudio fluxbox";
+    }
+
+    public static String neededPkgs32bitDebian() {
+        return neededPkgsDebian();
+    }
+
     public static boolean needreinstallsystem = false;
 
     public static String temporaryLastedTerminalOutput = "";
