@@ -9,6 +9,28 @@ Checklist objetivo para resolver “não compila” por desalinhamento de SDK/JD
 - `KOTLIN_VERSION` e `AGP_VERSION` também podem ser ajustados por propriedade.
 
 
+## Política explícita de JDK para Gradle
+
+- Runtime padrão obrigatório do Gradle: `GRADLE_JAVA_RUNTIME_VERSION=17` (ver `gradle.properties`).
+- Limite superior temporário de compatibilidade: `GRADLE_MAX_RUNTIME_JAVA_VERSION=21`.
+- O build raiz registra `verifyGradleRuntimeJvm` e também valida automaticamente em tarefas de build/assemble/test/lint/verify.
+- Erro de versão incompatível orienta ajuste de `JAVA_HOME` ou `org.gradle.java.home` com mensagem direta.
+
+Configuração recomendada:
+
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+export PATH="$JAVA_HOME/bin:$PATH"
+./gradlew verifyGradleRuntimeJvm
+```
+
+Ou em `~/.gradle/gradle.properties`:
+
+```properties
+org.gradle.java.home=/usr/lib/jvm/java-17-openjdk
+```
+
+
 ## Política de suporte (API x ABI)
 
 Política explicitada no build raiz (`build.gradle`):
@@ -132,3 +154,15 @@ Após gerar a APK/AAB de release, execute smoke test de inicialização em dispo
 ./gradlew verifyArm64ToolchainCompatibility -PNDK_VERSION=27.2.12479018
 ./gradlew :app:assembleDebug -PNDK_VERSION=27.2.12479018
 ```
+
+
+## Estratégia de longo prazo (wrapper/AGP e matriz de validação)
+
+Para ampliar suporte oficial a JVMs mais novas no ambiente, avaliar upgrade conjunto:
+
+1. Atualizar `gradle/wrapper/gradle-wrapper.properties` para versão de Gradle oficialmente compatível com AGP alvo.
+2. Atualizar `AGP_VERSION` em `gradle.properties` e validar compatibilidade com Kotlin plugin.
+3. Rodar matriz mínima antes de promover baseline:
+   - JDK 17 + `./gradlew clean assembleDebug test`
+   - JDK alvo do ambiente + `./gradlew clean assembleDebug test`
+4. Só elevar `GRADLE_JAVA_RUNTIME_VERSION`/`GRADLE_MAX_RUNTIME_JAVA_VERSION` após matriz verde.

@@ -124,6 +124,14 @@ gradle.taskGraph.whenReady { graph ->
     if (graph.allTasks.any { it.name.toLowerCase().contains('release') }) {
         validateReleaseTargetApi()
     }
+
+    def hasBuildOrVerificationTask = graph.allTasks.any { task ->
+        def n = task.name.toLowerCase()
+        n.contains('assemble') || n.contains('bundle') || n.contains('build') || n.contains('test') || n.contains('lint') || n.contains('verify')
+    }
+    if (hasBuildOrVerificationTask) {
+        validateGradleRuntimeJavaVersion()
+    }
 }
 
 
@@ -142,6 +150,34 @@ tasks.register("verifyArm64ToolchainCompatibility") {
         validateArm64ToolchainCompatibility()
     }
 }
+
+
+def validateGradleRuntimeJavaVersion() {
+    def currentJava = JavaVersion.current()
+    def configuredRuntime = Integer.parseInt(properties.get('GRADLE_JAVA_RUNTIME_VERSION', properties.get('JAVA_LANGUAGE_VERSION', '17')).toString())
+    def maxSupportedRuntime = Integer.parseInt(properties.get('GRADLE_MAX_RUNTIME_JAVA_VERSION', '21').toString())
+
+    def configuredJavaVersion = JavaVersion.toVersion(configuredRuntime)
+    if (currentJava != configuredJavaVersion) {
+        throw new GradleException("Gradle runtime JVM incompatível. Esperado Java ${configuredRuntime} (JAVA_HOME/org.gradle.java.home), detectado ${currentJava}. Configure JAVA_HOME ou org.gradle.java.home para JDK ${configuredRuntime}.")
+    }
+
+    def maxSupportedJavaVersion = JavaVersion.toVersion(maxSupportedRuntime)
+    if (currentJava > maxSupportedJavaVersion) {
+        throw new GradleException("Gradle runtime JVM acima do máximo suportado para este baseline. Detectado ${currentJava}, máximo suportado ${maxSupportedRuntime}. Use JDK ${configuredRuntime} ou atualize wrapper/AGP para suportar oficialmente esta JVM.")
+    }
+
+    println "Gradle runtime JVM validada: ${currentJava} (esperado=${configuredRuntime}, máximo=${maxSupportedRuntime})."
+}
+
+tasks.register("verifyGradleRuntimeJvm") {
+    group = "verification"
+    description = "Valida JVM runtime usada pelo Gradle (versão fixa e limite máximo suportado)"
+    doLast {
+        validateGradleRuntimeJavaVersion()
+    }
+}
+
 
 tasks.register("verifyRepoFileDependencies", Exec) {
     group = "verification"

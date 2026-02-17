@@ -77,7 +77,23 @@ find . -maxdepth 2 -type d | sort
 ## Setup rápido de build
 - Copie `local.properties.example` para `local.properties` e ajuste `sdk.dir`.
 - Ajuste versões via `gradle.properties` (`COMPILE_API`, `TOOLS_VERSION`, `JAVA_LANGUAGE_VERSION`, `CMAKE_VERSION`, `NDK_VERSION`).
+- Política de JVM do Gradle: execute preferencialmente com **JDK 17** (alinhado com `JAVA_LANGUAGE_VERSION=17`).
+- Defina explicitamente `JAVA_HOME` para o JDK 17 ou configure `org.gradle.java.home=<path-do-jdk17>` em `~/.gradle/gradle.properties`.
+- O build agora valida em bootstrap `GRADLE_JAVA_RUNTIME_VERSION` (padrão 17) e falha se a JVM runtime exceder `GRADLE_MAX_RUNTIME_JAVA_VERSION` (padrão 21).
 - Para override pontual, use `-P` no comando Gradle.
+
+### Exemplo de configuração de Java para build
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+export PATH="$JAVA_HOME/bin:$PATH"
+./gradlew --version
+```
+
+Para fixar por usuário (sem depender de shell):
+```properties
+# ~/.gradle/gradle.properties
+org.gradle.java.home=/usr/lib/jvm/java-17-openjdk
+```
 
 ## Referência rápida de bugs
 - Escopo e relação com os demais domínios: [`bug/README.md`](bug/README.md)
