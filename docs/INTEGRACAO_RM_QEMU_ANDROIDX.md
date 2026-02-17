@@ -51,17 +51,17 @@ Consolidar melhorias comprovadas dos projetos externos (QEMU e AndroidX) dentro 
 
 ## 4. Uso dos diagramas fornecidos (imagens)
 
-Os diagramas enviados devem guiar o desenho das camadas de integração (sempre por paths locais em `docs/assets/`):
+Os diagramas devem guiar o desenho das camadas de integração usando como fonte canônica os artefatos ASCII versionados em `docs/assets/ascii/`, conforme `docs/assets/MANIFEST.md` e política de índice em `docs/IMAGES_INDEX.md`:
 
-- **Diagrama 1 (Olho/Toroide/IA)** → [`docs/assets/rafaelia-core-eye-toroid.png`](assets/rafaelia-core-eye-toroid.png) representa o eixo central da arquitetura e a triagem de pipeline (Core → QEMU → UI).
-- **Diagrama 2 (Coerência/Estabilidade)** → [`docs/assets/rafaelia-coherence-layers.png`](assets/rafaelia-coherence-layers.png) define critérios de equilíbrio entre desempenho, integridade e compatibilidade.
-- **Arquitetura Fractal** → [`docs/assets/rafaelia-fractal-architecture.png`](assets/rafaelia-fractal-architecture.png).
-- **Pipeline de Sistema** → [`docs/assets/rafaelia-system-pipeline.png`](assets/rafaelia-system-pipeline.png).
-- **Modelo Matemático** → [`docs/assets/rafaelia-mathematical.png`](assets/rafaelia-mathematical.png).
-- **Conceito visual de UI** → [`docs/assets/vectra-mystical-ui-concept.png`](assets/vectra-mystical-ui-concept.png).
-- **Arquitetura de integridade ZIPRAFA** → [`docs/assets/ziprafa-integrity-architecture.png`](assets/ziprafa-integrity-architecture.png).
+- **Diagrama 1 (Olho/Toroide/IA)** → binário PNG indisponível no repositório e sem equivalente ASCII versionado no momento. Referência de proveniência pendente em [`docs/assets/CHAT_PROMPT_PROVENANCE.md`](assets/CHAT_PROMPT_PROVENANCE.md).
+- **Diagrama 2 (Coerência/Estabilidade)** → binário PNG indisponível no repositório e sem equivalente ASCII versionado no momento. Referência de proveniência pendente em [`docs/assets/CHAT_PROMPT_PROVENANCE.md`](assets/CHAT_PROMPT_PROVENANCE.md).
+- **Arquitetura Fractal** → [`docs/assets/ascii/rafaelia-fractal-architecture.ascii.md`](assets/ascii/rafaelia-fractal-architecture.ascii.md).
+- **Pipeline de Sistema** → [`docs/assets/ascii/rafaelia-system-pipeline.ascii.md`](assets/ascii/rafaelia-system-pipeline.ascii.md).
+- **Modelo Matemático** → [`docs/assets/ascii/rafaelia-mathematical.ascii.md`](assets/ascii/rafaelia-mathematical.ascii.md).
+- **Conceito visual de UI** → [`docs/assets/ascii/vectra-mystical-ui-concept.ascii.md`](assets/ascii/vectra-mystical-ui-concept.ascii.md).
+- **Arquitetura de integridade ZIPRAFA** → [`docs/assets/ascii/ziprafa-integrity-architecture.ascii.md`](assets/ascii/ziprafa-integrity-architecture.ascii.md).
 
-**Ação**: manter os paths canônicos em `docs/assets/` na documentação e refletir presença/ausência real no índice `docs/IMAGES_INDEX.md` (sem versionar binários no repositório).
+**Ação**: manter `docs/assets/MANIFEST.md` como fonte canônica dos artefatos, manter `docs/IMAGES_INDEX.md` sincronizado com presença/proveniência e não versionar binários de imagem no repositório.
 
 ### 4.1 Símbolos e bootblock RAFAELIA (referência direta)
 
