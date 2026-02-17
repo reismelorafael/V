@@ -37,6 +37,12 @@ public class ProotCommandBuilder {
     private String xdgRuntimeDir;
     private String path;
     private String sdlVideoDriver;
+    private boolean bindSdcardEnabled = true;
+    private boolean bindStorageEnabled = true;
+    private boolean bindDataEnabled = true;
+    private boolean bindDevShmEnabled = true;
+    private boolean bindTmpEnabled = true;
+    private final List<String> extraBinds = new ArrayList<>();
 
     public ProotCommandBuilder(Context context, String rootfsPath, String workDir) {
         this.context = context;
@@ -99,6 +105,38 @@ public class ProotCommandBuilder {
         return this;
     }
 
+    public ProotCommandBuilder setBindSdcardEnabled(boolean bindSdcardEnabled) {
+        this.bindSdcardEnabled = bindSdcardEnabled;
+        return this;
+    }
+
+    public ProotCommandBuilder setBindStorageEnabled(boolean bindStorageEnabled) {
+        this.bindStorageEnabled = bindStorageEnabled;
+        return this;
+    }
+
+    public ProotCommandBuilder setBindDataEnabled(boolean bindDataEnabled) {
+        this.bindDataEnabled = bindDataEnabled;
+        return this;
+    }
+
+    public ProotCommandBuilder setBindDevShmEnabled(boolean bindDevShmEnabled) {
+        this.bindDevShmEnabled = bindDevShmEnabled;
+        return this;
+    }
+
+    public ProotCommandBuilder setBindTmpEnabled(boolean bindTmpEnabled) {
+        this.bindTmpEnabled = bindTmpEnabled;
+        return this;
+    }
+
+    public ProotCommandBuilder addExtraBind(String bindSpec) {
+        if (bindSpec != null && !bindSpec.trim().isEmpty()) {
+            extraBinds.add(bindSpec);
+        }
+        return this;
+    }
+
     public void applyEnvironment(Map<String, String> environment) {
         Options options = new Options();
         options.home = home;
@@ -139,8 +177,24 @@ public class ProotCommandBuilder {
 
     public List<String> buildCommand() {
         String filesDir = resolveFilesDirPath();
-        String devShmBind = filesDir + "/distro/root:/dev/shm";
-        String tmpBind = filesDir + "/usr/tmp:/tmp";
+        List<String> binds = buildDefaultBinds(filesDir);
+
+        if (!bindSdcardEnabled) {
+            binds.remove("/sdcard");
+        }
+        if (!bindStorageEnabled) {
+            binds.remove("/storage");
+        }
+        if (!bindDataEnabled) {
+            binds.remove("/data");
+        }
+        if (!bindDevShmEnabled) {
+            binds.remove(filesDir + "/distro/root:/dev/shm");
+        }
+        if (!bindTmpEnabled) {
+            binds.remove(filesDir + "/usr/tmp:/tmp");
+        }
+        binds.addAll(extraBinds);
 
         List<String> command = new ArrayList<>();
         command.add(TermuxService.PREFIX_PATH + "/bin/proot");
@@ -149,28 +203,29 @@ public class ProotCommandBuilder {
         command.add("-0");
         command.add("-r");
         command.add(rootfsPath);
-        command.add("-b");
-        command.add("/dev");
-        command.add("-b");
-        command.add("/proc");
-        command.add("-b");
-        command.add("/sys");
-        command.add("-b");
-        command.add("/sdcard");
-        command.add("-b");
-        command.add("/storage");
-        command.add("-b");
-        command.add("/data");
-        command.add("-b");
-        command.add(devShmBind);
-        command.add("-b");
-        command.add(tmpBind);
+        for (String bind : binds) {
+            command.add("-b");
+            command.add(bind);
+        }
         command.add("-w");
         command.add(workDir);
         command.add("/bin/sh");
         command.add("--login");
 
         return command;
+    }
+
+    static List<String> buildDefaultBinds(String filesDir) {
+        List<String> binds = new ArrayList<>();
+        binds.add("/dev");
+        binds.add("/proc");
+        binds.add("/sys");
+        binds.add("/sdcard");
+        binds.add("/storage");
+        binds.add("/data");
+        binds.add(filesDir + "/distro/root:/dev/shm");
+        binds.add(filesDir + "/usr/tmp:/tmp");
+        return binds;
     }
 
     private String resolveFilesDirPath() {
