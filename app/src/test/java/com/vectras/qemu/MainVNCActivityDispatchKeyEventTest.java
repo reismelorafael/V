@@ -22,6 +22,19 @@ public class MainVNCActivityDispatchKeyEventTest {
         assertEquals("ã", text);
     }
 
+
+    @Test
+    public void extractComposedText_shouldReturnCharactersForActionMultipleEvenWithKnownKeyCode() {
+        String text = MainVNCActivity.extractComposedText(
+                KeyEvent.ACTION_MULTIPLE,
+                KeyEvent.KEYCODE_A,
+                "ê",
+                0
+        );
+
+        assertEquals("ê", text);
+    }
+
     @Test
     public void extractComposedText_shouldIgnoreCombiningAccentIntermediateKey() {
         int combiningAccentUnicode = KeyCharacterMap.COMBINING_ACCENT | '`';

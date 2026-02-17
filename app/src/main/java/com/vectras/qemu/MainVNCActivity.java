@@ -679,8 +679,7 @@ public class MainVNCActivity extends VncCanvasActivity {
     }
 
     static String extractComposedText(int action, int keyCode, String characters, int unicodeChar) {
-        if (action == KeyEvent.ACTION_MULTIPLE && keyCode == KeyEvent.KEYCODE_UNKNOWN
-                && characters != null && !characters.isEmpty()) {
+        if (action == KeyEvent.ACTION_MULTIPLE && characters != null && !characters.isEmpty()) {
             return characters;
         }
 
