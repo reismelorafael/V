@@ -12,6 +12,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.transition.TransitionManager;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -32,6 +33,7 @@ import com.vectras.qemu.MainSettingsManager;
 import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
 import com.vectras.vm.VMManager;
+import com.vectras.vm.core.ProcessRuntimeOps;
 import com.vectras.vm.core.ProotCommandBuilder;
 import com.vectras.vm.network.RequestNetwork;
 import com.vectras.vm.network.RequestNetworkController;
@@ -65,6 +67,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class SetupWizard2Activity extends AppCompatActivity {
+    private static final String TAG = "SetupWizard2Activity";
     ActivitySetupWizard2Binding binding;
     SetupQemuDoneBinding bindingFinalSteps;
     public static final int ACTION_SYSTEM_UPDATE = 1;
@@ -623,13 +626,40 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 reader.close();
                 errorReader.close();
 
-                // Wait for the process to finish
-             //   process.waitFor();
+                ProcessRuntimeOps.TimeoutExecutionResult result = ProcessRuntimeOps.waitForByCategory(
+                        process,
+                        ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION
+                );
 
-                // Wait for the process to finish
-                int exitValue = process.waitFor();
+                if (result.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.TIMEOUT) {
+                    isExecutingCommand = false;
+                    final String timeoutMessage = "Command timed out ["
+                            + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
+                            + "]: "
+                            + result.message;
+                    Log.e(TAG, timeoutMessage);
+                    runOnUiThread(() -> {
+                        appendTextAndScroll("Error: " + timeoutMessage + "\n");
+                        uiController(STEP_ERROR, logs);
+                    });
+                    return;
+                }
 
-                // Check if the exit value indicates an error
+                if (result.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.ERROR) {
+                    isExecutingCommand = false;
+                    final String operationErrorMessage = "Command execution error ["
+                            + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
+                            + "]: "
+                            + result.message;
+                    Log.e(TAG, operationErrorMessage);
+                    runOnUiThread(() -> {
+                        appendTextAndScroll("Error: " + operationErrorMessage + "\n");
+                        uiController(STEP_ERROR, logs);
+                    });
+                    return;
+                }
+
+                int exitValue = result.exitCode;
                 if (exitValue != 0) {
                     isExecutingCommand = false;
                     if (aria2Error && downloadBootstrapsCommand.contains("aria2c")) {
@@ -645,10 +675,11 @@ public class SetupWizard2Activity extends AppCompatActivity {
                         });
                     }
                 }
-            } catch (IOException | InterruptedException e) {
+            } catch (IOException e) {
                 isExecutingCommand = false;
                 // Handle exceptions by printing the stack trace in the terminal output
                 final String errorMessage = e.getMessage();
+                Log.e(TAG, "executeShellCommand IO error: " + errorMessage, e);
                 runOnUiThread(() -> {
                     appendTextAndScroll("Error: " + errorMessage + "\n");
                     uiController(STEP_ERROR, logs);
