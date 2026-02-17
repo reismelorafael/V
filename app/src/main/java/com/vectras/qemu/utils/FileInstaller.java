@@ -33,8 +33,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -44,10 +49,35 @@ import java.util.logging.Logger;
  */
 public class FileInstaller {
 
-    private static final Map<String, Object> FILE_LOCKS = new ConcurrentHashMap<>();
+    private static final Map<String, ReentrantReadWriteLock> FILE_LOCKS = new ConcurrentHashMap<>();
 
-    private static Object lockForPath(String path) {
-        return FILE_LOCKS.computeIfAbsent(path, key -> new Object());
+    private static ReentrantReadWriteLock lockForPath(String path) {
+        return FILE_LOCKS.computeIfAbsent(path, key -> new ReentrantReadWriteLock());
+    }
+
+    private static void copyStream(InputStream is, OutputStream os) throws IOException {
+        byte[] buf = new byte[8092];
+        int n;
+        while ((n = is.read(buf)) > 0) {
+            os.write(buf, 0, n);
+        }
+    }
+
+    private static void moveTempFileToDestination(File tempFile, File outputFile) throws IOException {
+        Path tempPath = tempFile.toPath();
+        Path outputPath = outputFile.toPath();
+        try {
+            Files.move(tempPath, outputPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException ex) {
+            Log.w("Installer", "event=file_install atomic_move_not_supported src=" + tempFile.getAbsolutePath() + " dest=" + outputFile.getAbsolutePath());
+            Files.move(tempPath, outputPath, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private static void cleanupTempFile(File tempFile, String opTag) {
+        if (tempFile != null && tempFile.exists() && !tempFile.delete()) {
+            Log.w("Installer", "event=" + opTag + " temp_cleanup_failed path=" + tempFile.getAbsolutePath());
+        }
     }
 
     public static void installFiles(Context context, boolean force) {
@@ -140,21 +170,25 @@ public class FileInstaller {
 
             String resolvedDestFile = destFile == null ? srcFile : destFile;
             File outputFile = new File(destDirF, resolvedDestFile);
-            Object lock = lockForPath(outputFile.getAbsolutePath());
-            synchronized (lock) {
+            File tempFile = new File(destDirF, resolvedDestFile + ".tmp-" + Thread.currentThread().getId());
+            ReentrantReadWriteLock.WriteLock lock = lockForPath(outputFile.getAbsolutePath()).writeLock();
+            lock.lock();
+            try {
                 AssetManager am = context.getResources().getAssets();
                 try (InputStream is = am.open(assetsDir + "/" + srcFile);
-                     OutputStream os = new FileOutputStream(outputFile)) {
-                    byte[] buf = new byte[8092];
-                    int n;
-                    while ((n = is.read(buf)) > 0) {
-                        os.write(buf, 0, n);
-                    }
+                     OutputStream os = new FileOutputStream(tempFile)) {
+                    copyStream(is, os);
+                    os.flush();
                 }
+                moveTempFileToDestination(tempFile, outputFile);
+                Log.i("Installer", "event=install_asset success src=" + srcFile + " dest=" + outputFile.getAbsolutePath());
+            } finally {
+                cleanupTempFile(tempFile, "install_asset");
+                lock.unlock();
             }
             return true;
         } catch (Exception ex) {
-            Log.e("Installer", "failed to install file: " + destFile + ", Error:" + ex.getMessage());
+            Log.e("Installer", "event=install_asset failure src=" + srcFile + " dest=" + destFile, ex);
             return false;
         }
     }
@@ -162,83 +196,23 @@ public class FileInstaller {
     public static Uri installImageTemplateToSDCard(Activity activity, String srcFile,
                                                    Uri destDir, String assetsDir, String destFile) {
 
-        DocumentFile destFileF = null;
-        OutputStream os = null;
-        InputStream is = null;
-        Uri uri = null;
-
+        String resolvedDestFile = destFile == null ? srcFile : destFile;
         try {
 
             DocumentFile dir = DocumentFile.fromTreeUri(activity, destDir);
-            AssetManager am = activity.getResources().getAssets(); // get the local asset manager
-            is = am.open(assetsDir + "/" + srcFile); // open the input stream for reading
-
-            if(destFile==null)
-                destFile=srcFile;
+            if (dir == null) {
+                Log.e("Installer", "event=install_sdcard failure reason=invalid_destination destDir=" + destDir);
+                return null;
+            }
 
             //Create the file if doesn't exist
-            destFileF = dir.findFile(destFile);
+            DocumentFile destFileF = dir.findFile(resolvedDestFile);
             if(destFileF == null) {
-                destFileF = dir.createFile("application/octet-stream", destFile);
-            }
-            else {
-                    UIUtils.toastShort(activity, "File exists, choose another filename");
+                destFileF = dir.createFile("application/octet-stream", resolvedDestFile);
+                if (destFileF == null) {
+                    Log.e("Installer", "event=install_sdcard failure reason=create_file_failed destFile=" + resolvedDestFile);
                     return null;
-            }
-
-            //Write to the dest
-            os = activity.getContentResolver().openOutputStream(destFileF.getUri());
-            //OutputStream os = new FileOutputStream(destDir + "/" + destFile);
-            byte[] buf = new byte[8092];
-            int n;
-            while ((n = is.read(buf)) > 0) {
-                os.write(buf, 0, n);
-            }
-
-            //success
-            uri = destFileF.getUri();
-
-        } catch (Exception ex) {
-            Log.e("Installer", "failed to install file: " + destFile + ", Error:" + ex.getMessage());
-        } finally {
-            if(os!=null) {
-                try {
-                    os.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
                 }
-            }
-            if(is!=null) {
-                try {
-                    is.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-
-        }
-        return uri;
-    }
-
-
-    public static String installImageTemplateToExternalStorage(Activity activity, String srcFile,
-                                                   String destDir, String assetsDir, String destFile) {
-
-        File file = new File(destDir, destFile);
-        String filePath = null;
-        OutputStream os = null;
-        InputStream is = null;
-        try {
-
-            AssetManager am = activity.getResources().getAssets(); // get the local asset manager
-            is = am.open(assetsDir + "/" + srcFile); // open the input stream for reading
-
-            if(destFile==null)
-                destFile=srcFile;
-
-            //Create the file if doesn't exist
-            if(!file.exists()){
-                file.createNewFile();
             }
             else {
                 UIUtils.toastShort(activity, "File exists, choose another filename");
@@ -246,37 +220,68 @@ public class FileInstaller {
             }
 
             //Write to the dest
-            os = new FileOutputStream(file);
-
-            //OutputStream os = new FileOutputStream(destDir + "/" + destFile);
-            byte[] buf = new byte[8092];
-            int n;
-            while ((n = is.read(buf)) > 0) {
-                os.write(buf, 0, n);
+            AssetManager am = activity.getResources().getAssets(); // get the local asset manager
+            try (InputStream is = am.open(assetsDir + "/" + srcFile);
+                 OutputStream os = activity.getContentResolver().openOutputStream(destFileF.getUri())) {
+                if (os == null) {
+                    Log.e("Installer", "event=install_sdcard failure reason=open_output_stream_failed uri=" + destFileF.getUri());
+                    return null;
+                }
+                copyStream(is, os);
+                os.flush();
             }
 
             //success
-            filePath = file.getAbsolutePath();
+            Log.i("Installer", "event=install_sdcard success src=" + srcFile + " destUri=" + destFileF.getUri());
+            return destFileF.getUri();
 
         } catch (Exception ex) {
-            Log.e("Installer", "failed to install file: " + destFile + ", Error:" + ex.getMessage());
-        } finally {
-            if(os!=null) {
-                try {
-                    os.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            if(is!=null) {
-                try {
-                    is.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
+            Log.e("Installer", "event=install_sdcard failure src=" + srcFile + " destFile=" + resolvedDestFile, ex);
+        }
+        return null;
+    }
+
+
+    public static String installImageTemplateToExternalStorage(Activity activity, String srcFile,
+                                                   String destDir, String assetsDir, String destFile) {
+
+        String resolvedDestFile = destFile == null ? srcFile : destFile;
+        File file = new File(destDir, resolvedDestFile);
+        File tempFile = new File(destDir, resolvedDestFile + ".tmp-" + Thread.currentThread().getId());
+        ReentrantReadWriteLock.WriteLock lock = lockForPath(file.getAbsolutePath()).writeLock();
+        lock.lock();
+        try {
+            File parentDir = file.getParentFile();
+            if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
+                Log.e("Installer", "event=install_external failure reason=create_parent_dir_failed dir=" + parentDir.getAbsolutePath());
+                return null;
             }
 
+            //Create the file if doesn't exist
+            if (file.exists()) {
+                UIUtils.toastShort(activity, "File exists, choose another filename");
+                return null;
+            }
+
+            //Write to the dest
+            AssetManager am = activity.getResources().getAssets(); // get the local asset manager
+            try (InputStream is = am.open(assetsDir + "/" + srcFile);
+                 OutputStream os = new FileOutputStream(tempFile)) {
+                copyStream(is, os);
+                os.flush();
+            }
+            moveTempFileToDestination(tempFile, file);
+
+            //success
+            Log.i("Installer", "event=install_external success src=" + srcFile + " dest=" + file.getAbsolutePath());
+            return file.getAbsolutePath();
+
+        } catch (Exception ex) {
+            Log.e("Installer", "event=install_external failure src=" + srcFile + " dest=" + file.getAbsolutePath(), ex);
+        } finally {
+            cleanupTempFile(tempFile, "install_external");
+            lock.unlock();
         }
-        return filePath;
+        return null;
     }
 }
