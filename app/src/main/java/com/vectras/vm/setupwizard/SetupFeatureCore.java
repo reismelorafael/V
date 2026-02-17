@@ -233,26 +233,26 @@ public class SetupFeatureCore {
             Process process = null;
             try {
                 ProcessBuilder processBuilder = new ProcessBuilder(cmdline);
-                processBuilder.redirectErrorStream(false);
+                processBuilder.redirectErrorStream(true);
                 processBuilder.environment().remove("LD_LIBRARY_PATH");
                 process = processBuilder.start();
 
-                // Capture standard error output (stderr)
-                StringBuilder errorOutput = new StringBuilder();
-                Thread stderrCollector = new Thread(() -> {
-                    try (BufferedReader errorReader =
-                                 new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+                // Capture process output (stderr redirected to stdout)
+                StringBuilder commandOutput = new StringBuilder();
+                Thread outputCollector = new Thread(() -> {
+                    try (BufferedReader outputReader =
+                                 new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                         String line;
-                        while ((line = errorReader.readLine()) != null) {
-                            synchronized (errorOutput) {
-                                errorOutput.append(line).append("\n");
+                        while ((line = outputReader.readLine()) != null) {
+                            synchronized (commandOutput) {
+                                commandOutput.append(line).append("\n");
                             }
                         }
                     } catch (IOException e) {
-                        Log.e(TAG, "extractSystemFiles stderr collector: ", e);
+                        Log.e(TAG, "extractSystemFiles output collector: ", e);
                     }
-                }, "setup-extract-stderr");
-                stderrCollector.start();
+                }, "setup-extract-output");
+                outputCollector.start();
 
                 ProcessRuntimeOps.TimeoutExecutionResult waitResult = ProcessRuntimeOps.waitForByCategory(
                         process,
@@ -260,18 +260,10 @@ public class SetupFeatureCore {
                 );
 
                 try {
-                    stderrCollector.join(1000L);
-                    if (stderrCollector.isAlive()) {
-                        stderrCollector.interrupt();
-                        lastErrorLog = "Extraction stderr collector timeout ["
-                                + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
-                                + "] asset=" + assetPath;
-                        Log.e(TAG, lastErrorLog);
-                        return false;
-                    }
+                    outputCollector.join();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    lastErrorLog = "Extraction stderr collector interrupted ["
+                    lastErrorLog = "Extraction output collector interrupted ["
                             + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
                             + "] asset=" + assetPath;
                     Log.e(TAG, lastErrorLog, e);
@@ -279,9 +271,9 @@ public class SetupFeatureCore {
                 }
 
                 String commandSummary = formatCommand(cmdline);
-                String stderrSummary;
-                synchronized (errorOutput) {
-                    stderrSummary = errorOutput.toString().trim();
+                String outputSummary;
+                synchronized (commandOutput) {
+                    outputSummary = commandOutput.toString().trim();
                 }
                 if (waitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.TIMEOUT) {
                     lastErrorLog = "Timeout during extraction ["
@@ -289,7 +281,7 @@ public class SetupFeatureCore {
                             + "] asset=" + assetPath
                             + " cmd=" + commandSummary
                             + " detail=" + waitResult.message
-                            + (stderrSummary.isEmpty() ? "" : " stderr=" + stderrSummary);
+                            + (outputSummary.isEmpty() ? "" : " output=" + outputSummary);
                     Log.e(TAG, lastErrorLog);
                     return false;
                 }
@@ -300,18 +292,18 @@ public class SetupFeatureCore {
                             + "] asset=" + assetPath
                             + " cmd=" + commandSummary
                             + " detail=" + waitResult.message
-                            + (stderrSummary.isEmpty() ? "" : " stderr=" + stderrSummary);
+                            + (outputSummary.isEmpty() ? "" : " output=" + outputSummary);
                     Log.e(TAG, lastErrorLog);
                     return false;
                 }
 
-                if (waitResult.exitCode != 0 || !stderrSummary.isEmpty()) {
+                if (waitResult.exitCode != 0 || !outputSummary.isEmpty()) {
                     lastErrorLog = "Extraction failed ["
                             + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
                             + "] asset=" + assetPath
                             + " cmd=" + commandSummary
                             + " exit=" + waitResult.exitCode
-                            + (stderrSummary.isEmpty() ? "" : " stderr=" + stderrSummary);
+                            + (outputSummary.isEmpty() ? "" : " output=" + outputSummary);
                     Log.e(TAG, lastErrorLog);
                     return false;
                 }
