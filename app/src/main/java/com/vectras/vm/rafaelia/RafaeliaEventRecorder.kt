@@ -45,6 +45,11 @@ object RafaeliaEventRecorder {
     }
 
     @JvmStatic
+    fun recordRecoverable(context: Context, category: String, details: String) {
+        record(context, "recoverable", JSONObject().put("category", category).put("details", details))
+    }
+
+    @JvmStatic
     fun recordBench(context: Context, report: RafaeliaBenchReport, vmName: String) {
         val payload = report.toJson().put("vm", vmName).put("event", "bench")
         record(context, "bench", payload)

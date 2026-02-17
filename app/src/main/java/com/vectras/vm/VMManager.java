@@ -234,7 +234,12 @@ public class VMManager {
         } catch (RuntimeException registerError) {
             VM_STATES.put(key, VmRuntimeState.STOPPED);
             safeTerminateDetachedProcess(process);
-            throw registerError;
+            String errorMessage = "registerVmProcess recoverable failure: key=" + key
+                + " vmId=" + vmId
+                + " message=" + registerError.getMessage();
+            Log.e(TAG, errorMessage, registerError);
+            RafaeliaEventRecorder.recordRecoverable(context, "vm_register_process", errorMessage);
+            return;
         }
     }
 
