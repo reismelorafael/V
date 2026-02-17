@@ -1,172 +1,112 @@
 # Catálogo de Arquivos Raiz (Root) — Vectras-VM-Android
 
-Este catálogo documenta **todos os arquivos soltos no diretório raiz** do repositório, descrevendo o papel de cada um, seu conteúdo essencial e como se conecta aos módulos, documentação e processo de build. O objetivo é garantir rastreabilidade e navegação clara para auditoria e gestão documental.  
+Este catálogo documenta os **arquivos soltos atualmente presentes no diretório raiz** do repositório. O objetivo é apoiar rastreabilidade, onboarding e auditoria documental.
 
 ---
+
+## Escopo deste documento
+
+- **Inclui** apenas arquivos com caminho `./<nome-do-arquivo>` (sem subdiretórios).
+- **Não inclui** arquivos de `archive/`, `docs/` ou qualquer outro subdiretório no inventário principal de “arquivos raiz”.
+
+---
+
+## Arquivos reais na raiz (inventário atual)
 
 ## 1) `README.md`
-
-**Papel**: Documento principal de apresentação do projeto, com aviso de atribuição, visão geral e links de navegação para documentação técnica e público-alvo. Também destaca o Vectra Core MVP e os módulos de benchmark e matemática bitwise.  
-**Conexões**:
-- Referencia diretamente o diretório `docs/` para documentação aprofundada e navegação por público.  
-- Aponta para `VECTRA_CORE.md` como documentação específica do framework Vectra Core.  
-- Introduz o módulo `BitwiseMath` citado nas classes do pacote `com.vectras.vm.core`.  
-**Evidência**: o README contém o aviso de atribuição e links de documentação, além de menções a Vectra Core e BitwiseMath.  
-
----
+- Documento principal de apresentação do projeto e navegação inicial.
 
 ## 2) `VECTRA_CORE.md`
+- Documento técnico do Vectra Core MVP.
 
-**Papel**: Documento técnico completo do Vectra Core MVP, detalhando arquitetura, ciclo determinístico, modelo triádico, paridade 4x4, logging append-only, performance e APIs de uso.  
-**Conexões**:
-- Serve como referência direta para o framework usado no app (classe `VectraCore` e correlatas).  
-- Está explicitamente linkado no `README.md`.  
-- Explica o uso do `BuildConfig.VECTRA_CORE_ENABLED`, que é configurado em `app/build.gradle` para controlar a ativação.  
-**Evidência**: descreve conceitos, runtime, API e instruções de build/ativação.  
+## 3) `LICENSE`
+- Licença GPL v2.0 e termos de atribuição.
 
----
+## 4) `build.gradle`
+- Configuração Gradle de nível raiz (plugins, versões e propriedades globais).
 
-## 3) `archive/root-history/ADVANCED_OPTIMIZATIONS.md`
+## 5) `settings.gradle`
+- Declara módulos incluídos no build.
 
-**Papel**: Documentação das otimizações avançadas introduzidas no pacote `com.vectras.vm.core`, incluindo algoritmos de análise, estratégias de otimização e melhorias de operações bitwise.  
-**Conexões**:
-- Complementa as classes Java criadas para otimização e análise (ex.: `AdvancedAlgorithms`, `AlgorithmAnalyzer`, `OptimizationStrategies`).  
-- Relaciona-se com as descrições de conclusão em `archive/root-history/IMPLEMENTATION_COMPLETE.md`, que detalha o que foi implementado.  
-**Evidência**: contém a visão geral e exemplos de uso dos módulos avançados.  
+## 6) `gradle.properties`
+- Propriedades globais do Gradle/Android.
 
----
+## 7) `gradlew`
+- Wrapper Gradle para Unix-like.
 
-## 4) `archive/root-history/BENCHMARK_REFACTORING_SUMMARY.md`
+## 8) `gradlew.bat`
+- Wrapper Gradle para Windows.
 
-**Papel**: Sumário formal da refatoração profissional do módulo de benchmarks, detalhando requisitos, validações, monitoramento ambiental e testes.  
-**Conexões**:
-- Relaciona-se ao fluxo de benchmark em `app/` e documentação dedicada (ex.: `BENCHMARK_MANAGER.md`, citado na descrição do sumário).  
-- Complementa o `README.md`, que cita o módulo de benchmarks e suas métricas.  
-**Evidência**: lista classes e responsabilidades implementadas, além de estratégias de validação.  
+## 9) `.gitignore`
+- Regras de exclusão de artefatos e arquivos sensíveis.
 
----
+## 10) `.firebaserc`
+- Configuração do projeto padrão no Firebase CLI.
 
-## 5) `archive/root-history/IMPLEMENTATION_SUMMARY.md`
+## 11) `PROJECT_STATE.md`
+- Estado consolidado do projeto e marcos recentes.
 
-**Papel**: Sumário de implementação do Vectra Core MVP, com histórico, lista de arquivos criados/modificados e justificativas técnicas.  
-**Conexões**:
-- Referencia diretamente `VECTRA_CORE.md` como documentação principal do framework.  
-- Relaciona alterações no `app/build.gradle` (flag `VECTRA_CORE_ENABLED`) e ajustes no `README.md`.  
-**Evidência**: lista arquivos, componentes e comportamento de build/debug/release.  
+## 12) `CHANGELOG.md`
+- Histórico de mudanças por versão/período.
 
----
+## 13) `DOC_INDEX.md`
+- Índice de documentação do repositório.
 
-## 6) `archive/root-history/IMPLEMENTATION_COMPLETE.md`
+## 14) `RELEASE_NOTES.md`
+- Notas de release e highlights por entrega.
 
-**Papel**: Relatório de conclusão das “Advanced Optimization Modules”, com escopo de implementação, métodos adicionados, testes e QA.  
-**Conexões**:
-- Complementa `archive/root-history/ADVANCED_OPTIMIZATIONS.md` com status e métricas de implementação.  
-- Indica módulos de teste associados, reforçando rastreabilidade técnica.  
-**Evidência**: detalha módulos, métodos, testes e status de compilação.  
+## 15) `THIRD_PARTY_NOTICES.md`
+- Avisos e atribuições de componentes de terceiros.
 
----
+## 16) `VECTRAS_MEGAPROMPT_DOCS.md`
+- Documento de diretrizes/prompt documental do projeto.
 
-## 7) `LICENSE`
+## 17) `CMakeLists.txt`
+- Configuração de build C/C++ (CMake) na raiz.
 
-**Papel**: Licença GPL v2.0 com seção de atribuição explícita ao autor original e ao mantenedor do fork.  
-**Conexões**:
-- Vincula juridicamente o projeto e os arquivos derivados, em linha com as políticas de atribuição do `README.md`.  
-**Evidência**: inclui texto completo da GPL v2.0 e atribuição explícita.  
+## 18) `Makefile`
+- Alvos de automação/build auxiliares na raiz.
+
+## 19) `local.properties.example`
+- Exemplo de propriedades locais para configuração de ambiente.
 
 ---
 
-## 8) `build.gradle` (nível raiz)
+## Itens históricos (fora da lista de arquivos raiz)
 
-**Papel**: Configuração de build de nível superior: versões de plugins, repositórios, tarefa `clean` e propriedades globais (`toolsVersion`, `compileApi`, `targetApi`, `minApi`).  
-**Conexões**:
-- Define `kotlin_version` e plugins que impactam o build dos módulos.  
-- Exporta propriedades consumidas pelos módulos, especialmente `app/build.gradle` via `minApi`, `targetApi` etc.  
-**Evidência**: mostra a configuração do `buildscript`, `allprojects` e `ext` com versões.  
+Os itens abaixo **não são arquivos soltos da raiz**; permanecem aqui apenas como referência histórica:
 
----
+- `archive/root-history/ADVANCED_OPTIMIZATIONS.md`
+- `archive/root-history/BENCHMARK_REFACTORING_SUMMARY.md`
+- `archive/root-history/IMPLEMENTATION_SUMMARY.md`
+- `archive/root-history/IMPLEMENTATION_COMPLETE.md`
 
-## 9) `settings.gradle`
-
-**Papel**: Declara o nome do projeto e inclui os módulos Gradle (`:app`, `:terminal-emulator`, `:terminal-view`, `:shell-loader:stub`, `:shell-loader`).  
-**Conexões**:
-- Controla quais diretórios/módulos participam do build.  
-- Garante que os módulos listados estejam disponíveis para dependências entre projetos.  
-**Evidência**: lista explícita dos módulos incluídos.  
+### Nota histórica sobre assinatura
+`vectras.jks` **não está presente na raiz atual**. Quando citado, deve ser tratado apenas como contexto histórico de assinatura, fora do inventário de arquivos raiz.
 
 ---
 
-## 10) `gradle.properties`
+## Relação Consolidada (estado atual, não automática)
 
-**Papel**: Propriedades globais do Gradle; define parâmetros de JVM, compatibilidade e flags AndroidX.  
-**Conexões**:
-- `org.gradle.jvmargs` afeta performance/estabilidade do build.  
-- `android.useAndroidX=true` influencia dependências e APIs do app.  
-**Evidência**: valores definidos para JVM args, AndroidX e `SDK_VERSION`.  
+A relação abaixo descreve o encadeamento funcional de alto nível **com base em revisão manual periódica** (não é descoberta automática):
 
----
+1. **Base institucional**: `README.md` e `LICENSE`.
+2. **Build e configuração**: `build.gradle`, `settings.gradle`, `gradle.properties`, `gradlew`, `gradlew.bat`, `CMakeLists.txt`, `Makefile`, `local.properties.example`.
+3. **Governança documental**: `DOC_INDEX.md`, `PROJECT_STATE.md`, `CHANGELOG.md`, `RELEASE_NOTES.md`, `THIRD_PARTY_NOTICES.md`, `VECTRAS_MEGAPROMPT_DOCS.md`, `VECTRA_CORE.md`.
+4. **Integrações**: `.firebaserc` e regras operacionais em `.gitignore`.
 
-## 11) `gradlew`
-
-**Papel**: Script de inicialização do Gradle Wrapper para sistemas Unix-like (Linux/macOS), responsável por resolver o ambiente Java e invocar o wrapper.  
-**Conexões**:
-- Usa `gradle/wrapper/gradle-wrapper.jar` para garantir versão consistente do Gradle.  
-- Permite builds reproduzíveis via `./gradlew`, alinhado às práticas de CI.  
-**Evidência**: script padrão do Gradle com resolução de JAVA_HOME e wrapper jar.  
+> Importante: este catálogo é um artefato editorial; pode ficar defasado se a raiz mudar sem atualização correspondente.
 
 ---
 
-## 12) `gradlew.bat`
+## Regra de manutenção recomendada
 
-**Papel**: Script equivalente do Gradle Wrapper para Windows, com lógica para localização do Java e execução do wrapper jar.  
-**Conexões**:
-- Complementa `gradlew` para ambientes Windows e CI heterogênea.  
-- Consome o mesmo `gradle/wrapper/gradle-wrapper.jar`.  
-**Evidência**: script batch padrão do Gradle com verificação de `JAVA_HOME`.  
+Após mudanças estruturais no repositório, executar auditoria para comparar arquivos reais da raiz com o inventário documentado.
 
----
+Exemplo de comando de auditoria rápida:
 
-## 13) `.gitignore`
+```bash
+find . -maxdepth 1 -type f -printf '%P\n' | sort
+```
 
-**Papel**: Define padrões de exclusão para builds, artefatos gerados, caches e arquivos sensíveis (ex.: `google-services.json`).  
-**Conexões**:
-- Alinha com o uso do Firebase no `app/` ao ignorar `google-services.json`.  
-- Evita commit de artefatos de build e metadados de IDE.  
-**Evidência**: lista explícita de padrões para APKs, build outputs, IDE e Firebase.  
-
----
-
-## 14) `.firebaserc`
-
-**Papel**: Define o projeto padrão do Firebase associado ao repositório.  
-**Conexões**:
-- Usado pelo CLI do Firebase para sincronizar com o projeto correto.  
-- Relaciona-se a configurações em `app/` que dependem dos serviços Firebase.  
-**Evidência**: contém o projeto `"vectras-1678b"` como padrão.  
-
----
-
-## 15) `vectras.jks`
-
-**Papel**: Entrada histórica de keystore Java; atualmente documentada apenas para contexto de migração e governança de assinatura.  
-**Conexões**:
-- A assinatura de **release** é injetada em tempo de build via `android.injected.signing.*` ou variáveis `VECTRAS_RELEASE_*` (segredos de CI/cofre).  
-- Builds de **debug** usam a keystore padrão de debug do Android Gradle Plugin (AGP), sem reutilizar credenciais de release.  
-- `vectras.jks` não deve ser tratado como fluxo ativo de assinatura no repositório versionado.  
-**Evidência**: `app/build.gradle` resolve parâmetros de release a partir de propriedades/variáveis de ambiente e aplica signing apenas quando esses segredos são fornecidos; o build `debug` não define `signingConfig` customizado.  
-
-**Nota de migração histórica**: versões antigas da documentação mencionavam uso direto de keystore no repositório. O fluxo vigente migrou para injeção de segredos no CI para reduzir exposição de material criptográfico e evitar regressão documental.  
-
----
-
-## Relação Consolidada (Visão de Encadeamento)
-
-1. **Entrada institucional e licenciamento**: `README.md` ↔ `LICENSE` garantem atribuição e base legal.  
-2. **Documentação técnica**: `README.md` aponta para `VECTRA_CORE.md` e `docs/`, enquanto `archive/root-history/ADVANCED_OPTIMIZATIONS.md`, `archive/root-history/IMPLEMENTATION_SUMMARY.md`, `archive/root-history/IMPLEMENTATION_COMPLETE.md` e `archive/root-history/BENCHMARK_REFACTORING_SUMMARY.md` formam o conjunto de documentação especializada e status de implementação.  
-3. **Build e módulos**: `settings.gradle` lista módulos; `build.gradle` define plugins e versões; `gradle.properties` controla flags globais; `gradlew/gradlew.bat` garantem execução consistente.  
-4. **Integrações externas**: `.firebaserc` define o projeto Firebase; `.gitignore` evita versionamento de `google-services.json`.  
-5. **Assinatura**: release assinado via `android.injected.signing.*`/`VECTRAS_RELEASE_*` e debug assinado com keystore padrão do AGP; `vectras.jks` permanece apenas como referência histórica/documental.  
-
----
-
-### Observação de Conformidade
-Este catálogo prioriza rastreabilidade e navegabilidade documental para auditoria, assegurando que cada arquivo raiz esteja descrito, conectado ao fluxo de build/execução e referenciado nos pontos em que impacta o sistema.  
+Se houver divergência, atualizar este catálogo na mesma PR/commit da alteração estrutural.
