@@ -10,6 +10,13 @@ import java.util.Map;
 
 public class ProotCommandBuilder {
 
+    private static final String BIND_DEV = "/dev";
+    private static final String BIND_PROC = "/proc";
+    private static final String BIND_SYS = "/sys";
+    private static final String BIND_SDCARD = "/sdcard";
+    private static final String BIND_STORAGE = "/storage";
+    private static final String BIND_DATA = "/data";
+
     public static class Options {
         public String home;
         public String user;
@@ -37,6 +44,12 @@ public class ProotCommandBuilder {
     private String xdgRuntimeDir;
     private String path;
     private String sdlVideoDriver;
+    private boolean bindSdcardEnabled = true;
+    private boolean bindStorageEnabled = true;
+    private boolean bindDataEnabled = true;
+    private boolean bindDevShmEnabled = true;
+    private boolean bindTmpEnabled = true;
+    private final List<String> extraBinds = new ArrayList<>();
 
     public ProotCommandBuilder(Context context, String rootfsPath, String workDir) {
         this.context = context;
@@ -99,6 +112,38 @@ public class ProotCommandBuilder {
         return this;
     }
 
+    public ProotCommandBuilder setBindSdcardEnabled(boolean bindSdcardEnabled) {
+        this.bindSdcardEnabled = bindSdcardEnabled;
+        return this;
+    }
+
+    public ProotCommandBuilder setBindStorageEnabled(boolean bindStorageEnabled) {
+        this.bindStorageEnabled = bindStorageEnabled;
+        return this;
+    }
+
+    public ProotCommandBuilder setBindDataEnabled(boolean bindDataEnabled) {
+        this.bindDataEnabled = bindDataEnabled;
+        return this;
+    }
+
+    public ProotCommandBuilder setBindDevShmEnabled(boolean bindDevShmEnabled) {
+        this.bindDevShmEnabled = bindDevShmEnabled;
+        return this;
+    }
+
+    public ProotCommandBuilder setBindTmpEnabled(boolean bindTmpEnabled) {
+        this.bindTmpEnabled = bindTmpEnabled;
+        return this;
+    }
+
+    public ProotCommandBuilder addExtraBind(String bindSpec) {
+        if (bindSpec != null && !bindSpec.trim().isEmpty()) {
+            extraBinds.add(bindSpec);
+        }
+        return this;
+    }
+
     public void applyEnvironment(Map<String, String> environment) {
         Options options = new Options();
         options.home = home;
@@ -139,8 +184,7 @@ public class ProotCommandBuilder {
 
     public List<String> buildCommand() {
         String filesDir = resolveFilesDirPath();
-        String devShmBind = filesDir + "/distro/root:/dev/shm";
-        String tmpBind = filesDir + "/usr/tmp:/tmp";
+        List<String> binds = resolveFinalBinds(filesDir);
 
         List<String> command = new ArrayList<>();
         command.add(TermuxService.PREFIX_PATH + "/bin/proot");
@@ -149,28 +193,72 @@ public class ProotCommandBuilder {
         command.add("-0");
         command.add("-r");
         command.add(rootfsPath);
-        command.add("-b");
-        command.add("/dev");
-        command.add("-b");
-        command.add("/proc");
-        command.add("-b");
-        command.add("/sys");
-        command.add("-b");
-        command.add("/sdcard");
-        command.add("-b");
-        command.add("/storage");
-        command.add("-b");
-        command.add("/data");
-        command.add("-b");
-        command.add(devShmBind);
-        command.add("-b");
-        command.add(tmpBind);
+        for (String bind : binds) {
+            command.add("-b");
+            command.add(bind);
+        }
         command.add("-w");
         command.add(workDir);
         command.add("/bin/sh");
         command.add("--login");
 
         return command;
+    }
+
+    static List<String> buildDefaultBinds(String filesDir) {
+        List<String> binds = new ArrayList<>();
+        binds.add(BIND_DEV);
+        binds.add(BIND_PROC);
+        binds.add(BIND_SYS);
+        binds.add(BIND_SDCARD);
+        binds.add(BIND_STORAGE);
+        binds.add(BIND_DATA);
+        binds.add(devShmBind(filesDir));
+        binds.add(tmpBind(filesDir));
+        return binds;
+    }
+
+    private List<String> resolveFinalBinds(String filesDir) {
+        boolean allBaselineEnabled = bindSdcardEnabled
+                && bindStorageEnabled
+                && bindDataEnabled
+                && bindDevShmEnabled
+                && bindTmpEnabled;
+
+        List<String> binds = allBaselineEnabled ? buildDefaultBinds(filesDir) : new ArrayList<>();
+
+        if (!allBaselineEnabled) {
+            binds.add(BIND_DEV);
+            binds.add(BIND_PROC);
+            binds.add(BIND_SYS);
+
+            if (bindSdcardEnabled) {
+                binds.add(BIND_SDCARD);
+            }
+            if (bindStorageEnabled) {
+                binds.add(BIND_STORAGE);
+            }
+            if (bindDataEnabled) {
+                binds.add(BIND_DATA);
+            }
+            if (bindDevShmEnabled) {
+                binds.add(devShmBind(filesDir));
+            }
+            if (bindTmpEnabled) {
+                binds.add(tmpBind(filesDir));
+            }
+        }
+
+        binds.addAll(extraBinds);
+        return binds;
+    }
+
+    private static String devShmBind(String filesDir) {
+        return filesDir + "/distro/root:/dev/shm";
+    }
+
+    private static String tmpBind(String filesDir) {
+        return filesDir + "/usr/tmp:/tmp";
     }
 
     private String resolveFilesDirPath() {

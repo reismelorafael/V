@@ -16,7 +16,7 @@ import java.util.Map;
 public class ProotCommandBuilderTest {
 
     @Test
-    public void buildCommandShouldUseExpectedProotArgumentsAndBinds() {
+    public void buildCommandShouldUseExpectedProotArgumentsAndFullBaselineBinds() {
         Context context = Mockito.mock(Context.class);
         Mockito.when(context.getFilesDir()).thenReturn(new File("/data/user/0/com.vectras.vm/files"));
 
@@ -42,6 +42,39 @@ public class ProotCommandBuilderTest {
 
         Assert.assertEquals("/bin/sh", command.get(command.size() - 2));
         Assert.assertEquals("--login", command.get(command.size() - 1));
+    }
+
+    @Test
+    public void buildCommandShouldAllowSelectiveBindDisable() {
+        Context context = Mockito.mock(Context.class);
+        Mockito.when(context.getFilesDir()).thenReturn(new File("/data/user/0/com.vectras.vm/files"));
+
+        ProotCommandBuilder builder = new ProotCommandBuilder(context, "/data/user/0/com.vectras.vm/files/distro", "/root")
+                .setBindSdcardEnabled(false);
+
+        List<String> command = builder.buildCommand();
+
+        assertMissingPair(command, "-b", "/sdcard");
+        assertHasPair(command, "-b", "/dev");
+        assertHasPair(command, "-b", "/proc");
+        assertHasPair(command, "-b", "/sys");
+        assertHasPair(command, "-b", "/storage");
+        assertHasPair(command, "-b", "/data");
+        assertHasPair(command, "-b", "/data/user/0/com.vectras.vm/files/distro/root:/dev/shm");
+        assertHasPair(command, "-b", "/data/user/0/com.vectras.vm/files/usr/tmp:/tmp");
+    }
+
+    @Test
+    public void buildCommandShouldIncludeExtraBindFromApi() {
+        Context context = Mockito.mock(Context.class);
+        Mockito.when(context.getFilesDir()).thenReturn(new File("/data/user/0/com.vectras.vm/files"));
+
+        ProotCommandBuilder builder = new ProotCommandBuilder(context, "/data/user/0/com.vectras.vm/files/distro", "/root")
+                .addExtraBind("/vendor:/vendor");
+
+        List<String> command = builder.buildCommand();
+
+        assertHasPair(command, "-b", "/vendor:/vendor");
     }
 
     @Test
@@ -97,5 +130,13 @@ public class ProotCommandBuilderTest {
             }
         }
         Assert.fail("Expected pair not found: " + key + " " + expectedValue);
+    }
+
+    private static void assertMissingPair(List<String> values, String key, String unexpectedValue) {
+        for (int i = 0; i < values.size() - 1; i++) {
+            if (key.equals(values.get(i)) && unexpectedValue.equals(values.get(i + 1))) {
+                Assert.fail("Unexpected pair found: " + key + " " + unexpectedValue);
+            }
+        }
     }
 }
