@@ -49,7 +49,7 @@ public class Terminal {
     private final Context context;
     private static final String user = "root";
 
-    public static Process qemuProcess;
+    public static volatile Process qemuProcess;
     public static String DISPLAY = ":0";
     private static final AtomicBoolean STREAM_STOP_TOKEN = new AtomicBoolean(false);
     private static final int MAX_LOG_LINES = 1500;
@@ -201,6 +201,7 @@ public class Terminal {
         if (showProgressDialog) progressDialog.show();
 
         new Thread(() -> {
+            Process launchedProcess = null;
             try {
                 ProcessBuilder processBuilder = new ProcessBuilder();
 
@@ -236,11 +237,12 @@ public class Terminal {
                 };
 
                 processBuilder.command(prootCommand);
-                qemuProcess = processBuilder.start();
+                launchedProcess = processBuilder.start();
+                qemuProcess = launchedProcess;
                 Terminal.resetStreamingStopToken();
-                safeRegisterVmProcess(getContext(), vmId, qemuProcess, errors);
+                safeRegisterVmProcess(getContext(), vmId, launchedProcess, errors);
 
-                output.set(streamLog(userCommand, qemuProcess, false));
+                output.set(streamLog(userCommand, launchedProcess, false));
             } catch (IOException e) {
                 VMManager.clearVmStarting(vmId);
                 rotateTransientVmIdAfterBootstrapFailure(vmId);
@@ -248,7 +250,7 @@ public class Terminal {
                 output.get().append(e.getMessage());
                 errors.append(Log.getStackTraceString(e));
             } finally {
-                safeUnregisterVmProcess(vmId, qemuProcess);
+                safeUnregisterVmProcess(vmId, launchedProcess);
                 VMManager.clearVmStarting(vmId);
                 new Handler(Looper.getMainLooper()).post(() -> {
                     dismissProgressDialogSafely(progressDialog);
@@ -274,6 +276,7 @@ public class Terminal {
             com.vectras.vm.logger.VectrasStatus.logError("<font color='#4db6ac'>VTERM: >" + userCommand + "</font>");
         }
         new Thread(() -> {
+            Process launchedProcess = null;
             try {
                 // Set up the qemuProcess builder to start PRoot with environmental variables and commands
                 ProcessBuilder processBuilder = new ProcessBuilder();
@@ -319,11 +322,12 @@ public class Terminal {
                 };
 
                 processBuilder.command(prootCommand);
-                qemuProcess = processBuilder.start();
+                launchedProcess = processBuilder.start();
+                qemuProcess = launchedProcess;
                 Terminal.resetStreamingStopToken();
-                safeRegisterVmProcess(getContext(), vmId, qemuProcess, errors);
+                safeRegisterVmProcess(getContext(), vmId, launchedProcess, errors);
 
-                output.set(streamLog(userCommand, qemuProcess, false));
+                output.set(streamLog(userCommand, launchedProcess, false));
             } catch (IOException e) {
                 VMManager.clearVmStarting(vmId);
                 rotateTransientVmIdAfterBootstrapFailure(vmId);
@@ -331,7 +335,7 @@ public class Terminal {
                 errors.append(Log.getStackTraceString(e));
                 NotificationUtils.clearAll(VectrasApp.getContext());
             } finally {
-                safeUnregisterVmProcess(vmId, qemuProcess);
+                safeUnregisterVmProcess(vmId, launchedProcess);
                 VMManager.clearVmStarting(vmId);
                 // Switch to main thread after execution
                 new Handler(Looper.getMainLooper()).post(() -> {
@@ -363,6 +367,7 @@ public class Terminal {
         Log.d(TAG, userCommand);
         com.vectras.vm.logger.VectrasStatus.logError("<font color='#4db6ac'>VTERM: >" + userCommand + "</font>");
 
+        Process launchedProcess = null;
         try {
             ProcessBuilder processBuilder = new ProcessBuilder();
 
@@ -398,18 +403,19 @@ public class Terminal {
             };
 
             processBuilder.command(prootCommand);
-            qemuProcess = processBuilder.start();
+            launchedProcess = processBuilder.start();
+            qemuProcess = launchedProcess;
             Terminal.resetStreamingStopToken();
-            safeRegisterVmProcess(context, vmId, qemuProcess, errors);
+            safeRegisterVmProcess(context, vmId, launchedProcess, errors);
 
-            output = streamLog(userCommand, qemuProcess, false);
+            output = streamLog(userCommand, launchedProcess, false);
         } catch (IOException e) {
             VMManager.clearVmStarting(vmId);
             rotateTransientVmIdAfterBootstrapFailure(vmId);
             output.append(e.getMessage());
             errors.append(Log.getStackTraceString(e));
         } finally {
-            safeUnregisterVmProcess(vmId, qemuProcess);
+            safeUnregisterVmProcess(vmId, launchedProcess);
             VMManager.clearVmStarting(vmId);
         }
         return output.toString();
@@ -447,6 +453,7 @@ public class Terminal {
         if (isShowProgressDialog) new Handler(Looper.getMainLooper()).post(progressDialog::show);
 
         new Thread(() -> {
+            Process launchedProcess = null;
             try {
                 ProcessBuilder processBuilder = new ProcessBuilder();
 
@@ -482,18 +489,19 @@ public class Terminal {
                 };
 
                 processBuilder.command(prootCommand);
-                qemuProcess = processBuilder.start();
+                launchedProcess = processBuilder.start();
+                qemuProcess = launchedProcess;
                 Terminal.resetStreamingStopToken();
-                safeRegisterVmProcess(getContext(), vmId, qemuProcess, errors);
+                safeRegisterVmProcess(getContext(), vmId, launchedProcess, errors);
 
-                output.set(streamLog(userCommand, qemuProcess, true));
+                output.set(streamLog(userCommand, launchedProcess, true));
 
             } catch (IOException e) {
                 VMManager.clearVmStarting(vmId);
                 output.get().append(e.getMessage());
                 errors.append(Log.getStackTraceString(e));
             } finally {
-                safeUnregisterVmProcess(vmId, qemuProcess);
+                safeUnregisterVmProcess(vmId, launchedProcess);
                 VMManager.clearVmStarting(vmId);
                 dismissProgressDialogSafely(progressDialog);
 
