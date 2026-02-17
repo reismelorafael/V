@@ -18,6 +18,7 @@ import android.os.ParcelFileDescriptor;
 import org.junit.Test;
 
 import java.lang.reflect.Method;
+import java.util.UUID;
 
 public class FileUtilsOpenModeTest {
 
@@ -109,5 +110,22 @@ public class FileUtilsOpenModeTest {
         verify(resolver, times(2)).openFileDescriptor(uri, "rw");
 
         pfd.close();
+    }
+
+    @Test
+    public void fileValid_localExistingFileWithRwMode_shouldReturnTrue() throws Exception {
+        File tempFile = File.createTempFile("vectras-local", ".img");
+
+        assertTrue(FileUtils.fileValid(null, tempFile.getAbsolutePath(), "rw"));
+    }
+
+    @Test
+    public void fileValid_localMissingFile_shouldReturnFalse() {
+        String missingFilePath = new File(
+                System.getProperty("java.io.tmpdir"),
+                "vectras-missing-" + UUID.randomUUID() + ".img")
+                .getAbsolutePath();
+
+        assertFalse(FileUtils.fileValid(null, missingFilePath, "rw"));
     }
 }
