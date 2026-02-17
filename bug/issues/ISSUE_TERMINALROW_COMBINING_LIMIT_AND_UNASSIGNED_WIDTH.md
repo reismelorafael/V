@@ -15,3 +15,12 @@
 - Limite explícito e determinístico de combining marks por célula.
 - `UNASSIGNED` com width zero deve ser tratado como largura imprimível (1) para inserção.
 - Cobertura de regressão em `terminal-emulator/src/test/.../TerminalRowTest.java`.
+
+## Status de verificação
+- **Situação:** Corrigido no código-fonte.
+- **Evidência de implementação:**
+  - Constante `MAX_COMBINING_CODE_POINTS_PER_CELL = 5` e bloqueio de inserção quando excede limite.
+  - `getDisplayWidthForCodePoint()` força width=1 para `Character.UNASSIGNED` com width zero.
+- **Evidência de teste existente:**
+  - `testCombiningCharacterCountIsCappedPerCell()`.
+  - `testUnassignedWidthZeroCodePointDoesNotBehaveAsCombining()`.

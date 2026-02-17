@@ -15,3 +15,14 @@
 - Ignorar eventos intermediários de acento combinante sem texto final.
 - Manter fallback estável para `super.dispatchKeyEvent(event)`.
 - Cobertura de regressão em testes unitários do módulo `app`.
+
+## Status de verificação
+- **Situação:** Corrigido no código-fonte.
+- **Evidência de implementação:**
+  - `dispatchKeyEvent()` usa `extractComposedText(...)` e envia texto composto via `vncCanvas.sendText(...)`.
+  - `extractComposedText(...)` retorna `characters` em `ACTION_MULTIPLE` quando payload existe.
+  - Eventos intermediários com `KeyCharacterMap.COMBINING_ACCENT` retornam `null`.
+- **Evidência de teste existente:**
+  - `extractComposedText_shouldReturnCharactersForActionMultiplePayload()`.
+  - `extractComposedText_shouldReturnCharactersForActionMultipleEvenWithKnownKeyCode()`.
+  - `extractComposedText_shouldIgnoreCombiningAccentIntermediateKey()`.

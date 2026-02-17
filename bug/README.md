@@ -1,28 +1,41 @@
 # bug/
 
-Repositório de diagnósticos, enumeração de falhas, propostas de correção e guias operacionais de patch para o ciclo de bugs do Vectras VM Android.
+Camada canônica de gestão de falhas do Vectras VM Android: diagnóstico técnico, rastreabilidade de código-fonte, priorização e execução de hotfix.
 
-## Escopo
-- Consolidar investigação técnica de bugs, impacto funcional e rastreabilidade de correções.
-- Reunir artefatos de análise (sumários, matrizes, guias de implementação e documentos de deploy).
-- Servir como camada temática focada em falhas dentro do modelo de documentação do projeto.
+## Escopo operacional
+- Consolidar bugs conhecidos em artefatos auditáveis.
+- Ligar cada bug a arquivos reais do código-fonte e aos testes de regressão.
+- Separar backlog priorizado (`prioridade/`), execução ativa (`fazer hotfix/`) e histórico concluído (`feito/`).
 
-## Objetivo
-- Facilitar triagem e priorização de falhas a partir de um ponto único.
-- Conectar enumeração (`BUGS_ENUMERATION.md`) com remediação (`BUG_FIXES.md` e patches associados).
-- Preservar histórico técnico para auditoria, validação e retomada de contexto.
+## Estrutura de diretórios
+- `issues/`: issues técnicas atômicas (uma falha por documento) com arquivo alvo, impacto e critério de aceite.
+- `prioridade/`: material de triagem e ordenação de urgência.
+- `fazer hotfix/`: fila de implementação imediata.
+- `feito/`: destino de documentação encerrada após validação.
 
-## Relação com `docs/`, `reports/` e raiz
-- **Com `docs/`**: `bug/` é especializado em ciclo de bugs; `docs/` permanece como curadoria técnica transversal e base institucional.
-- **Com `reports/`**: `reports/` agrega relatórios executivos/operacionais mais amplos; `bug/` mantém foco em defeitos, correções e guias de implementação.
-- **Com a raiz**: a raiz (`README.md`, `DOC_INDEX.md`) funciona como camada de navegação global e indexa `bug/` junto aos demais diretórios padronizados.
+## Mapa de código-fonte validado para o ciclo de bugs
+Principais alvos já referenciados pelos issues desta pasta:
+- `terminal-emulator/src/main/java/com/termux/terminal/TerminalRow.java`
+- `app/src/main/java/com/vectras/qemu/MainVNCActivity.java`
+- `app/src/main/java/com/vectras/qemu/utils/FileUtils.java`
 
-## Consistência de nomenclatura
-Validação alinhada ao padrão aplicado em `engine/`, `tools/` e `docs/`:
-- Presença do par obrigatório `README.md` + `FILES_MAP.md` no diretório.
-- Arquivos centrais de documentação em `UPPER_SNAKE_CASE.md` (ex.: `BUGS_ENUMERATION.md`, `BUG_FIXES.md`, `SUMARIO_EXECUTIVO.md`).
-- Arquivo de síntese rápida fora do padrão Markdown mantido explicitamente (`SIGMA_SUMMARY.txt`) e descrito no mapa local.
+Testes de regressão associados:
+- `terminal-emulator/src/test/java/com/termux/terminal/TerminalRowTest.java`
+- `app/src/test/java/com/vectras/qemu/MainVNCActivityDispatchKeyEventTest.java`
+- `app/src/test/java/com/vectras/qemu/utils/FileUtilsOpenModeTest.java`
+- `app/src/test/java/com/vectras/qemu/utils/FileUtilsPathReplaceTest.java`
 
-## Navegação local
-- [README.md](README.md)
+## Fluxo recomendado
+1. Registrar bug em `issues/` com critérios objetivos.
+2. Priorizar em `prioridade/` com risco/impacto.
+3. Executar em `fazer hotfix/` com patch + teste.
+4. Mover artefatos fechados para `feito/` mantendo trilha de auditoria.
+
+## Navegação
 - [FILES_MAP.md](FILES_MAP.md)
+- [SOURCE_CODE_TRACEABILITY.md](SOURCE_CODE_TRACEABILITY.md)
+- [STATUS_CORRECOES_VERIFICADAS.md](STATUS_CORRECOES_VERIFICADAS.md)
+- [issues/README.md](issues/README.md)
+- [prioridade/readme.md](prioridade/readme.md)
+- [fazer hotfix/readme.md](fazer hotfix/readme.md)
+- [feito/README.md](feito/README.md)

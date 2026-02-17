@@ -1,24 +1,56 @@
 # bug/FILES_MAP.md
 
-Mapa arquivo-a-arquivo do diretório `bug/`, com função primária e status documental.
+Inventário do diretório `bug/` e subdiretórios operacionais.
+
+## Arquivos canônicos de navegação
 
 | Arquivo | Função | Status |
 |---|---|---|
-| `1_RAFAELIA_BITRAF64_KERNEL.md` | Especifica módulo kernel/bitraf aplicado ao contexto de correção de bugs. | Ativo |
-| `2_DETERMINISTIC_COHERENCE_MATRIX.md` | Registra matriz de coerência determinística para análise de estabilidade e regressões. | Ativo |
-| `3_ZIP_DETERMINISTIC_CONTAINER.md` | Documenta estratégia de empacotamento determinístico para artefatos de correção. | Ativo |
-| `4_GEOMETRIC_PARITY_REDUNDANCY.md` | Detalha mecanismo de paridade/redundância para integridade em cenários de falha. | Ativo |
-| `5_OMEGA_SME_COMPRESSION_CODEC.md` | Define proposta técnica de codec/compressão relacionada ao fluxo de correção. | Ativo |
-| `ANALISE_CODIGO_VECTRAS_v3.6.5.md` | Análise técnica de código da versão 3.6.5 com foco em problemas identificados. | Ativo |
-| `BUGS_ENUMERATION.md` | Catálogo de bugs identificados, com base para triagem e priorização. | Referência principal |
-| `BUG_FIXES.md` | Registro consolidado das correções aplicadas e direcionamentos de mitigação. | Referência principal |
-| `BUG_FIXES_AND_PATCHES_EXACT_CODE.md` | Mapeia correções com trechos/códigos exatos de patch para aplicação controlada. | Ativo |
-| `DEPLOYMENT_GUIDE_COMPLETO.md` | Guia de implantação de patches e validação operacional pós-correção. | Ativo |
-| `GUIA_TECNICO_IMPLEMENTACAO_PATCHES.md` | Procedimento técnico de implementação de patches no ciclo de manutenção. | Ativo |
-| `SIGMA_SUMMARY.txt` | Sumário textual rápido para visão consolidada do estado de bugs/correções. | Sumário auxiliar |
-| `SUMARIO_EXECUTIVO.md` | Visão executiva de impacto, direcionamento e prioridade de ações de correção. | Referência executiva |
-| `issues/ISSUE_TERMINALROW_COMBINING_LIMIT_AND_UNASSIGNED_WIDTH.md` | Issue de rastreio para limite de combining marks e width de UNASSIGNED em `TerminalRow`. | Novo |
-| `issues/ISSUE_MAINVNCACTIVITY_DISPATCHKEYEVENT_IME_COMPOSITION.md` | Issue de rastreio para revisão de IME/composição em `dispatchKeyEvent`. | Novo |
-| `issues/ISSUE_FILEUTILS_BACKEND_MODE_AND_ISO_READONLY.md` | Issue de rastreio para modo do backend e read-only efetivo em ISO. | Novo |
-| `README.md` | Define escopo, objetivo, integração e validação de nomenclatura do diretório `bug/`. | Canônico |
-| `FILES_MAP.md` | Este índice arquivo-a-arquivo com função e status dos artefatos de `bug/`. | Canônico |
+| `README.md` | Escopo, fluxo e integração da gestão de bugs. | Canônico |
+| `FILES_MAP.md` | Inventário do diretório e subdiretórios. | Canônico |
+| `SOURCE_CODE_TRACEABILITY.md` | Matriz documentação ↔ código-fonte ↔ testes. | Canônico |
+| `STATUS_CORRECOES_VERIFICADAS.md` | Verificação consolidada do que já está corrigido. | Canônico |
+
+## Base técnica de análise e correção
+
+| Arquivo | Função | Status |
+|---|---|---|
+| `BUGS_ENUMERATION.md` | Catálogo estruturado de falhas. | Referência principal |
+| `BUG_FIXES.md` | Registro consolidado de correções e mitigação. | Referência principal |
+| `BUG_FIXES_AND_PATCHES_EXACT_CODE.md` | Patches/códigos de correção detalhados. | Ativo |
+| `GUIA_TECNICO_IMPLEMENTACAO_PATCHES.md` | Procedimento técnico de implementação de patch. | Ativo |
+| `DEPLOYMENT_GUIDE_COMPLETO.md` | Guia de rollout e validação pós-correção. | Ativo |
+| `SUMARIO_EXECUTIVO.md` | Visão executiva de impacto e direção. | Ativo |
+
+## Arquivos analíticos e complementares
+
+| Arquivo | Função | Status |
+|---|---|---|
+| `1_RAFAELIA_BITRAF64_KERNEL.md` | Especificação de camada kernel no contexto de falhas. | Ativo |
+| `2_DETERMINISTIC_COHERENCE_MATRIX.md` | Matriz de coerência determinística para estabilidade. | Ativo |
+| `3_ZIP_DETERMINISTIC_CONTAINER.md` | Estratégia de empacotamento determinístico. | Ativo |
+| `4_GEOMETRIC_PARITY_REDUNDANCY.md` | Integridade por paridade/redundância geométrica. | Ativo |
+| `5_OMEGA_SME_COMPRESSION_CODEC.md` | Proposta de codec/compressão aplicada a artefatos. | Ativo |
+| `ANALISE_CODIGO_VECTRAS_v3.6.5.md` | Análise técnica de código versão 3.6.5. | Ativo |
+| `ANALISE_SO_COMPLETO_BIOS_FIRMWARE_BOOTLOADER.md` | Diagnóstico de stack SO/boot/firmware. | Ativo |
+| `ANALISE_REAL_COMPILACAO_HARDWARE.md` | Estudo real de compilação e hardware. | Ativo |
+| `ANALISE_REAL_HARDWARE_COMPLETA.md` | Revisão ampla de compatibilidade hardware. | Ativo |
+| `ANALISE_70_METRICAS_DATACENTER.md` | Avaliação por métricas de desempenho/infra. | Ativo |
+| `ANALISE_COMPLETA_8_NIVEIS_SEMANTICOS.md` | Revisão semântica multicamada. | Ativo |
+| `AUTOTUNE_ADAPTATIVO_REAL.md` | Diretrizes de autotune adaptativo. | Ativo |
+| `COMPARACAO_UPSTREAM_VS_OTIMIZADO.md` | Delta entre baseline upstream e otimizações. | Ativo |
+| `EXPERIENCIA_USUARIO_IMPACTO_TRABALHO.md` | Impacto em UX e operação. | Ativo |
+| `MATRIZ_T_ESPACO_ESTADOS_VERDADE.md` | Espaço de estados e consistência. | Ativo |
+| `STATUS_IMPLEMENTACAO_COMPLETO.md` | Situação consolidada de implementação. | Ativo |
+| `VERDADE_CRITICA_SEM_ABSTRACCAO.md` | Análise crítica sem abstração. | Ativo |
+| `VECTRAS_ANALISE_TECNICA_DETALHADA.md` | Diagnóstico técnico detalhado. | Ativo |
+| `VECTRAS_CODIGO_ALEM_DOCUMENTACAO.md` | Relação código vs documentação. | Ativo |
+
+## Subdiretórios
+
+| Diretório | Função | Arquivos de entrada |
+|---|---|---|
+| `issues/` | Issues técnicas por bug. | `issues/README.md`, `issues/FILES_MAP.md` |
+| `prioridade/` | Triagem/priorização de correções. | `prioridade/readme.md`, `prioridade/FILES_MAP.md` |
+| `fazer hotfix/` | Fila de correção imediata. | `fazer hotfix/readme.md`, `fazer hotfix/FILES_MAP.md` |
+| `feito/` | Histórico de hotfix concluído. | `feito/README.md`, `feito/FILES_MAP.md` |
