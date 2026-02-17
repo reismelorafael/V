@@ -178,11 +178,12 @@ public class TermuxFileReceiverActivity extends Activity {
         }
         try {
             final File outFile = new File(receiveDir, attachmentFileName);
-            try (InputStream in = streamOpener.open(); FileOutputStream f = new FileOutputStream(outFile)) {
-                if (in == null) {
-                    showErrorDialogAndQuit("Error saving file:\n\nCannot open input stream.");
-                    return null;
-                }
+            final InputStream in = streamOpener.open();
+            if (in == null) {
+                showErrorDialogAndQuit("Error saving file:\n\nCannot open input stream.");
+                return null;
+            }
+            try (in; FileOutputStream f = new FileOutputStream(outFile)) {
                 byte[] buffer = new byte[4096];
                 int readBytes;
                 while ((readBytes = in.read(buffer)) > 0) {
