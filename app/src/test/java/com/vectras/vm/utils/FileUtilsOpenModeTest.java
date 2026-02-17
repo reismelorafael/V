@@ -23,6 +23,7 @@ public class FileUtilsOpenModeTest {
     @Test
     public void resolveContentOpenMode_shouldHonorSupportedModesAndFallbackSafely() {
         assertEquals("r", FileUtils.resolveContentOpenMode("content://disk.qcow2", "r"));
+        assertEquals("r", FileUtils.resolveContentOpenMode("content://disk.iso", "rw"));
         assertEquals("w", FileUtils.resolveContentOpenMode("content://disk.qcow2", "w"));
         assertEquals("rw", FileUtils.resolveContentOpenMode("content://disk.qcow2", "rw"));
         assertEquals("wt", FileUtils.resolveContentOpenMode("content://disk.qcow2", "wt"));

@@ -482,11 +482,15 @@ public class FileUtils {
 	}
 
 	public static boolean fileValid(Context context, String path) {
+		return fileValid(context, path, null);
+	}
+
+	public static boolean fileValid(Context context, String path, String backendMode) {
 
 		if (path == null || path.equals(""))
 			return true;
 		if (path.startsWith("content://") || path.startsWith("/content/")) {
-			int fd = get_fd(context, path);
+			int fd = get_fd(context, path, backendMode);
 			if (fd <= 0)
 				return false;
 		} else {
