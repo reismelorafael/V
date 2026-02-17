@@ -38,6 +38,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Block sensitive artifacts in repository
+        run: bash tools/security/block_sensitive_artifacts.sh
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
