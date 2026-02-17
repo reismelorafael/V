@@ -192,12 +192,14 @@ public class TerminalBottomSheetDialog {
 
                     // Adjust these environment variables as necessary for your app
                     String filesDir = AppConfig.internalDataDirPath;
+                    String tmpDirPath = "/tmp";
 
                     ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(activity, filesDir + "/distro", "/root")
                             .setFilesDirPath(filesDir)
                             .setDisplay(":0")
                             .setPulseServer("127.0.0.1")
-                            .setXdgRuntimeDir("${TMPDIR}")
+                            .setTmpDir(tmpDirPath)
+                            .setXdgRuntimeDir(tmpDirPath)
                             .setSdlVideoDriver("x11");
                     prootCommandBuilder.applyEnvironment(processBuilder.environment());
                     processBuilder.command(prootCommandBuilder.buildCommand());

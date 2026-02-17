@@ -10,6 +10,19 @@ import java.util.Map;
 
 public class ProotCommandBuilder {
 
+    public static class Options {
+        public String home;
+        public String user;
+        public String term;
+        public String tmpDir;
+        public String shell;
+        public String display;
+        public String pulseServer;
+        public String xdgRuntimeDir;
+        public String path;
+        public String sdlVideoDriver;
+    }
+
     private final Context context;
     private final String rootfsPath;
     private final String workDir;
@@ -87,18 +100,41 @@ public class ProotCommandBuilder {
     }
 
     public void applyEnvironment(Map<String, String> environment) {
+        Options options = new Options();
+        options.home = home;
+        options.user = user;
+        options.term = term;
+        options.tmpDir = tmpDir;
+        options.shell = shell;
+        options.display = display;
+        options.pulseServer = pulseServer;
+        options.xdgRuntimeDir = xdgRuntimeDir;
+        options.path = path;
+        options.sdlVideoDriver = sdlVideoDriver;
+        applyDefaultEnv(environment, options);
+    }
+
+    public void applyDefaultEnv(ProcessBuilder processBuilder, Options options) {
+        applyDefaultEnv(processBuilder.environment(), options);
+    }
+
+    public void applyDefaultEnv(Map<String, String> environment, Options options) {
         String filesDir = resolveFilesDirPath();
+        Options resolved = options != null ? options : new Options();
+        String resolvedTmpDir = firstNotBlank(resolved.tmpDir, tmpDir, "/tmp");
+        String resolvedXdgRuntimeDir = firstNotBlank(resolved.xdgRuntimeDir, xdgRuntimeDir, resolvedTmpDir);
+
         environment.put("PROOT_TMP_DIR", filesDir + "/usr/tmp");
-        putIfNotEmpty(environment, "HOME", home);
-        putIfNotEmpty(environment, "USER", user);
-        putIfNotEmpty(environment, "TERM", term);
-        putIfNotEmpty(environment, "TMPDIR", tmpDir);
-        putIfNotEmpty(environment, "SHELL", shell);
-        putIfNotEmpty(environment, "DISPLAY", display);
-        putIfNotEmpty(environment, "PULSE_SERVER", pulseServer);
-        putIfNotEmpty(environment, "XDG_RUNTIME_DIR", xdgRuntimeDir);
-        putIfNotEmpty(environment, "PATH", path);
-        putIfNotEmpty(environment, "SDL_VIDEODRIVER", sdlVideoDriver);
+        putIfNotEmpty(environment, "HOME", firstNotBlank(resolved.home, home, "/root"));
+        putIfNotEmpty(environment, "USER", firstNotBlank(resolved.user, user, "root"));
+        putIfNotEmpty(environment, "TERM", firstNotBlank(resolved.term, term, "xterm-256color"));
+        putIfNotEmpty(environment, "TMPDIR", resolvedTmpDir);
+        putIfNotEmpty(environment, "SHELL", firstNotBlank(resolved.shell, shell, "/bin/sh"));
+        putIfNotEmpty(environment, "DISPLAY", firstNotBlank(resolved.display, display));
+        putIfNotEmpty(environment, "PULSE_SERVER", firstNotBlank(resolved.pulseServer, pulseServer));
+        putIfNotEmpty(environment, "XDG_RUNTIME_DIR", resolvedXdgRuntimeDir);
+        putIfNotEmpty(environment, "PATH", firstNotBlank(resolved.path, path));
+        putIfNotEmpty(environment, "SDL_VIDEODRIVER", firstNotBlank(resolved.sdlVideoDriver, sdlVideoDriver));
     }
 
     public List<String> buildCommand() {
@@ -148,5 +184,17 @@ public class ProotCommandBuilder {
         if (value != null && !value.trim().isEmpty()) {
             environment.put(key, value);
         }
+    }
+
+    private static String firstNotBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value;
+            }
+        }
+        return null;
     }
 }

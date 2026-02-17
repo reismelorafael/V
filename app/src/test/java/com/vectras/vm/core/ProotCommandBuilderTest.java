@@ -76,6 +76,20 @@ public class ProotCommandBuilderTest {
         Assert.assertEquals("x11", environment.get("SDL_VIDEODRIVER"));
     }
 
+    @Test
+    public void applyEnvironmentShouldFallbackXdgRuntimeDirToTmpDirWhenUnset() {
+        Context context = Mockito.mock(Context.class);
+        Mockito.when(context.getFilesDir()).thenReturn(new File("/custom/files"));
+
+        ProotCommandBuilder builder = new ProotCommandBuilder(context, "/rootfs", "/root")
+                .setTmpDir("/tmp");
+
+        Map<String, String> environment = new HashMap<>();
+        builder.applyEnvironment(environment);
+
+        Assert.assertEquals("/tmp", environment.get("XDG_RUNTIME_DIR"));
+    }
+
     private static void assertHasPair(List<String> values, String key, String expectedValue) {
         for (int i = 0; i < values.size() - 1; i++) {
             if (key.equals(values.get(i)) && expectedValue.equals(values.get(i + 1))) {
