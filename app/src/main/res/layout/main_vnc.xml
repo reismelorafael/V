@@ -62,6 +62,8 @@
                 <TableRow>
 
                     <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
                         android:gravity="right|center_vertical"
                         android:paddingRight="10dip"
                         android:text="@string/nickname_caption"
@@ -78,6 +80,8 @@
                 <TableRow>
 
                     <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
                         android:gravity="right|center_vertical"
                         android:paddingRight="10dip"
                         android:text="@string/password_caption"
@@ -109,6 +113,8 @@
                 <TableRow>
 
                     <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
                         android:gravity="right|center_vertical"
                         android:hint="localhost"
                         android:paddingRight="10dip"
@@ -126,6 +132,8 @@
                 <TableRow>
 
                     <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
                         android:gravity="right|center_vertical"
                         android:paddingRight="10dip"
                         android:text="@string/port_caption"
@@ -143,6 +151,8 @@
                 <TableRow>
 
                     <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
                         android:gravity="right|center_vertical"
                         android:paddingRight="10dip"
                         android:text="@string/username_caption"
