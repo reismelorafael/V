@@ -59,7 +59,7 @@ static uint64_t stage_signature(RmR_Stage stage,
 }
 
 
-static void choose_route(const RmR_TriadStatus *triad, uint32_t chunk_idx, RmR_ChunkMeta *m) {
+static void choose_route_fallback(const RmR_TriadStatus *triad, uint32_t chunk_idx, RmR_ChunkMeta *m) {
   uint8_t options[3];
   uint32_t n = 0;
   if (triad->cpu_ok) options[n++] = RMR_ROUTE_CPU;
@@ -152,7 +152,7 @@ static int vec_push(ChunkVec *vec, const RmR_ChunkMeta *m) {
 
 static int append_event(FILE *logf, uint64_t event_idx, RmR_Stage stage, const RmR_ChunkMeta *m) {
   int written = fprintf(logf,
-                        "event=%llu stage=%u off=%llu size=%u route=%u target=%s crc32c=%08x hash64=%016llx stage_sig=%016llx entropy_milli=%u math_sig=%08x domain=%u flags=%u:%u:%u\n",
+                        "event=%llu stage=%u off=%llu size=%u route=%u target=%s crc32c=%08x hash64=%016llx stage_sig=%016llx entropy_milli=%u math_sig=%08x domain=%u decision=%u flags=%u:%u:%u\n",
                         (unsigned long long)event_idx,
                         (unsigned int)stage,
                         (unsigned long long)m->offset,
@@ -311,6 +311,11 @@ int RmR_RunPolicyPipeline(const char *input_path,
   RmR_AuditSummary local_summary;
   RmR_HW_Info hw;
   RmR_MathFabricPlan math_plan;
+  RmR_LL_TunePlan tune;
+  size_t io_batch_size;
+  uint32_t commit_quantum;
+  uint32_t commit_counter = 0u;
+  const uint8_t decision_mode = RMR_DECISION_MODE_BRANCHLESS;
   memset(&local_summary, 0, sizeof(local_summary));
   local_summary.exec_signature = 1469598103934665603ull;
   memset(&hw, 0, sizeof(hw));
@@ -353,7 +358,7 @@ int RmR_RunPolicyPipeline(const char *input_path,
     m.entropy_milli = RmR_EntropyEstimateMilli(buf, rd);
     m.flags.temp_hint = (m.entropy_milli > 5500u) ? 1u : 0u;
     build_math_signature(&math_plan, buf, rd, offset, &m);
-    choose_route(&config->triad, local_summary.chunks_planned, &m);
+    choose_route(&config->triad, local_summary.chunks_planned, decision_mode, &m);
     m.stage_signature = stage_signature(RMR_STAGE_PLAN, math_plan.matrix_seed, &math_plan, &m);
     local_summary.exec_signature = mix_u64(local_summary.exec_signature, m.stage_signature);
     if (append_event(logf, event_idx++, RMR_STAGE_PLAN, &m) != 0 || vec_push(&plan, &m) != 0) goto fail;

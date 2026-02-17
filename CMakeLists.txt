@@ -22,6 +22,9 @@ add_library(rmr STATIC
   engine/rmr/src/rmr_qemu_bridge.c
   engine/rmr/src/rmr_math_fabric.c
   engine/rmr/src/rmr_corelib.c
+  engine/rmr/src/rmr_ll_ops.c
+  engine/rmr/src/rmr_ll_tuning.c
+  engine/rmr/src/rmr_casm_bridge.c
   engine/rmr/src/rmr_unified_kernel.c
 )
 

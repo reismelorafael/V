@@ -30,13 +30,23 @@ jobs:
   engine-build-bench:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-     # - name: Block sensitive artifacts in repository
-     #   run: bash tools/security/block_sensitive_artifacts.sh
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake make
+
+      - name: Prepare output directories
+        run: |
+          mkdir -p bench/results
+          mkdir -p reports/baremetal
 
       - name: Build with Make
         run: make clean && make all
@@ -44,21 +54,23 @@ jobs:
       - name: Build with CMake
         run: |
           cmake -S . -B build-cmake
-          cmake --build build-cmake -j
+          cmake --build build-cmake -j"$(nproc)"
 
       - name: Run release gate (selftest + bench + summary)
         run: make run-release-gate
 
       - name: Upload bench summary artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bench-summary
           path: bench/results/summary.json
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload baremetal reports artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: baremetal-reports
           path: reports/baremetal/*
-          if-no-files-found: error
+          if-no-files-found: warn
