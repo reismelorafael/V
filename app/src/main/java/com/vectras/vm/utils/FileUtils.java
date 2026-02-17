@@ -430,31 +430,29 @@ public class FileUtils {
 	}
 
 
-	public String LoadFile(Activity activity, String fileName, boolean loadFromRawFolder) throws IOException {
-		// Create a InputStream to read the file into
+	public static String loadTextFile(Activity activity, String fileName, boolean loadFromRawFolder) throws IOException {
 		InputStream iS;
 		if (loadFromRawFolder) {
-			// get the resource id from the file name
-			int rID = activity.getResources().getIdentifier(getClass().getPackage().getName() + ":raw/" + fileName,
-					null, null);
-			// get the file as a stream
+			int rID = activity.getResources().getIdentifier(fileName, "raw", activity.getPackageName());
 			iS = activity.getResources().openRawResource(rID);
 		} else {
-			// get the file as a stream
 			iS = activity.getResources().getAssets().open(fileName);
 		}
 
 		ByteArrayOutputStream oS = new ByteArrayOutputStream();
-		byte[] buffer = new byte[iS.available()];
-		int bytesRead = 0;
+		byte[] buffer = new byte[Math.max(1024, iS.available())];
+		int bytesRead;
 		while ((bytesRead = iS.read(buffer)) > 0) {
-			oS.write(buffer);
+			oS.write(buffer, 0, bytesRead);
 		}
 		oS.close();
 		iS.close();
 
-		// return the output stream as a String
 		return oS.toString();
+	}
+
+	public String LoadFile(Activity activity, String fileName, boolean loadFromRawFolder) throws IOException {
+		return loadTextFile(activity, fileName, loadFromRawFolder);
 	}
 
 	public static void saveFileContents(String dBFile, String machinesToExport) throws IOException {

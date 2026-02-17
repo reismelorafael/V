@@ -200,9 +200,8 @@ public class UIUtils {
         } catch (PackageManager.NameNotFoundException e) {
             Log.e(TAG, "onChangeLog: ", e);
         }
-        FileUtils fileutils = new FileUtils();
         try {
-            UIUtils.UIAlert(activity,"CHANGELOG", fileutils.LoadFile(activity, "CHANGELOG", false),
+            UIUtils.UIAlert(activity,"CHANGELOG", FileUtils.loadTextFile(activity, "CHANGELOG", false),
                     0, false, "OK", null, null, null, null, null);
         } catch (IOException e) {
             Log.e(TAG, "onChangeLog: ", e);
