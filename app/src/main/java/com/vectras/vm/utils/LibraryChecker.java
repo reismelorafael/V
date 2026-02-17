@@ -9,7 +9,9 @@ import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
 import com.vectras.vterm.Terminal;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -39,20 +41,20 @@ public class LibraryChecker {
                 }
             }
 
-            // StringBuilder to collect missing libraries
-            StringBuilder missingLibraries = new StringBuilder();
+            // List to collect missing libraries
+            List<String> missingLibraries = new ArrayList<>();
 
             // Loop over required libraries and check if they're installed
             for (String lib : requiredLibraries) {
                 String normalizedRequired = normalizeComparablePackageName(lib, managerType);
                 if (!normalizedRequired.isEmpty() && !installedPackages.contains(normalizedRequired)) {
-                    missingLibraries.append(lib).append("\n");
+                    missingLibraries.add(lib);
                 }
             }
 
             // Show dialog if any libraries are missing
-            if (missingLibraries.toString().trim().length() > 0) {
-                showMissingLibrariesDialog(activity, missingLibraries.toString(), managerType);
+            if (!missingLibraries.isEmpty()) {
+                showMissingLibrariesDialog(activity, missingLibraries, managerType);
             } else {
                 // show a dialog if all libraries are installed
                 // showAllLibrariesInstalledDialog(activity);
@@ -61,18 +63,68 @@ public class LibraryChecker {
     }
 
     // Method to show the missing libraries dialog
-    private void showMissingLibrariesDialog(Activity activity, String missingLibraries, PackageManagerType managerType) {
+    private void showMissingLibrariesDialog(Activity activity, List<String> missingLibraries, PackageManagerType managerType) {
+        String missingLibrariesText = String.join("\n", missingLibraries);
         new AlertDialog.Builder(activity, R.style.MainDialogTheme)
                 .setTitle("Missing Libraries")
-                .setMessage("The following libraries are missing:\n\n" + missingLibraries)
+                .setMessage("The following libraries are missing:\n\n" + missingLibrariesText)
                 .setCancelable(false)
                 .setPositiveButton("Install", (dialog, which) -> {
-                    // Create the installation command
-                    String installCommand = buildInstallCommand(managerType, missingLibraries.replace("\n", " "));
+                    String installCommand;
+                    if (managerType == PackageManagerType.APK) {
+                        installCommand = buildApkInstallCommand(missingLibraries);
+                    } else {
+                        installCommand = buildInstallCommand(managerType, String.join(" ", missingLibraries));
+                    }
                     new Terminal(context).executeShellCommand(installCommand, true, true, activity);
                 })
                 .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss())
                 .show();
+    }
+
+    private static String buildApkInstallCommand(List<String> packages) {
+        if (packages == null || packages.isEmpty()) {
+            return "echo 'No packages requested for installation'";
+        }
+
+        StringBuilder command = new StringBuilder();
+        command.append("success_count=0; skipped_count=0; failed_count=0; ")
+                .append("success_list=''; skipped_list=''; failed_list=''; ");
+
+        for (String pkg : packages) {
+            String normalizedPkg = normalizeComparablePackageName(pkg, PackageManagerType.APK);
+            if (normalizedPkg.isEmpty()) {
+                continue;
+            }
+            String escapedPkg = shellSingleQuote(normalizedPkg);
+            command.append("echo 'Checking package: ").append(escapedPkg).append("'; ")
+                    .append("if apk search -x ").append(escapedPkg).append(" >/dev/null 2>&1; then ")
+                    .append("echo 'Installing package: ").append(escapedPkg).append("'; ")
+                    .append("if apk add ").append(escapedPkg).append("; then ")
+                    .append("success_count=$((success_count+1)); success_list=\"$success_list ").append(escapedPkg).append("\"; ")
+                    .append("echo '[INSTALLED] ").append(escapedPkg).append("'; ")
+                    .append("else ")
+                    .append("failed_count=$((failed_count+1)); failed_list=\"$failed_list ").append(escapedPkg).append("\"; ")
+                    .append("echo '[FAILED] ").append(escapedPkg).append("'; ")
+                    .append("fi; ")
+                    .append("else ")
+                    .append("skipped_count=$((skipped_count+1)); skipped_list=\"$skipped_list ").append(escapedPkg).append("\"; ")
+                    .append("echo '[SKIPPED_NOT_FOUND] ").append(escapedPkg).append("'; ")
+                    .append("fi; ");
+        }
+
+        command.append("echo '--- Installation Summary ---'; ")
+                .append("echo \"Installed successfully ($success_count):${success_list:- none}\"; ")
+                .append("echo \"Skipped (not found) ($skipped_count):${skipped_list:- none}\"; ")
+                .append("echo \"Failed to install ($failed_count):${failed_list:- none}\"");
+        return command.toString();
+    }
+
+    private static String shellSingleQuote(String value) {
+        if (value == null) {
+            return "''";
+        }
+        return "'" + value.replace("'", "'\\''") + "'";
     }
 
     // Method to show the "All Libraries Installed" dialog
