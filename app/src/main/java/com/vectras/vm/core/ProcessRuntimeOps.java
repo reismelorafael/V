@@ -116,6 +116,18 @@ public final class ProcessRuntimeOps {
         return result != null && result.contains("return");
     }
 
+    public static boolean isLikelyInteractiveCommand(String command) {
+        String normalized = command == null ? "" : command.trim().toLowerCase();
+        return normalized.isEmpty()
+                || "bash".equals(normalized)
+                || "sh".equals(normalized)
+                || normalized.startsWith("top")
+                || normalized.startsWith("vi")
+                || normalized.startsWith("vim")
+                || normalized.startsWith("less")
+                || normalized.startsWith("more");
+    }
+
     public static TimeoutExecutionResult waitForWithCategory(Process process, ExecutionCategory category) {
         return waitForByCategory(process, category);
     }

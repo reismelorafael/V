@@ -17,6 +17,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
 import com.vectras.vm.core.ProcessOutputDrainer;
+import com.vectras.vm.core.ProcessRuntimeOps;
 import com.vectras.vm.core.ProotCommandBuilder;
 import com.vectras.vterm.view.ZoomableTextView;
 
@@ -229,7 +230,7 @@ public class TerminalBottomSheetDialog {
                             }
                         });
 
-                        long timeoutMs = isLikelyInteractiveCommand(userCommand)
+                        long timeoutMs = ProcessRuntimeOps.isLikelyInteractiveCommand(userCommand)
                                 ? INTERACTIVE_PROCESS_TIMEOUT_MS
                                 : PROCESS_TIMEOUT_MS;
                         if (!runningProcess.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
@@ -296,17 +297,6 @@ public class TerminalBottomSheetDialog {
         return distro.exists();
     }
 
-    private boolean isLikelyInteractiveCommand(String command) {
-        String normalized = command == null ? "" : command.trim().toLowerCase();
-        return normalized.isEmpty()
-                || "bash".equals(normalized)
-                || "sh".equals(normalized)
-                || normalized.startsWith("top")
-                || normalized.startsWith("vi")
-                || normalized.startsWith("vim")
-                || normalized.startsWith("less")
-                || normalized.startsWith("more");
-    }
 
     private void forcusCommandInput() {
         commandInput.post(() -> {
