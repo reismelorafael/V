@@ -9,6 +9,7 @@ import android.util.Log;
 import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
 import com.vectras.vm.VMManager;
+import com.vectras.vm.core.ProcessRuntimeOps;
 import com.vectras.vm.utils.DeviceUtils;
 import com.vectras.vm.utils.DialogUtils;
 import com.vectras.vm.utils.FileUtils;
@@ -30,6 +31,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.StringJoiner;
 
 public class SetupFeatureCore {
     public static String TAG = "SetupFeatureCore";
@@ -231,36 +233,89 @@ public class SetupFeatureCore {
             Process process = null;
             try {
                 ProcessBuilder processBuilder = new ProcessBuilder(cmdline);
-                processBuilder.redirectErrorStream(false);
+                processBuilder.redirectErrorStream(true);
                 processBuilder.environment().remove("LD_LIBRARY_PATH");
                 process = processBuilder.start();
 
-                // Capture standard error output (stderr)
-                StringBuilder errorOutput = new StringBuilder();
-                try (BufferedReader errorReader =
-                             new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
-                    String line;
-                    while ((line = errorReader.readLine()) != null) {
-                        errorOutput.append(line).append("\n");
+                // Capture process output (stderr redirected to stdout)
+                StringBuilder commandOutput = new StringBuilder();
+                Thread outputCollector = new Thread(() -> {
+                    try (BufferedReader outputReader =
+                                 new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                        String line;
+                        while ((line = outputReader.readLine()) != null) {
+                            synchronized (commandOutput) {
+                                commandOutput.append(line).append("\n");
+                            }
+                        }
+                    } catch (IOException e) {
+                        Log.e(TAG, "extractSystemFiles output collector: ", e);
                     }
+                }, "setup-extract-output");
+                outputCollector.start();
+
+                ProcessRuntimeOps.TimeoutExecutionResult waitResult = ProcessRuntimeOps.waitForByCategory(
+                        process,
+                        ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION
+                );
+
+                try {
+                    outputCollector.join();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    lastErrorLog = "Extraction output collector interrupted ["
+                            + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
+                            + "] asset=" + assetPath;
+                    Log.e(TAG, lastErrorLog, e);
+                    return false;
                 }
 
-                // Wait for the process to complete
-                int exitCode = process.waitFor();
+                String commandSummary = formatCommand(cmdline);
+                String outputSummary;
+                synchronized (commandOutput) {
+                    outputSummary = commandOutput.toString().trim();
+                }
+                if (waitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.TIMEOUT) {
+                    lastErrorLog = "Timeout during extraction ["
+                            + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
+                            + "] asset=" + assetPath
+                            + " cmd=" + commandSummary
+                            + " detail=" + waitResult.message
+                            + (outputSummary.isEmpty() ? "" : " output=" + outputSummary);
+                    Log.e(TAG, lastErrorLog);
+                    return false;
+                }
+
+                if (waitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.ERROR) {
+                    lastErrorLog = "Extraction execution error ["
+                            + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
+                            + "] asset=" + assetPath
+                            + " cmd=" + commandSummary
+                            + " detail=" + waitResult.message
+                            + (outputSummary.isEmpty() ? "" : " output=" + outputSummary);
+                    Log.e(TAG, lastErrorLog);
+                    return false;
+                }
+
+                if (waitResult.exitCode != 0 || !outputSummary.isEmpty()) {
+                    lastErrorLog = "Extraction failed ["
+                            + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
+                            + "] asset=" + assetPath
+                            + " cmd=" + commandSummary
+                            + " exit=" + waitResult.exitCode
+                            + (outputSummary.isEmpty() ? "" : " output=" + outputSummary);
+                    Log.e(TAG, lastErrorLog);
+                    return false;
+                }
 
                 if (fromAsset.contains("alpine")) {
                     setDNS(context);
                 }
 
-                // If there was any output in stderr, treat it as an error
-                return exitCode == 0 && errorOutput.length() <= 0;
+                return true;
             } catch (IOException e) {
                 lastErrorLog = lastErrorLog.isEmpty() ? e.toString() : lastErrorLog + "\n" + e;
                 Log.e(TAG, "extractSystemFiles: ", e);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                lastErrorLog = lastErrorLog.isEmpty() ? e.toString() : lastErrorLog + "\n" + e;
-                Log.e(TAG, "extractSystemFiles: interrupted", e);
             } finally {
                 if (process != null) {
                     process.destroy();
@@ -268,6 +323,14 @@ public class SetupFeatureCore {
             }
         }
         return false;
+    }
+
+    private static String formatCommand(String[] cmdline) {
+        StringJoiner commandJoiner = new StringJoiner(" ");
+        for (String token : cmdline) {
+            commandJoiner.add(token);
+        }
+        return commandJoiner.toString();
     }
 
     public static boolean copyAssetToFile(Context context, String assetPath, String outputPath) {
