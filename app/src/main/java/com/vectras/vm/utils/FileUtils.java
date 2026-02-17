@@ -501,6 +501,10 @@ public class FileUtils {
 	public static HashMap<Integer, ParcelFileDescriptor> fds = new HashMap<Integer, ParcelFileDescriptor>();
 
 	public static int get_fd(final Context context, String path) {
+		return get_fd(context, path, null);
+	}
+
+	public static int get_fd(final Context context, String path, String backendMode) {
 		int fd = 0;
 		if (path == null)
 			return 0;
@@ -509,7 +513,8 @@ public class FileUtils {
 			path = path.replaceFirst("/content", "content:");
 
 			try {
-				ParcelFileDescriptor pfd = context.getContentResolver().openFileDescriptor(Uri.parse(path), "rw");
+				String mode = resolveContentOpenMode(path, backendMode);
+				ParcelFileDescriptor pfd = context.getContentResolver().openFileDescriptor(Uri.parse(path), mode);
 				fd = pfd.getFd();
 				fds.put(fd, pfd);
 			} catch (final FileNotFoundException e) {
@@ -523,10 +528,11 @@ public class FileUtils {
 			}
 		} else {
 			try {
+				int mode = resolveParcelOpenMode(path, backendMode);
 				File file = new File(path);
 				if (!file.exists())
 					file.createNewFile();
-				ParcelFileDescriptor pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_WRITE_ONLY);
+				ParcelFileDescriptor pfd = ParcelFileDescriptor.open(file, mode);
 				fd = pfd.getFd();
 			} catch (Exception e) {
 				Log.e(TAG, "Failed to open file: " + path, e);
@@ -534,6 +540,42 @@ public class FileUtils {
 
 		}
 		return fd;
+	}
+
+	static String resolveContentOpenMode(String path, String backendMode) {
+		if (isIsoPath(path)) {
+			return "r";
+		}
+
+		String normalizedBackendMode = normalizeBackendMode(backendMode);
+		if ("r".equals(normalizedBackendMode) || "w".equals(normalizedBackendMode)
+				|| "rw".equals(normalizedBackendMode) || "wt".equals(normalizedBackendMode)
+				|| "wa".equals(normalizedBackendMode)) {
+			return normalizedBackendMode;
+		}
+
+		return "rw";
+	}
+
+	static int resolveParcelOpenMode(String path, String backendMode) {
+		if (isIsoPath(path)) {
+			return ParcelFileDescriptor.MODE_READ_ONLY;
+		}
+
+		String normalizedBackendMode = normalizeBackendMode(backendMode);
+		if ("r".equals(normalizedBackendMode)) {
+			return ParcelFileDescriptor.MODE_READ_ONLY;
+		}
+
+		return ParcelFileDescriptor.MODE_READ_WRITE;
+	}
+
+	private static String normalizeBackendMode(String backendMode) {
+		return backendMode == null ? "" : backendMode.trim().toLowerCase();
+	}
+
+	private static boolean isIsoPath(String path) {
+		return path != null && path.toLowerCase().endsWith(".iso");
 	}
 
 	public static int close_fd(int fd) {
