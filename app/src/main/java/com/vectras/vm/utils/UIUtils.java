@@ -45,7 +45,6 @@ import android.widget.Toast;
 
 import com.vectras.qemu.Config;
 import com.vectras.qemu.MainSettingsManager;
-import com.vectras.qemu.utils.FileUtils;
 import com.vectras.vm.R;
 import com.vectras.vm.logger.VectrasStatus;
 
@@ -201,7 +200,7 @@ public class UIUtils {
         } catch (PackageManager.NameNotFoundException e) {
             Log.e(TAG, "onChangeLog: ", e);
         }
-        com.vectras.qemu.utils.FileUtils fileutils = new FileUtils();
+        FileUtils fileutils = new FileUtils();
         try {
             UIUtils.UIAlert(activity,"CHANGELOG", fileutils.LoadFile(activity, "CHANGELOG", false),
                     0, false, "OK", null, null, null, null, null);
