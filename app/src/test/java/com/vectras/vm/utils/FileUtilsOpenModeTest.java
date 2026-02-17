@@ -17,7 +17,6 @@ import android.os.ParcelFileDescriptor;
 
 import org.junit.Test;
 
-import java.io.File;
 import java.lang.reflect.Method;
 
 public class FileUtilsOpenModeTest {
@@ -74,9 +73,8 @@ public class FileUtilsOpenModeTest {
         ContentResolver resolver = mock(ContentResolver.class);
         when(context.getContentResolver()).thenReturn(resolver);
 
-        File tempFile = File.createTempFile("vectras-file-valid", ".img");
-        when(resolver.openFileDescriptor(any(Uri.class), anyString()))
-                .thenAnswer(invocation -> ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_WRITE));
+        ParcelFileDescriptor pfd = mock(ParcelFileDescriptor.class);
+        when(resolver.openFileDescriptor(any(Uri.class), anyString())).thenReturn(pfd);
 
         FileUtils.fds.clear();
         int initialSize = FileUtils.fds.size();
@@ -87,6 +85,7 @@ public class FileUtilsOpenModeTest {
 
         assertEquals(initialSize, FileUtils.fds.size());
         verify(resolver, times(20)).openFileDescriptor(Uri.parse("content://disk.qcow2"), "rw");
+        verify(pfd, times(20)).close();
     }
 
     @Test
