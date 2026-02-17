@@ -15,6 +15,7 @@ VECTRAS_KEY_ALIAS="${VECTRAS_KEY_ALIAS:-vectras}"
 VECTRAS_STORE_PASSWORD="${VECTRAS_STORE_PASSWORD:-856856}"
 VECTRAS_KEY_PASSWORD="${VECTRAS_KEY_PASSWORD:-856856}"
 APK_PATH="${APK_PATH:-$ROOT_DIR/app/build/outputs/apk/release/app-release.apk}"
+GRADLE_WRAPPER="$ROOT_DIR/tools/gradle_with_jdk21.sh"
 
 SPILL_ALLOC_MB="${SPILL_ALLOC_MB:-256}"
 
@@ -143,10 +144,10 @@ run_build() {
     return
   fi
 
-  chmod +x ./gradlew
+  chmod +x "$GRADLE_WRAPPER"
 
   log "starting arm64-v8a release build using repository jks"
-  ./gradlew --no-daemon :app:clean :app:assembleRelease \
+  "$GRADLE_WRAPPER" --no-daemon :app:clean :app:assembleRelease \
     -Pandroid.injected.build.abi=arm64-v8a \
     -Pandroid.injected.build.api="$ANDROID_API_LEVEL" \
     -Pandroid.injected.signing.store.file="$VECTRAS_KEYSTORE" \
@@ -162,6 +163,7 @@ run_build() {
 require_cmd bash
 require_cmd rg
 require_cmd uname
+require_cmd "$GRADLE_WRAPPER"
 
 detect_arch
 configure_memory_spill

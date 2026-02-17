@@ -7,6 +7,7 @@ set -euo pipefail
 
 REPORT_DIR="build/reports/rmr"
 APK_DEFAULT="app/build/outputs/apk/release/app-release.apk"
+GRADLE_WRAPPER="./tools/gradle_with_jdk21.sh"
 
 log(){ echo "[RMR] $*"; }
 warn(){ echo "[RMR][WARN] $*"; }
@@ -25,8 +26,8 @@ check_environment(){
     echo "== java -version =="
     java -version 2>&1 || true
     echo
-    echo "== ./gradlew -v =="
-    ./gradlew -v 2>&1 || true
+    echo "== tools/gradle_with_jdk21.sh -v =="
+    "$GRADLE_WRAPPER" -v 2>&1 || true
     echo
     echo "== sdkmanager --list (head) =="
     if command -v sdkmanager >/dev/null 2>&1; then
@@ -120,6 +121,7 @@ fi
 require_cmd java
 require_cmd bash
 require_cmd awk
+require_cmd "$GRADLE_WRAPPER"
 mkdir -p "$REPORT_DIR"
 
 check_environment
@@ -127,12 +129,12 @@ check_environment
 export TERMUX_BUILD=1
 export GRADLE_USER_HOME=.gradle
 
-PLAN="./gradlew --no-daemon :app:clean :app:assembleRelease -Pvectras.universal=true -Pvectras.compliance.profile=IEEE_NIST_W3C_RFC_GDPR_LGPD -Pvectras.signing.ethical=true -Pandroid.injected.signing.store.file=$KEYSTORE -Pandroid.injected.signing.store.password=$STORE_PASS -Pandroid.injected.signing.key.alias=$ALIAS -Pandroid.injected.signing.key.password=$KEY_PASS"
+PLAN="$GRADLE_WRAPPER --no-daemon :app:clean :app:assembleRelease -Pvectras.universal=true -Pvectras.compliance.profile=IEEE_NIST_W3C_RFC_GDPR_LGPD -Pvectras.signing.ethical=true -Pandroid.injected.signing.store.file=$KEYSTORE -Pandroid.injected.signing.store.password=$STORE_PASS -Pandroid.injected.signing.key.alias=$ALIAS -Pandroid.injected.signing.key.password=$KEY_PASS"
 echo "$PLAN" > "$REPORT_DIR/build_plan.txt"
 
 TS0="$(date +%s)"
 log "executando build release"
-./gradlew --no-daemon :app:clean :app:assembleRelease \
+"$GRADLE_WRAPPER" --no-daemon :app:clean :app:assembleRelease \
   -Pvectras.universal=true \
   -Pvectras.compliance.profile=IEEE_NIST_W3C_RFC_GDPR_LGPD \
   -Pvectras.signing.ethical=true \

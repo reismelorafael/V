@@ -67,7 +67,7 @@ Referências estruturais:
 ```bash
 git ls-files
 find . -maxdepth 2 -type d | sort
-./gradlew verifyRepoFileDependencies
+./tools/gradle_with_jdk21.sh verifyRepoFileDependencies
 ```
 
 ## Índices
@@ -78,21 +78,23 @@ find . -maxdepth 2 -type d | sort
 - Copie `local.properties.example` para `local.properties` e ajuste `sdk.dir`.
 - Ajuste versões via `gradle.properties` (`COMPILE_API`, `TOOLS_VERSION`, `JAVA_LANGUAGE_VERSION`, `CMAKE_VERSION`, `NDK_VERSION`).
 - Política de JVM do Gradle: execute preferencialmente com **JDK 17** (alinhado com `JAVA_LANGUAGE_VERSION=17`).
-- Defina explicitamente `JAVA_HOME` para o JDK 17 ou configure `org.gradle.java.home=<path-do-jdk17>` em `~/.gradle/gradle.properties`.
+- Defina explicitamente `JAVA_HOME` para o JDK 17/21 ou configure `org.gradle.java.home=<path-do-jdk17-ou-jdk21>` em `~/.gradle/gradle.properties`.
+- Use sempre o wrapper `./tools/gradle_with_jdk21.sh` (local e CI) para evitar regressão com JDK 22+.
 - O build agora valida em bootstrap `GRADLE_JAVA_RUNTIME_VERSION` (padrão 17) e falha se a JVM runtime exceder `GRADLE_MAX_RUNTIME_JAVA_VERSION` (padrão 21).
 - Para override pontual, use `-P` no comando Gradle.
 
 ### Exemplo de configuração de Java para build
 ```bash
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
 export PATH="$JAVA_HOME/bin:$PATH"
-./gradlew --version
+./tools/gradle_with_jdk21.sh --version
+./tools/gradle_with_jdk21.sh verifyGradleRuntimeJvm
 ```
 
 Para fixar por usuário (sem depender de shell):
 ```properties
 # ~/.gradle/gradle.properties
-org.gradle.java.home=/usr/lib/jvm/java-17-openjdk
+org.gradle.java.home=/usr/lib/jvm/java-21-openjdk
 ```
 
 ## Referência rápida de bugs

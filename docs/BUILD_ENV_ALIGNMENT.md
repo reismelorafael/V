@@ -21,7 +21,7 @@ Configuração recomendada:
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 export PATH="$JAVA_HOME/bin:$PATH"
-./gradlew verifyGradleRuntimeJvm
+./tools/gradle_with_jdk21.sh verifyGradleRuntimeJvm
 ```
 
 Ou em `~/.gradle/gradle.properties`:
@@ -55,7 +55,7 @@ Política explicitada no build raiz (`build.gradle`):
 4. `buildToolsVersion` alinhado ao Build-Tools instalado.
 5. `JAVA_HOME` apontando para JDK 17+.
 6. `java -version` confirmando versão esperada.
-7. `./gradlew --version` usando o mesmo Java.
+7. `./tools/gradle_with_jdk21.sh --version` usando o mesmo Java.
 8. `local.properties` com `sdk.dir=...` válido.
 9. Permissão de leitura/escrita no SDK.
 10. `platform-tools` instalado (adb/aapt2 auxiliares).
@@ -75,7 +75,7 @@ Política explicitada no build raiz (`build.gradle`):
 24. Espaço em disco suficiente para cache/SDK.
 25. Relógio/sistema de certificados do host corretos (TLS).
 26. Sem bloqueio por antivírus/firewall no download.
-27. Em CI, exportar variáveis de ambiente antes do Gradle.
+27. Em CI, usar `./tools/gradle_with_jdk21.sh` (ou exportar `JAVA_HOME` 17/21 antes do Gradle).
 28. Em Termux, validar path do cmdline-tools no `PATH`.
 29. Em builds nativos, toolchain clang/cmake detectável.
 30. Se ainda falhar, rodar com `--stacktrace --info` e corrigir causa raiz explícita.
@@ -83,7 +83,7 @@ Política explicitada no build raiz (`build.gradle`):
 ## Exemplos de override
 
 ```bash
-./gradlew :app:assembleDebug \
+./tools/gradle_with_jdk21.sh :app:assembleDebug \
   -PCOMPILE_API=35 \
   -PTARGET_API=35 \
   -PMIN_API=23 \
@@ -96,7 +96,7 @@ Política explicitada no build raiz (`build.gradle`):
 ```
 
 ```bash
-./gradlew :app:assembleDebug \
+./tools/gradle_with_jdk21.sh :app:assembleDebug \
   -PAGP_VERSION=8.5.2 \
   -PKOTLIN_VERSION=1.9.24
 ```
@@ -106,10 +106,10 @@ Política explicitada no build raiz (`build.gradle`):
 ```bash
 ./tools/check_android_toolchain.sh
 java -version
-./gradlew --version
-./gradlew :app:tasks --all
+./tools/gradle_with_jdk21.sh --version
+./tools/gradle_with_jdk21.sh :app:tasks --all
 ./tools/check_target_api_baseline.sh gradle.properties
-./gradlew :app:assembleDebug --stacktrace --info
+./tools/gradle_with_jdk21.sh :app:assembleDebug --stacktrace --info
 ```
 
 
@@ -130,7 +130,7 @@ Para habilitar obfuscação sem quebrar reflexão/entry points declarativos, os 
 Validação mínima de pipeline para regressão de reflexão/obfuscação:
 
 ```bash
-./gradlew :app:assembleRelease --stacktrace
+./tools/gradle_with_jdk21.sh :app:assembleRelease --stacktrace
 ```
 
 Após gerar a APK/AAB de release, execute smoke test de inicialização em dispositivo/emulador (instalação + abertura da activity principal + navegação até tela de preferências).
@@ -151,8 +151,8 @@ Após gerar a APK/AAB de release, execute smoke test de inicialização em dispo
 ### Comandos recomendados (regressão)
 
 ```bash
-./gradlew verifyArm64ToolchainCompatibility -PNDK_VERSION=27.2.12479018
-./gradlew :app:assembleDebug -PNDK_VERSION=27.2.12479018
+./tools/gradle_with_jdk21.sh verifyArm64ToolchainCompatibility -PNDK_VERSION=27.2.12479018
+./tools/gradle_with_jdk21.sh :app:assembleDebug -PNDK_VERSION=27.2.12479018
 ```
 
 
@@ -163,6 +163,6 @@ Para ampliar suporte oficial a JVMs mais novas no ambiente, avaliar upgrade conj
 1. Atualizar `gradle/wrapper/gradle-wrapper.properties` para versão de Gradle oficialmente compatível com AGP alvo.
 2. Atualizar `AGP_VERSION` em `gradle.properties` e validar compatibilidade com Kotlin plugin.
 3. Rodar matriz mínima antes de promover baseline:
-   - JDK 17 + `./gradlew clean assembleDebug test`
-   - JDK alvo do ambiente + `./gradlew clean assembleDebug test`
+   - JDK 17 + `./tools/gradle_with_jdk21.sh clean assembleDebug test`
+   - JDK alvo do ambiente + `./tools/gradle_with_jdk21.sh clean assembleDebug test`
 4. Só elevar `GRADLE_JAVA_RUNTIME_VERSION`/`GRADLE_MAX_RUNTIME_JAVA_VERSION` após matriz verde.

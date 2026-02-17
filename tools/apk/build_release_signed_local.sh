@@ -8,6 +8,7 @@ PREFERRED_JAVA17="/usr/lib/jvm/java-17-openjdk-amd64"
 APK_PATH="$ROOT_DIR/app/build/outputs/apk/release/app-release.apk"
 KEYSTORE_PATH="$ROOT_DIR/vectras.jks"
 REPORT_DIR="$ROOT_DIR/build/reports/apk-local"
+GRADLE_WRAPPER="$ROOT_DIR/tools/gradle_with_jdk21.sh"
 GRADLE_LOG="$REPORT_DIR/gradle_assemble_release.log"
 VERIFY_LOG="$REPORT_DIR/apksigner_verify.log"
 APK_META="$REPORT_DIR/apk_metadata.txt"
@@ -16,10 +17,8 @@ log(){ printf '[APK-BUILD] %s\n' "$*"; }
 fail(){ printf '[APK-BUILD][ERR] %s\n' "$*" >&2; exit 1; }
 
 prepare_java(){
-  if [[ -x "$PREFERRED_JAVA17/bin/java" ]]; then
-    export JAVA_HOME="$PREFERRED_JAVA17"
-    export PATH="$JAVA_HOME/bin:$PATH"
-    return
+  if [[ ! -x "$GRADLE_WRAPPER" ]]; then
+    fail "Wrapper Gradle não encontrado: $GRADLE_WRAPPER"
   fi
 
   if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
@@ -27,7 +26,10 @@ prepare_java(){
     return
   fi
 
-  fail "Java não encontrado (necessário JDK 17 compatível com Gradle/AGP do projeto)"
+  if [[ -x "$PREFERRED_JAVA17/bin/java" ]]; then
+    export JAVA_HOME="$PREFERRED_JAVA17"
+    export PATH="$JAVA_HOME/bin:$PATH"
+  fi
 }
 
 prepare_sdk(){
@@ -76,7 +78,7 @@ build_release(){
   set +e
   (
     cd "$ROOT_DIR"
-    ./gradlew --no-daemon :app:assembleRelease --stacktrace 2>&1 | tee "$GRADLE_LOG"
+    "$GRADLE_WRAPPER" --no-daemon :app:assembleRelease --stacktrace 2>&1 | tee "$GRADLE_LOG"
   )
   local rc=$?
   set -e
@@ -86,7 +88,7 @@ build_release(){
     purge_incompatible_gradle_cache
     (
       cd "$ROOT_DIR"
-      ./gradlew --no-daemon :app:assembleRelease --stacktrace 2>&1 | tee "$GRADLE_LOG"
+      "$GRADLE_WRAPPER" --no-daemon :app:assembleRelease --stacktrace 2>&1 | tee "$GRADLE_LOG"
     )
     return
   fi
