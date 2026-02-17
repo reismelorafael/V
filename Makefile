@@ -11,7 +11,7 @@ else ifeq ($(UNAME_S),Darwin)
   SHARED_EXT := dylib
 endif
 
-ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c engine/rmr/src/rmr_math_fabric.c engine/rmr/src/rmr_policy_kernel.c engine/rmr/src/rmr_qemu_bridge.c engine/rmr/src/rmr_corelib.c engine/rmr/src/rmr_ll_ops.c engine/rmr/src/rmr_casm_bridge.c engine/rmr/src/rmr_unified_kernel.c
+ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c engine/rmr/src/rmr_math_fabric.c engine/rmr/src/rmr_policy_kernel.c engine/rmr/src/rmr_qemu_bridge.c engine/rmr/src/rmr_corelib.c engine/rmr/src/rmr_ll_ops.c engine/rmr/src/rmr_ll_tuning.c engine/rmr/src/rmr_casm_bridge.c engine/rmr/src/rmr_unified_kernel.c
 ENGINE_OBJS := $(patsubst %.c,build/%.o,$(ENGINE_SRCS))
 
 CASM_ASM_SRCS :=

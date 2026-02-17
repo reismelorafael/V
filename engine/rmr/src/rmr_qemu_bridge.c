@@ -1,5 +1,6 @@
 #include "rmr_qemu_bridge.h"
 #include "rmr_corelib.h"
+#include "rmr_ll_tuning.h"
 
 #include <limits.h>
 #include <stdio.h>
