@@ -14,10 +14,10 @@ import android.widget.TextView;
 import androidx.appcompat.app.AlertDialog;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
-import com.termux.app.TermuxService;
 import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
 import com.vectras.vm.core.ProcessOutputDrainer;
+import com.vectras.vm.core.ProotCommandBuilder;
 import com.vectras.vterm.view.ZoomableTextView;
 
 import java.io.BufferedWriter;
@@ -165,43 +165,14 @@ public class TerminalBottomSheetDialog {
                     // Adjust these environment variables as necessary for your app
                     String filesDir = AppConfig.internalDataDirPath;
 
-                    File tmpDir = new File(filesDir, "usr/tmp");
-
-                    // Setup environment for the PRoot qemuProcess
-                    processBuilder.environment().put("PROOT_TMP_DIR", tmpDir.getAbsolutePath());
-
-                    processBuilder.environment().put("HOME", "/root");
-                    processBuilder.environment().put("USER", "root");
-                    //processBuilder.environment().put("PATH", "/bin:/usr/bin:/sbin:/usr/sbin");
-                    //processBuilder.environment().put("LD_LIBRARY_PATH", TermuxService.PREFIX_PATH + "/lib");
-                    processBuilder.environment().put("TERM", "xterm-256color");
-                    processBuilder.environment().put("TMPDIR", "/tmp");
-                    processBuilder.environment().put("SHELL", "/bin/sh");
-                    processBuilder.environment().put("DISPLAY", ":0");
-                    processBuilder.environment().put("PULSE_SERVER", "127.0.0.1");
-                    processBuilder.environment().put("XDG_RUNTIME_DIR", "${TMPDIR}");
-                    processBuilder.environment().put("SDL_VIDEODRIVER", "x11");
-
-                    String[] prootCommand = {
-                            TermuxService.PREFIX_PATH + "/bin/proot", // PRoot binary path
-                            "--kill-on-exit",
-                            "--link2symlink",
-                            "-0",
-                            "-r", filesDir + "/distro", // Path to the rootfs
-                            "-b", "/dev",
-                            "-b", "/proc",
-                            "-b", "/sys",
-                            "-b", AppConfig.internalDataDirPath + "distro/root:/dev/shm",
-                            "-b", "/sdcard",
-                            "-b", "/storage",
-                            "-b", "/data",
-                            "-b", AppConfig.internalDataDirPath + "usr/tmp:/tmp",
-                            "-w", "/root",
-                            "/bin/sh",
-                            "--login"// The shell to execute inside PRoot
-                    };
-
-                    processBuilder.command(prootCommand);
+                    ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(activity, filesDir + "/distro", "/root")
+                            .setFilesDirPath(filesDir)
+                            .setDisplay(":0")
+                            .setPulseServer("127.0.0.1")
+                            .setXdgRuntimeDir("${TMPDIR}")
+                            .setSdlVideoDriver("x11");
+                    prootCommandBuilder.applyEnvironment(processBuilder.environment());
+                    processBuilder.command(prootCommandBuilder.buildCommand());
                     Process process = null;
                     ProcessOutputDrainer drainer = new ProcessOutputDrainer();
                     BufferedWriter writer = null;

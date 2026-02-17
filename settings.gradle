@@ -1,6 +1,6 @@
 def resolveIntProperty = { String key, int defaultValue ->
     def fromCli = gradle.startParameter.projectProperties.get(key)
-    def fromGradleProperties = settings.hasProperty(key) ? settings.property(key) : null
+    def fromGradleProperties = providers.gradleProperty(key).orNull
     Integer.parseInt((fromCli ?: fromGradleProperties ?: defaultValue).toString())
 }
 
