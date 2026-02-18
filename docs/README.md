@@ -19,6 +19,8 @@ Camada técnica central de documentação do Vectras VM Android.
 - Qualidade e conformidade: `SECURITY.md`, `LEGAL_AND_LICENSES.md`, `SOURCE_TRACEABILITY_MATRIX.md`, `IP_MAP.md`
 - Fullstack (código-fonte ponta a ponta): `FULLSTACK_SOURCE_MAP.md`
 - Navegação por público: `navigation/INDEX.md` e derivados
+- Inovação e autoria técnica (navegação): `navigation/TECHNOLOGY_INNOVATION_AUTHORSHIP.md`
+- Estado atual do ciclo do projeto: `../PROJECT_STATE.md`
 
 ## Cadeia de comando de validação documental
 ```bash

@@ -10,15 +10,18 @@ Navegação por audiência para documentos técnicos e operacionais alinhados ao
 - **Enterprises** → `ENTERPRISE_COMPANIES.md` (adoção operacional)
 - **Benchmarking** → `BENCHMARK_COMPARISONS.md` (método de comparação)
 - **Operations** → `PERFORMANCE_OPERATIONS.md` (runbook)
+- **Inovação & autoria técnica** → `TECHNOLOGY_INNOVATION_AUTHORSHIP.md` (pilares + autoria por subsistema)
 
 ## Núcleo técnico
 - `../ARCHITECTURE.md`
 - `../BENCHMARK_MANAGER.md`
 - `../PERFORMANCE_INTEGRITY.md`
 - `../SOURCE_TRACEABILITY_MATRIX.md`
+- `TECHNOLOGY_INNOVATION_AUTHORSHIP.md`
+- `../../PROJECT_STATE.md`
 - `../../archive/root-history/IMPLEMENTATION_SUMMARY.md`
 - `../../archive/root-history/IMPLEMENTATION_COMPLETE.md`
 
 ## Metadados
-- Versão: 1.1
+- Versão: 1.2
 - Última atualização: 2026-02
