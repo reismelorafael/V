@@ -19,6 +19,41 @@ export ANDROID_HOME ANDROID_SDK_ROOT
 log() { echo "$LOG_PREFIX $*"; }
 warn() { echo "$LOG_PREFIX WARN: $*"; }
 
+REPORT_FILE="$ROOT_DIR/.build-spill/bootstrap-report.txt"
+CMDLINE_TOOLS_LAST_SHA256=""
+
+report_init() {
+  mkdir -p "$(dirname "$REPORT_FILE")"
+  cat > "$REPORT_FILE" <<EOT
+$LOG_PREFIX bootstrap report
+timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT
+ANDROID_API_LEVEL=$ANDROID_API_LEVEL
+ANDROID_BUILD_TOOLS=$ANDROID_BUILD_TOOLS
+ANDROID_NDK_VERSION=$ANDROID_NDK_VERSION
+ANDROID_CMAKE_VERSION=$ANDROID_CMAKE_VERSION
+CMDLINE_TOOLS_VERSION=$CMDLINE_TOOLS_VERSION
+EOT
+}
+
+report_step() {
+  local step_name="$1"
+  local status="$2"
+  local detail="$3"
+  printf "step=%s status=%s detail=%s\n" "$step_name" "$status" "$detail" >> "$REPORT_FILE"
+}
+
+cmdline_tools_expected_sha256() {
+  case "$CMDLINE_TOOLS_VERSION" in
+    13114758)
+      echo "7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 install_termux_packages_if_available() {
   if ! command -v pkg >/dev/null 2>&1; then
     warn "pkg não disponível (não-Termux). Pulando instalação de pacotes do Termux."
@@ -43,31 +78,95 @@ install_termux_packages_if_available() {
 ensure_cmdline_tools() {
   local tools_dir="$ANDROID_SDK_ROOT/cmdline-tools"
   local latest_dir="$tools_dir/latest"
-  local zip_path="$ROOT_DIR/.cache/android-cmdline-tools.zip"
-  mkdir -p "$tools_dir" "$ROOT_DIR/.cache"
+  local previous_dir="$tools_dir/latest.prev"
+  local tmp_zip
+  local tmp_unpack
+  mkdir -p "$tools_dir"
 
   if [[ -x "$latest_dir/bin/sdkmanager" ]]; then
     log "cmdline-tools já presentes em $latest_dir"
+    CMDLINE_TOOLS_LAST_SHA256="already-installed"
+    report_step "ensure_cmdline_tools" "ok" "already-present path=$latest_dir"
     return 0
   fi
 
   local url
+  local expected_sha256
   url="https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip"
+  if ! expected_sha256="$(cmdline_tools_expected_sha256)"; then
+    report_step "ensure_cmdline_tools" "fail" "missing-checksum version=$CMDLINE_TOOLS_VERSION"
+    echo "checksum esperado não cadastrado para CMDLINE_TOOLS_VERSION=$CMDLINE_TOOLS_VERSION" >&2
+    return 1
+  fi
+
+  tmp_zip="$(mktemp "$tools_dir/.cmdline-tools-${CMDLINE_TOOLS_VERSION}-XXXXXX.zip")"
+  tmp_unpack="$(mktemp -d "$tools_dir/.cmdline-tools-unpack-XXXXXX")"
+  trap 'rm -f "$tmp_zip"; rm -rf "$tmp_unpack"' RETURN
 
   log "baixando cmdline-tools: $url"
-  wget -q -O "$zip_path" "$url"
+  local attempt
+  local max_attempts=5
+  for attempt in $(seq 1 "$max_attempts"); do
+    if curl -fsSL --connect-timeout 20 --max-time 300 -o "$tmp_zip" "$url"; then
+      break
+    fi
+    if [[ "$attempt" -eq "$max_attempts" ]]; then
+      report_step "ensure_cmdline_tools" "fail" "download-failed attempts=$max_attempts url=$url"
+      echo "falha ao baixar cmdline-tools após $max_attempts tentativas" >&2
+      return 1
+    fi
+    local backoff=$((2 ** attempt))
+    warn "falha no download (tentativa $attempt/$max_attempts). retry em ${backoff}s"
+    sleep "$backoff"
+  done
 
-  local tmp_unpack="$tools_dir/.tmp-unpack"
-  rm -rf "$tmp_unpack"
-  mkdir -p "$tmp_unpack"
-  unzip -q "$zip_path" -d "$tmp_unpack"
+  local actual_sha256
+  actual_sha256="$(sha256sum "$tmp_zip" | awk '{print $1}')"
+  CMDLINE_TOOLS_LAST_SHA256="$actual_sha256"
+  if [[ "$actual_sha256" != "$expected_sha256" ]]; then
+    report_step "ensure_cmdline_tools" "fail" "checksum-mismatch expected=$expected_sha256 actual=$actual_sha256"
+    echo "checksum inválido para cmdline-tools" >&2
+    return 1
+  fi
 
-  rm -rf "$latest_dir"
-  mkdir -p "$latest_dir"
-  cp -a "$tmp_unpack/cmdline-tools/." "$latest_dir/"
+  unzip -q "$tmp_zip" -d "$tmp_unpack"
+
+  if [[ ! -x "$tmp_unpack/cmdline-tools/bin/sdkmanager" ]]; then
+    report_step "ensure_cmdline_tools" "fail" "invalid-archive missing-sdkmanager"
+    echo "arquivo cmdline-tools inválido: sdkmanager ausente" >&2
+    return 1
+  fi
+
+  rm -rf "$previous_dir"
+  if [[ -d "$latest_dir" ]]; then
+    mv "$latest_dir" "$previous_dir"
+  fi
+  mv "$tmp_unpack/cmdline-tools" "$latest_dir"
+
+  trap - RETURN
+  rm -f "$tmp_zip"
   rm -rf "$tmp_unpack"
+
+  report_step "ensure_cmdline_tools" "ok" "installed version=$CMDLINE_TOOLS_VERSION sha256=$actual_sha256 backup=$previous_dir"
 
   log "cmdline-tools instalados"
+}
+
+restore_cmdline_tools_backup() {
+  local tools_dir="$ANDROID_SDK_ROOT/cmdline-tools"
+  local latest_dir="$tools_dir/latest"
+  local previous_dir="$tools_dir/latest.prev"
+
+  if [[ ! -d "$previous_dir" ]]; then
+    warn "backup latest.prev não encontrado; rollback não aplicado"
+    report_step "rollback_cmdline_tools" "warn" "backup-missing path=$previous_dir"
+    return 0
+  fi
+
+  rm -rf "$latest_dir"
+  mv "$previous_dir" "$latest_dir"
+  log "rollback de cmdline-tools aplicado a partir de latest.prev"
+  report_step "rollback_cmdline_tools" "ok" "restored path=$latest_dir"
 }
 
 install_android_components() {
@@ -82,6 +181,8 @@ install_android_components() {
     "build-tools;${ANDROID_BUILD_TOOLS}" \
     "ndk;${ANDROID_NDK_VERSION}" \
     "cmake;${ANDROID_CMAKE_VERSION}"
+
+  report_step "install_android_components" "ok" "sdkmanager-components-installed"
 }
 
 write_local_properties() {
@@ -101,8 +202,25 @@ $LOG_PREFIX resumo:
 EOT
 }
 
-install_termux_packages_if_available
-ensure_cmdline_tools
-install_android_components
+report_init
+
+if install_termux_packages_if_available; then
+  report_step "install_termux_packages_if_available" "ok" "completed"
+else
+  report_step "install_termux_packages_if_available" "fail" "command-failed"
+  exit 1
+fi
+
+if ! ensure_cmdline_tools; then
+  exit 1
+fi
+
+if ! install_android_components; then
+  report_step "install_android_components" "fail" "sdkmanager-command-failed"
+  restore_cmdline_tools_backup
+  exit 1
+fi
+
 write_local_properties
 print_summary
+report_step "bootstrap" "ok" "complete cmdline_tools_sha256=$CMDLINE_TOOLS_LAST_SHA256"
