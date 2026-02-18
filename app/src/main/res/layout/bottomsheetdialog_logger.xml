@@ -81,6 +81,14 @@
 
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/tv_vm_flow_state"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="VM Flow: IDLE"
+            android:textSize="12sp"
+            android:layout_marginBottom="8dp" />
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recycler_logs"
             android:gravity="start"

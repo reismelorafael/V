@@ -43,6 +43,8 @@ import com.vectras.vm.core.ProcessRuntimeOps.ExecutionCategory;
 import com.vectras.vm.core.ProcessRuntimeOps.TimeoutExecutionResult;
 import com.vectras.vm.core.ProotCommandBuilder;
 import com.vectras.vm.core.TokenBucketRateLimiter;
+import com.vectras.vm.core.VmFlowState;
+import com.vectras.vm.core.VmFlowTracker;
 import com.vectras.vm.audit.AuditEvent;
 import com.vectras.vm.audit.AuditLedger;
 
@@ -461,6 +463,7 @@ public class Terminal {
         AtomicInteger droppedLogs = new AtomicInteger(0);
         AtomicLong bytesSeen = new AtomicLong(0);
         AtomicBoolean degraded = new AtomicBoolean(false);
+        AtomicBoolean degradedMarked = new AtomicBoolean(false);
 
         try {
             if (command != null && !command.isEmpty()) {
@@ -485,6 +488,11 @@ public class Terminal {
                                 ringBuffer.addLine("[DEGRADED] log flood active, dropped=" + dropped);
                             }
                             degraded.set(true);
+                            if (degradedMarked.compareAndSet(false, true)) {
+                                String vmIdForDegraded = com.vectras.vm.main.core.MainStartVM.lastVMID;
+                                vmIdForDegraded = isNullOrEmpty(vmIdForDegraded) ? resolveCurrentVmId() : vmIdForDegraded;
+                                VmFlowTracker.mark(VectrasApp.getContext(), vmIdForDegraded, VmFlowState.DEGRADED, "log_flood", "rate_limit");
+                            }
                             return;
                         }
                         if ("stderr".equals(stream)) {
@@ -539,6 +547,8 @@ public class Terminal {
                         0,
                         "RATE_LIMIT"
                 ));
+                String finalVmId = isNullOrEmpty(vmId) ? resolveCurrentVmId() : vmId;
+                VmFlowTracker.mark(VectrasApp.getContext(), finalVmId, VmFlowState.RUNNING, "log_flood_recovered", "resume");
             }
         } catch (Exception e) {
             ringBuffer.addLine(String.valueOf(e.getMessage()));

@@ -29,6 +29,8 @@ import com.vectras.vm.R;
 import com.vectras.vm.StartVM;
 import com.vectras.vm.VMManager;
 import com.vectras.vm.logger.VectrasStatus;
+import com.vectras.vm.core.VmFlowState;
+import com.vectras.vm.core.VmFlowTracker;
 import com.vectras.vm.qemu.VmLaunchLedger;
 import com.vectras.vm.settings.ExternalVNCSettingsActivity;
 import com.vectras.vm.setupwizard.SetupFeatureCore;
@@ -142,6 +144,7 @@ public class MainStartVM {
         isStopNow = false;
 
         String finalvmID = ensureLastVmIdInitialized(vmID);
+        VmFlowTracker.mark(context, finalvmID, VmFlowState.STARTING, "launch_requested", "start");
 
         Config.vmID = finalvmID;
         boolean headless = AppConfig.engineHeadlessMode || env.contains("-display none") || env.contains("headless=true");
@@ -177,6 +180,7 @@ public class MainStartVM {
                     null,
                     null
             );
+            VmFlowTracker.mark(context, finalvmID, VmFlowState.ERROR, "preflight_failed", "abort");
             stopLaunchPoller();
             return;
         }
@@ -190,6 +194,7 @@ public class MainStartVM {
                         context.getString(R.string.vm_cache_dir_failed_to_create_content),
                         R.drawable.warning_48px
                 );
+                VmFlowTracker.mark(context, finalvmID, VmFlowState.ERROR, "cache_dir_create_failed", "abort");
                 stopLaunchPoller();
                 return;
             }
@@ -202,6 +207,7 @@ public class MainStartVM {
                     context.getString(R.string.harmful_command_was_detected) + " " + context.getResources().getString(R.string.reason) + ": " + VMManager.latestUnsafeCommandReason,
                     R.drawable.verified_user_24px
             );
+            VmFlowTracker.mark(context, finalvmID, VmFlowState.ERROR, "unsafe_command", "abort");
             stopLaunchPoller();
             return;
         }
@@ -222,6 +228,7 @@ public class MainStartVM {
                     null,
                     null
             );
+            VmFlowTracker.mark(context, finalvmID, VmFlowState.ERROR, "shared_folder_too_large", "abort");
             stopLaunchPoller();
             return;
         }
@@ -229,6 +236,7 @@ public class MainStartVM {
         VMManager.lastQemuCommand = env;
 
         if (VMManager.isVMRunning(context, finalvmID)) {
+            VmFlowTracker.mark(context, finalvmID, VmFlowState.RUNNING, "already_running", "attach");
             Toast.makeText(context, "This VM is already running.", Toast.LENGTH_LONG).show();
             DisplaySystem.launch(context);
             stopLaunchPoller();
@@ -270,6 +278,7 @@ public class MainStartVM {
                     () -> context.startActivity(new Intent(context, ExternalVNCSettingsActivity.class)),
                     null,
                     null);
+            VmFlowTracker.mark(context, finalvmID, VmFlowState.ERROR, "vnc_port_in_use", "abort");
             stopLaunchPoller();
             return;
         }
@@ -329,6 +338,7 @@ public class MainStartVM {
         if (MainSettingsManager.getVmUi(context).equals("X11") && !DisplaySystem.isUseBuiltInX11()) {
             if (!PackageUtils.isInstalled("com.termux.x11", context)) {
                 DialogUtils.needInstallTermuxX11(context);
+                VmFlowTracker.mark(context, finalvmID, VmFlowState.ERROR, "termux_x11_missing", "abort");
                 stopLaunchPoller();
                 return;
             }
@@ -458,6 +468,7 @@ public class MainStartVM {
                             DisplaySystem.launch(launchContext);
                         }
 
+                        VmFlowTracker.mark(launchContext, vmId, VmFlowState.RUNNING, "launch_ready", "running");
                         Log.i(TAG, "Virtual machine running.");
                     }
 

@@ -38,6 +38,8 @@ import com.vectras.qemu.VNCConfig;
 import com.vectras.qemu.utils.QmpClient;
 import com.vectras.vm.main.MainActivity;
 import com.vectras.vm.core.ProcessSupervisor;
+import com.vectras.vm.core.VmFlowState;
+import com.vectras.vm.core.VmFlowTracker;
 import com.vectras.vm.core.ProcessRuntimeOps;
 import com.vectras.vm.main.core.MainStartVM;
 import com.vectras.vm.rafaelia.RafaeliaEventRecorder;
@@ -194,6 +196,7 @@ public class VMManager {
         VmRuntimeState state = VM_STATES.getOrDefault(key, VmRuntimeState.STOPPED);
         if (current != null && current.isBoundTo(process) && current.isProcessAlive()) {
             VM_STATES.put(key, VmRuntimeState.RUNNING);
+            VmFlowTracker.mark(context, key, VmFlowState.RUNNING, "process_already_bound", "run");
             return;
         }
 
@@ -230,6 +233,7 @@ public class VMManager {
             supervisor.bindProcess(process);
             SUPERVISORS.put(key, supervisor);
             VM_STATES.put(key, VmRuntimeState.RUNNING);
+            VmFlowTracker.mark(context, key, VmFlowState.RUNNING, "process_bound", "run");
             spawnProcessExitWatcher(key, supervisor, process);
         } catch (RuntimeException registerError) {
             VM_STATES.put(key, VmRuntimeState.STOPPED);
@@ -369,12 +373,16 @@ public class VMManager {
         }
 
         VM_STATES.put(key, VmRuntimeState.STOPPING);
+        VmFlowTracker.mark(context, key, VmFlowState.STOPPING, "stop_requested", tryQmp ? "qmp_term_kill" : "term_kill");
         boolean stopped = supervisor.stopGracefully(tryQmp);
         if (stopped) {
             SUPERVISORS.remove(key, supervisor);
             VM_STATES.put(key, VmRuntimeState.STOPPED);
+            VmFlowTracker.mark(context, key, VmFlowState.STOPPED, "stop_success", "stopped");
         } else {
-            VM_STATES.put(key, supervisor.isProcessAlive() ? VmRuntimeState.RUNNING : VmRuntimeState.STOPPED);
+            boolean stillAlive = supervisor.isProcessAlive();
+            VM_STATES.put(key, stillAlive ? VmRuntimeState.RUNNING : VmRuntimeState.STOPPED);
+            VmFlowTracker.mark(context, key, stillAlive ? VmFlowState.RUNNING : VmFlowState.ERROR, stillAlive ? "stop_failed_process_alive" : "stop_failed_unknown", "observe");
         }
         return stopped;
     }

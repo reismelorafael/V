@@ -344,14 +344,6 @@ public class MainSettingsManager extends AppCompatActivity
             //prefIfType.setVisible(false);
             //}
 
-            Preference pref = findPreference("vmArch");
-            if (pref != null) {
-                pref.setOnPreferenceChangeListener((preference, newValue) -> {
-                    onArch();
-                    return true;
-                });
-            }
-
 //            if (Objects.equals(getArch(activity), "I386")) { // I386 DOES NOT SUPPORT SHARED FOLDER
 //                SwitchPreferenceCompat sharedPref = findPreference("sharedFolder");
 //                sharedPref.setEnabled(false);
@@ -359,46 +351,6 @@ public class MainSettingsManager extends AppCompatActivity
 //                setSharedFolder(activity, false);
 //
 //            }
-
-            if (!getuseDefaultBios(getActivity())) {
-                SwitchPreferenceCompat useUEFIPref = findPreference("useUEFI");
-                if (useUEFIPref == null) {
-                    Log.e(TAG, "QemuPreferencesFragment.onCreate: useUEFI preference not found");
-                    return;
-                }
-                if (!getuseDefaultBios(getActivity())) {
-                    useUEFIPref.setChecked(false);
-                    setuseUEFI(getActivity(), false);
-                }
-                useUEFIPref.setEnabled(false);
-            }
-
-            SwitchPreferenceCompat useDefaultBiosPref = findPreference("useDefaultBios");
-            if (useDefaultBiosPref == null) {
-                Log.e(TAG, "QemuPreferencesFragment.onCreate: useDefaultBios preference not found");
-                return;
-            }
-            useDefaultBiosPref.setOnPreferenceChangeListener((preference, newValue) -> {
-                SwitchPreferenceCompat useUEFIPref = findPreference("useUEFI");
-                if (useUEFIPref == null) {
-                    Log.e(TAG, "QemuPreferencesFragment.onCreate: useUEFI preference not found during useDefaultBios change");
-                    return false;
-                }
-                if (!(Boolean) newValue) {
-                    if (getuseUEFI(getActivity())) {
-                        useUEFIPref.setChecked(false);
-                        setuseUEFI(getActivity(), false);
-                    }
-                    if (useUEFIPref.isEnabled()) {
-                        useUEFIPref.setEnabled(false);
-                    }
-                } else {
-                    if (!useUEFIPref.isEnabled()) {
-                        useUEFIPref.setEnabled(true);
-                    }
-                }
-                return true;
-            });
         }
 
         private void onMemory() {
@@ -433,6 +385,52 @@ public class MainSettingsManager extends AppCompatActivity
 
             if (collapsingToolbarLayout != null) {
                 collapsingToolbarLayout.setSubtitle(getString(R.string.qemu));
+            }
+
+            Preference vmArchPref = findPreference("vmArch");
+            if (vmArchPref == null) {
+                Log.e(TAG, "QemuPreferencesFragment.onCreatePreferences: vmArch preference not found");
+            } else {
+                vmArchPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                    onArch();
+                    return true;
+                });
+            }
+
+            SwitchPreferenceCompat useUEFIPref = findPreference("useUEFI");
+            if (useUEFIPref == null) {
+                Log.e(TAG, "QemuPreferencesFragment.onCreatePreferences: useUEFI preference not found");
+            }
+
+            SwitchPreferenceCompat useDefaultBiosPref = findPreference("useDefaultBios");
+            if (useDefaultBiosPref == null) {
+                Log.e(TAG, "QemuPreferencesFragment.onCreatePreferences: useDefaultBios preference not found");
+            } else {
+                if (!getuseDefaultBios(getActivity()) && useUEFIPref != null) {
+                    useUEFIPref.setChecked(false);
+                    setuseUEFI(getActivity(), false);
+                    useUEFIPref.setEnabled(false);
+                }
+
+                useDefaultBiosPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                    if (useUEFIPref == null) {
+                        Log.e(TAG, "QemuPreferencesFragment.onCreatePreferences: useUEFI preference not found during useDefaultBios change");
+                        return false;
+                    }
+
+                    if (!(Boolean) newValue) {
+                        if (getuseUEFI(getActivity())) {
+                            useUEFIPref.setChecked(false);
+                            setuseUEFI(getActivity(), false);
+                        }
+                        if (useUEFIPref.isEnabled()) {
+                            useUEFIPref.setEnabled(false);
+                        }
+                    } else if (!useUEFIPref.isEnabled()) {
+                        useUEFIPref.setEnabled(true);
+                    }
+                    return true;
+                });
             }
 
             SwitchPreferenceCompat customMemory = findPreference("customMemory");
@@ -976,17 +974,16 @@ public class MainSettingsManager extends AppCompatActivity
             throw new IllegalStateException(caller + ": context must not be null");
         }
 
-        Package packageRef = context.getClass().getPackage();
-        if (packageRef == null) {
-            Log.e(TAG, caller + ": context package is null");
-            return null;
+        String packageName = context.getPackageName();
+        if (packageName == null || packageName.trim().isEmpty()) {
+            throw new IllegalStateException(caller + ": package name must not be null/empty");
         }
 
         try {
-            return context.getPackageManager().getPackageInfo(packageRef.getName(),
+            return context.getPackageManager().getPackageInfo(packageName,
                     PackageManager.GET_META_DATA);
         } catch (PackageManager.NameNotFoundException e) {
-            Log.e(TAG, caller + ": package info not found for " + packageRef.getName(), e);
+            Log.e(TAG, caller + ": package info not found for " + packageName, e);
             return null;
         }
     }
