@@ -85,8 +85,7 @@ find . -maxdepth 2 -type d | sort
 
 ### Exemplo de configuração de Java para build
 ```bash
-export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
-export PATH="$JAVA_HOME/bin:$PATH"
+source <(./tools/configure_java_home.sh --print)
 ./tools/gradle_with_jdk21.sh --version
 ./tools/gradle_with_jdk21.sh verifyGradleRuntimeJvm
 ```
