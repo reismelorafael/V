@@ -112,16 +112,64 @@ public class QmpClient {
 	}
 
 	static String negotiateCapabilities(PrintWriter out, BufferedReader in, int maxRetries, int retryDelayMs) throws Exception {
+		String greetingResponse = waitForResponseWithKey(in, "QMP", maxRetries, retryDelayMs);
+
 		sendRequest(out, QmpClient.requestCommandMode);
+
+		String capabilitiesAckResponse = waitForResponseWithKey(in, "return", maxRetries, retryDelayMs);
+
+		if ((greetingResponse == null || greetingResponse.trim().isEmpty())
+				&& (capabilitiesAckResponse == null || capabilitiesAckResponse.trim().isEmpty())) {
+			return null;
+		}
+
+		StringBuilder combinedResponse = new StringBuilder();
+		if (greetingResponse != null && !greetingResponse.trim().isEmpty()) {
+			combinedResponse.append(greetingResponse.trim());
+		}
+		if (capabilitiesAckResponse != null && !capabilitiesAckResponse.trim().isEmpty()) {
+			if (combinedResponse.length() > 0) {
+				combinedResponse.append("\n");
+			}
+			combinedResponse.append(capabilitiesAckResponse.trim());
+		}
+
+		return combinedResponse.toString();
+	}
+
+	private static String waitForResponseWithKey(BufferedReader in, String key, int maxRetries, int retryDelayMs) throws Exception {
 		String response = null;
 		for (int trial = 0; trial < maxRetries; trial++) {
 			response = getResponse(in);
-			if (response != null && !response.isEmpty()) {
-				break;
+			if (responseContainsKey(response, key)) {
+				return response;
 			}
 			Thread.sleep(retryDelayMs);
 		}
 		return response;
+	}
+
+	private static boolean responseContainsKey(String response, String key) {
+		if (response == null || response.trim().isEmpty()) {
+			return false;
+		}
+
+		String[] lines = response.split("\\n");
+		for (String line : lines) {
+			if (line == null || line.trim().isEmpty()) {
+				continue;
+			}
+			try {
+				JSONObject object = new JSONObject(line);
+				if (object.has(key) && !object.isNull(key)) {
+					return true;
+				}
+			} catch (Exception ignored) {
+				// Keep searching until retries are exhausted.
+			}
+		}
+
+		return false;
 	}
 
 	static boolean isGreetingAndCapabilitiesContractSatisfied(String response) {
