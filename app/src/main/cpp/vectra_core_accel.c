@@ -456,3 +456,83 @@ JNIEXPORT jstring JNICALL Java_com_vectras_vm_core_NativeLogcatBridge_nativeRead
     return result;
 }
 JNIEXPORT void JNICALL Java_com_vectras_vm_core_NativeLogcatBridge_nativeShutdownCapture(JNIEnv* env, jclass clazz){(void)env;(void)clazz; if(atomic_exchange(&g_capture_running,0)==1) pthread_join(g_capture_thread,NULL);}
+
+// ===== VM Flow JNI interop (enterprise fullstack) =====
+#define VECTRA_VM_FLOW_CAPACITY 128
+
+typedef struct {
+    int vm_hash;
+    int state_ordinal;
+    uint32_t stamp;
+} vectra_vm_flow_slot_t;
+
+static vectra_vm_flow_slot_t g_vm_flow_slots[VECTRA_VM_FLOW_CAPACITY];
+static pthread_mutex_t g_vm_flow_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint32_t g_vm_flow_stamp = 1u;
+
+static int vectra_vm_flow_find_or_evict_locked(int vm_hash) {
+    int free_index = -1;
+    int evict_index = 0;
+    uint32_t min_stamp = 0xFFFFFFFFu;
+
+    for (int i = 0; i < VECTRA_VM_FLOW_CAPACITY; ++i) {
+        if (g_vm_flow_slots[i].vm_hash == vm_hash) {
+            return i;
+        }
+        if (g_vm_flow_slots[i].stamp == 0u && free_index < 0) {
+            free_index = i;
+        }
+        if (g_vm_flow_slots[i].stamp < min_stamp) {
+            min_stamp = g_vm_flow_slots[i].stamp;
+            evict_index = i;
+        }
+    }
+
+    return (free_index >= 0) ? free_index : evict_index;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_VmFlowNativeBridge_nativeVmFlowInit(JNIEnv* env, jclass clazz) {
+    (void)env;
+    (void)clazz;
+    return (vectra_kernel_ensure() == RMR_KERNEL_OK) ? 1 : 0;
+}
+
+JNIEXPORT void JNICALL
+Java_com_vectras_vm_core_VmFlowNativeBridge_nativeVmFlowMark(JNIEnv* env, jclass clazz, jint vmHash, jint stateOrdinal) {
+    (void)env;
+    (void)clazz;
+
+    pthread_mutex_lock(&g_vm_flow_lock);
+    int idx = vectra_vm_flow_find_or_evict_locked((int)vmHash);
+    if (idx >= 0) {
+        g_vm_flow_slots[idx].vm_hash = (int)vmHash;
+        g_vm_flow_slots[idx].state_ordinal = (int)stateOrdinal;
+        g_vm_flow_slots[idx].stamp = ++g_vm_flow_stamp;
+        if (g_vm_flow_stamp == 0u) {
+            g_vm_flow_stamp = 1u;
+        }
+    }
+    pthread_mutex_unlock(&g_vm_flow_lock);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_VmFlowNativeBridge_nativeVmFlowCurrent(JNIEnv* env, jclass clazz, jint vmHash) {
+    (void)env;
+    (void)clazz;
+
+    jint state = -1;
+    pthread_mutex_lock(&g_vm_flow_lock);
+    for (int i = 0; i < VECTRA_VM_FLOW_CAPACITY; ++i) {
+        if (g_vm_flow_slots[i].stamp != 0u && g_vm_flow_slots[i].vm_hash == (int)vmHash) {
+            state = (jint)g_vm_flow_slots[i].state_ordinal;
+            g_vm_flow_slots[i].stamp = ++g_vm_flow_stamp;
+            if (g_vm_flow_stamp == 0u) {
+                g_vm_flow_stamp = 1u;
+            }
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_vm_flow_lock);
+    return state;
+}

@@ -1,5 +1,8 @@
 # Arquitetura — Execução, Supervisão e Observabilidade
 
+## 0) Blueprint de fluxos operacionais
+- Fluxos canônicos (criação, importação, execução e diagnóstico): [`docs/BLUEPRINT_FLUXOS_VM.md`](BLUEPRINT_FLUXOS_VM.md).
+
 ## 1) Componentes
 | Componente | Responsabilidade | Garantias |
 |---|---|---|

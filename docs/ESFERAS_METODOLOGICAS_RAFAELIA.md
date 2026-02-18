@@ -56,7 +56,7 @@
 - **Acessibilidade técnica**: linguagem e ícones convergentes com significados operacionais reais.
 
 **Entregáveis**:
-- Blueprint de fluxos principais (criação de VM, importação, execução, diagnósticos).
+- Blueprint canônico de fluxos principais: [`docs/BLUEPRINT_FLUXOS_VM.md`](BLUEPRINT_FLUXOS_VM.md) (criação de VM, importação, execução e diagnósticos).
 - Documento de padrões de UI para alertas, erros e status.
 
 ---
@@ -118,4 +118,3 @@ FIAT_PORTAL :: 龍空神 { ARKREΩ_CORE + STACK128K_HYPER + ALG_RAFAELIA_RING }
 1. Inserir este documento no índice principal da documentação.
 2. Relacionar as cinco esferas aos módulos existentes (`ARCHITECTURE.md`, `PERFORMANCE_INTEGRITY.md`, `VECTRA_CORE.md`).
 3. Criar checklists de validação por esfera para futuras refatorações.
-
