@@ -146,7 +146,20 @@ public class ProcessSupervisor {
             }
 
             if (this.process != null) {
-                throw new IllegalStateException("process already bound");
+                StringBuilder warn = new StringBuilder("bindProcess: replacing already bound process vmId=")
+                        .append(vmId)
+                        .append(" state=")
+                        .append(state)
+                        .append(" currentAlive=")
+                        .append(currentAlive);
+                if (currentPid > 0L) {
+                    warn.append(" currentPid=").append(currentPid);
+                }
+                if (incomingPid > 0L) {
+                    warn.append(" incomingPid=").append(incomingPid);
+                }
+                Log.w(TAG, warn.toString());
+                stopGracefully(false);
             }
         }
 

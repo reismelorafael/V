@@ -246,11 +246,41 @@ public class ProcessSupervisorFailoverTest {
         supervisor.bindProcess(null);
     }
 
-    @Test(expected = IllegalStateException.class)
-    public void bindProcess_rejectsSecondBind() {
-        ProcessSupervisor supervisor = new ProcessSupervisor(null, "vm-bind");
-        supervisor.bindProcess(new FakeProcess(true, 1002L));
-        supervisor.bindProcess(new FakeProcess(true, 1003L));
+    @Test
+    public void bindProcess_rebindsWhenAlreadyBoundAndCurrentProcessAlive() {
+        RecordingTransitionSink sink = new RecordingTransitionSink();
+        ProcessSupervisor supervisor = new ProcessSupervisor(
+                null,
+                "vm-bind",
+                command -> "error:no_qmp",
+                sink,
+                new ProcessSupervisor.Clock() {
+                    @Override
+                    public long monoMs() {
+                        return 500L;
+                    }
+
+                    @Override
+                    public long wallMs() {
+                        return 600L;
+                    }
+                }
+        );
+
+        FakeProcess previous = new FakeProcess(true, 1002L);
+        FakeProcess replacement = new FakeProcess(true, 1003L);
+
+        supervisor.bindProcess(previous);
+        supervisor.bindProcess(replacement);
+
+        Assert.assertEquals(1, previous.destroyCount);
+        Assert.assertEquals(0, previous.destroyForciblyCount);
+        Assert.assertEquals(ProcessSupervisor.State.RUN, supervisor.getState());
+        Assert.assertTrue(supervisor.isBoundTo(replacement));
+        Assert.assertFalse(supervisor.isBoundTo(previous));
+        Assert.assertTrue(sink.containsPrefix("RUN->FAILOVER:no_qmp:term_kill"));
+        Assert.assertTrue(sink.containsPrefix("FAILOVER->STOP:term_success:term"));
+        Assert.assertEquals(6, sink.size());
     }
 
     private static final class RecordingTransitionSink implements ProcessSupervisor.TransitionSink {
