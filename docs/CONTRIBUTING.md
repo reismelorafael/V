@@ -217,6 +217,7 @@ For builds without Firebase, use the placeholder configuration documented in [FI
 - **Simplicity**: Prefer simple solutions over complex ones
 - **Consistency**: Follow existing code style in the project
 - **Maintainability**: Consider long-term maintenance implications
+- **Accessibility**: Actionable UI elements (including FABs and icon-only controls) must always define an accessible `android:contentDescription`, even when a visible label exists; do not suppress lint checks for missing descriptions.
 
 ### Java Style Guide
 

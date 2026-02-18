@@ -52,11 +52,11 @@
         android:id="@+id/efab_create"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:contentDescription="@string/create"
         android:text="@string/create"
         android:layout_gravity="bottom|end"
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="80dp"
         app:icon="@drawable/add_24px"
-        app:layout_behavior="com.google.android.material.behavior.HideViewOnScrollBehavior"
-        tools:ignore="ContentDescription" />
+        app:layout_behavior="com.google.android.material.behavior.HideViewOnScrollBehavior" />
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

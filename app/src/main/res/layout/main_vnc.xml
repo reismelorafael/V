@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
     android:keepScreenOn="true"
@@ -62,9 +63,11 @@
                 <TableRow>
 
                     <TextView
+                        android:id="@+id/labelNickname"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="right|center_vertical"
+                        android:labelFor="@id/textNickname"
                         android:paddingRight="10dip"
                         android:text="@string/nickname_caption"
                         android:textAppearance="?android:attr/textAppearanceMedium" />
@@ -80,9 +83,11 @@
                 <TableRow>
 
                     <TextView
+                        android:id="@+id/labelPassword"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="right|center_vertical"
+                        android:labelFor="@id/textPASSWORD"
                         android:paddingRight="10dip"
                         android:text="@string/password_caption"
                         android:textAppearance="?android:attr/textAppearanceMedium" />
@@ -93,13 +98,20 @@
                         android:layout_weight="1"
                         android:orientation="horizontal" >
 
-                        <EditText
-                            android:id="@+id/textPASSWORD"
+                        <com.google.android.material.textfield.TextInputLayout
                             android:layout_width="fill_parent"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:password="true"
-                            android:singleLine="true" />
+                            app:boxBackgroundMode="none">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/textPASSWORD"
+                                android:layout_width="fill_parent"
+                                android:layout_height="wrap_content"
+                                android:autofillHints="password"
+                                android:inputType="textPassword"
+                                android:singleLine="true" />
+                        </com.google.android.material.textfield.TextInputLayout>
 
                         <CheckBox
                             android:id="@+id/checkboxKeepPassword"
@@ -113,6 +125,7 @@
                 <TableRow>
 
                     <TextView
+                        android:id="@+id/labelAddress"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="right|center_vertical"
@@ -120,27 +133,34 @@
                         android:paddingRight="10dip"
                         android:text="@string/address_caption"
                         android:textAppearance="?android:attr/textAppearanceMedium" />
-
-                    <EditText
-                        android:id="@+id/textIP"
+                    <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="fill_parent"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:singleLine="true" />
+                        app:boxBackgroundMode="none">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/textIP"
+                                android:layout_width="fill_parent"
+                                android:layout_height="wrap_content"
+                                android:hint="localhost"
+                                android:inputType="text|textNoSuggestions"
+                                android:singleLine="true" />
+                    </com.google.android.material.textfield.TextInputLayout>
                 </TableRow>
 
                 <TableRow>
 
                     <TextView
+                        android:id="@+id/labelPort"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="right|center_vertical"
+                        android:labelFor="@id/textPORT"
                         android:paddingRight="10dip"
                         android:text="@string/port_caption"
                         android:textAppearance="?android:attr/textAppearanceMedium" />
-
-                    <EditText
-                        android:id="@+id/textPORT"
+                    <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="fill_parent"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
@@ -151,20 +171,29 @@
                 <TableRow>
 
                     <TextView
+                        android:id="@+id/labelUsername"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="right|center_vertical"
+                        android:labelFor="@id/textUsername"
                         android:paddingRight="10dip"
                         android:text="@string/username_caption"
                         android:textAppearance="?android:attr/textAppearanceMedium" />
-
-                    <EditText
-                        android:id="@+id/textUsername"
+                    <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="fill_parent"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:hint="@string/username_hint"
-                        android:singleLine="true" />
+                        app:boxBackgroundMode="none">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/textUsername"
+                                android:layout_width="fill_parent"
+                                android:layout_height="wrap_content"
+                                android:autofillHints="username"
+                                android:hint="@string/username_hint"
+                                android:inputType="textPersonName|textNoSuggestions"
+                                android:singleLine="true" />
+                    </com.google.android.material.textfield.TextInputLayout>
                 </TableRow>
             </TableLayout>
 
