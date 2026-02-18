@@ -116,7 +116,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="right|center_vertical"
-                        android:hint="localhost"
+                        android:hint="@string/vnc_address_hint"
                         android:paddingRight="10dip"
                         android:text="@string/address_caption"
                         android:textAppearance="?android:attr/textAppearanceMedium" />
@@ -145,7 +145,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:singleLine="true"
-                        android:text="5900" />
+                        android:text="@string/vnc_default_port" />
                 </TableRow>
 
                 <TableRow>

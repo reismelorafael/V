@@ -100,6 +100,12 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
     // UI Elements - Status and Progress
     private Chip chipValidationStatus;
     private TextView tvEstimatedTime;
+    private TextView tvCpuSingleTime;
+    private TextView tvCpuMultiTime;
+    private TextView tvMemoryTime;
+    private TextView tvStorageTime;
+    private TextView tvIntegrityTime;
+    private TextView tvEmulationTime;
     private LinearLayout layoutProgress;
     private LinearProgressIndicator progressIndicator;
     private TextView tvProgressText;
@@ -142,6 +148,8 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
         
         setupToolbar();
         initViews();
+        bindStaticEstimatedTimes();
+        applyStatisticsFallback();
         setupListeners();
         updateEstimatedTime();
     }
@@ -174,6 +182,12 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
         // Status and Progress
         chipValidationStatus = findViewById(R.id.chipValidationStatus);
         tvEstimatedTime = findViewById(R.id.tvEstimatedTime);
+        tvCpuSingleTime = findViewById(R.id.tvCpuSingleTime);
+        tvCpuMultiTime = findViewById(R.id.tvCpuMultiTime);
+        tvMemoryTime = findViewById(R.id.tvMemoryTime);
+        tvStorageTime = findViewById(R.id.tvStorageTime);
+        tvIntegrityTime = findViewById(R.id.tvIntegrityTime);
+        tvEmulationTime = findViewById(R.id.tvEmulationTime);
         layoutProgress = findViewById(R.id.layoutProgress);
         progressIndicator = findViewById(R.id.progressIndicator);
         tvProgressText = findViewById(R.id.tvProgressText);
@@ -241,6 +255,34 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
         btnShareReport.setOnClickListener(v -> shareReport());
     }
     
+    private void bindStaticEstimatedTimes() {
+        setCategoryEstimatedTime(tvCpuSingleTime, TIME_CPU_SINGLE);
+        setCategoryEstimatedTime(tvCpuMultiTime, TIME_CPU_MULTI);
+        setCategoryEstimatedTime(tvMemoryTime, TIME_MEMORY);
+        setCategoryEstimatedTime(tvStorageTime, TIME_STORAGE);
+        setCategoryEstimatedTime(tvIntegrityTime, TIME_INTEGRITY);
+        setCategoryEstimatedTime(tvEmulationTime, TIME_EMULATION);
+    }
+
+    private void setCategoryEstimatedTime(TextView target, int seconds) {
+        if (target == null) {
+            return;
+        }
+        if (seconds > 0) {
+            target.setText(getString(R.string.pro_tools_estimated_time_item_format, seconds));
+        } else {
+            target.setText(R.string.pro_tools_estimated_time_item_placeholder);
+        }
+    }
+
+    private void applyStatisticsFallback() {
+        tvStatMean.setText(R.string.pro_tools_stat_placeholder);
+        tvStatMedian.setText(R.string.pro_tools_stat_placeholder);
+        tvStatStdDev.setText(R.string.pro_tools_stat_placeholder);
+        tvStatConfidence.setText(R.string.pro_tools_confidence_placeholder);
+        tvStatReproducibility.setText(R.string.pro_tools_stat_placeholder);
+    }
+
     private void updateEstimatedTime() {
         int totalSeconds = 0;
         int selectedCategories = 0;
@@ -642,10 +684,12 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
         if (report.confidenceInterval95 != null) {
             String ciLow = VectraBenchmark.formatTime((long) report.confidenceInterval95[0]);
             String ciHigh = VectraBenchmark.formatTime((long) report.confidenceInterval95[1]);
-            tvStatConfidence.setText(String.format(Locale.US, "[%s, %s]", ciLow, ciHigh));
+            tvStatConfidence.setText(getString(R.string.pro_tools_confidence_template, 95, String.format(Locale.US, "[%s, %s]", ciLow, ciHigh)));
+        } else {
+            tvStatConfidence.setText(R.string.pro_tools_confidence_placeholder);
         }
-        
-        tvStatReproducibility.setText(String.format(Locale.US, "%.1f%%", report.reproducibilityScore));
+
+        tvStatReproducibility.setText(getString(R.string.pro_tools_reproducibility_template, report.reproducibilityScore));
     }
     
     private String formatNumber(double value) {

@@ -319,4 +319,26 @@
     <string name="bootstrap_required">Bootstrap مطلوب!</string>
     <string name="you_can_choose_between_auto_download_and_setup_or_manual_setup_by_choosing_bootstrap_file">يمكنك الاختيار بين التنزيل التلقائي والإعداد أو الإعداد اليدوي من خلال اختيار ملف Bootstrap.</string>
     <string name="manual_setup">إعداد يدوي</string>
+
+    <string name="vnc_address_hint">localhost</string>
+    <string name="vnc_default_port">5900</string>
+    <string name="tab_key">TAB</string>
+
+    <string name="rom_info_name_placeholder">—</string>
+    <string name="rom_info_size_placeholder">غير مُحدد</string>
+
+    <string name="pro_tools_methodology_iso">ISO/IEC 25010</string>
+    <string name="pro_tools_methodology_ieee">IEEE 829/1012</string>
+    <string name="pro_tools_methodology_acm">ACM</string>
+    <string name="pro_tools_methodology_nist">NIST</string>
+    <string name="pro_tools_methodology_spec">SPEC</string>
+    <string name="pro_tools_methodology_mlperf">MLPerf</string>
+
+    <string name="pro_tools_estimated_time_item_placeholder">—</string>
+    <string name="pro_tools_estimated_time_item_format">~%1$ds</string>
+    <string name="pro_tools_stat_placeholder">—</string>
+    <string name="pro_tools_confidence_placeholder">95%%: —</string>
+    <string name="pro_tools_confidence_template">%1$d%%: %2$s</string>
+    <string name="pro_tools_reproducibility_template">%1$.1f%%</string>
+
 </resources>

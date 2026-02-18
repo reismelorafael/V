@@ -133,4 +133,26 @@
     <string name="lang_total_size">Total descargado: %s</string>
     <string name="lang_clear_all">Borrar todos los paquetes de idioma</string>
     <string name="lang_clear_all_confirm">¿Eliminar todos los paquetes de idioma descargados? La aplicación volverá al inglés.</string>
+
+    <string name="vnc_address_hint">localhost</string>
+    <string name="vnc_default_port">5900</string>
+    <string name="tab_key">TAB</string>
+
+    <string name="rom_info_name_placeholder">—</string>
+    <string name="rom_info_size_placeholder">No informado</string>
+
+    <string name="pro_tools_methodology_iso">ISO/IEC 25010</string>
+    <string name="pro_tools_methodology_ieee">IEEE 829/1012</string>
+    <string name="pro_tools_methodology_acm">ACM</string>
+    <string name="pro_tools_methodology_nist">NIST</string>
+    <string name="pro_tools_methodology_spec">SPEC</string>
+    <string name="pro_tools_methodology_mlperf">MLPerf</string>
+
+    <string name="pro_tools_estimated_time_item_placeholder">—</string>
+    <string name="pro_tools_estimated_time_item_format">~%1$ds</string>
+    <string name="pro_tools_stat_placeholder">—</string>
+    <string name="pro_tools_confidence_placeholder">95%%: —</string>
+    <string name="pro_tools_confidence_template">%1$d%%: %2$s</string>
+    <string name="pro_tools_reproducibility_template">%1$.1f%%</string>
+
 </resources>

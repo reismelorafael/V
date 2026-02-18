@@ -169,7 +169,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:checked="true"
-                            android:text="ISO/IEC 25010" />
+                            android:text="@string/pro_tools_methodology_iso" />
 
                         <com.google.android.material.chip.Chip
                             android:id="@+id/chipIEEE"
@@ -177,7 +177,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:checked="true"
-                            android:text="IEEE 829/1012" />
+                            android:text="@string/pro_tools_methodology_ieee" />
 
                         <com.google.android.material.chip.Chip
                             android:id="@+id/chipACM"
@@ -185,7 +185,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:checked="true"
-                            android:text="ACM" />
+                            android:text="@string/pro_tools_methodology_acm" />
 
                         <com.google.android.material.chip.Chip
                             android:id="@+id/chipNIST"
@@ -193,7 +193,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:checked="true"
-                            android:text="NIST" />
+                            android:text="@string/pro_tools_methodology_nist" />
 
                         <com.google.android.material.chip.Chip
                             android:id="@+id/chipSPEC"
@@ -201,7 +201,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:checked="false"
-                            android:text="SPEC" />
+                            android:text="@string/pro_tools_methodology_spec" />
 
                         <com.google.android.material.chip.Chip
                             android:id="@+id/chipMLPerf"
@@ -209,7 +209,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:checked="false"
-                            android:text="MLPerf" />
+                            android:text="@string/pro_tools_methodology_mlperf" />
                     </com.google.android.material.chip.ChipGroup>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -263,7 +263,7 @@
                     android:id="@+id/tvCpuSingleTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="~15s"
+                    android:text="@string/pro_tools_estimated_time_item_placeholder"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -308,7 +308,7 @@
                     android:id="@+id/tvCpuMultiTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="~20s"
+                    android:text="@string/pro_tools_estimated_time_item_placeholder"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -353,7 +353,7 @@
                     android:id="@+id/tvMemoryTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="~25s"
+                    android:text="@string/pro_tools_estimated_time_item_placeholder"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -398,7 +398,7 @@
                     android:id="@+id/tvStorageTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="~30s"
+                    android:text="@string/pro_tools_estimated_time_item_placeholder"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -443,7 +443,7 @@
                     android:id="@+id/tvIntegrityTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="~20s"
+                    android:text="@string/pro_tools_estimated_time_item_placeholder"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -488,7 +488,7 @@
                     android:id="@+id/tvEmulationTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="~15s"
+                    android:text="@string/pro_tools_estimated_time_item_placeholder"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -709,7 +709,7 @@
                                     android:id="@+id/tvStatMean"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="---"
+                                    android:text="@string/pro_tools_stat_placeholder"
                                     android:textAppearance="?attr/textAppearanceBodyLarge"
                                     android:textStyle="bold" />
                             </LinearLayout>
@@ -730,7 +730,7 @@
                                     android:id="@+id/tvStatMedian"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="---"
+                                    android:text="@string/pro_tools_stat_placeholder"
                                     android:textAppearance="?attr/textAppearanceBodyLarge"
                                     android:textStyle="bold" />
                             </LinearLayout>
@@ -751,7 +751,7 @@
                                     android:id="@+id/tvStatStdDev"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="---"
+                                    android:text="@string/pro_tools_stat_placeholder"
                                     android:textAppearance="?attr/textAppearanceBodyLarge"
                                     android:textStyle="bold" />
                             </LinearLayout>
@@ -779,7 +779,7 @@
                                     android:id="@+id/tvStatConfidence"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="95%: ---"
+                                    android:text="@string/pro_tools_confidence_placeholder"
                                     android:textAppearance="?attr/textAppearanceBodyMedium" />
                             </LinearLayout>
 
@@ -799,7 +799,7 @@
                                     android:id="@+id/tvStatReproducibility"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="---"
+                                    android:text="@string/pro_tools_stat_placeholder"
                                     android:textAppearance="?attr/textAppearanceBodyMedium" />
                             </LinearLayout>
                         </LinearLayout>

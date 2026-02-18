@@ -719,4 +719,26 @@
     <string name="x11_log_level_current_value">日志级别已设置到 \"%1$s\"</string>
     <string name="x11_action_back_to_display">返回显示屏</string>
     <string name="x11_desc_ui_environment">X11用户界面环境</string>
+
+    <string name="vnc_address_hint">localhost</string>
+    <string name="vnc_default_port">5900</string>
+    <string name="tab_key">TAB</string>
+
+    <string name="rom_info_name_placeholder">—</string>
+    <string name="rom_info_size_placeholder">未提供</string>
+
+    <string name="pro_tools_methodology_iso">ISO/IEC 25010</string>
+    <string name="pro_tools_methodology_ieee">IEEE 829/1012</string>
+    <string name="pro_tools_methodology_acm">ACM</string>
+    <string name="pro_tools_methodology_nist">NIST</string>
+    <string name="pro_tools_methodology_spec">SPEC</string>
+    <string name="pro_tools_methodology_mlperf">MLPerf</string>
+
+    <string name="pro_tools_estimated_time_item_placeholder">—</string>
+    <string name="pro_tools_estimated_time_item_format">~%1$ds</string>
+    <string name="pro_tools_stat_placeholder">—</string>
+    <string name="pro_tools_confidence_placeholder">95%%：—</string>
+    <string name="pro_tools_confidence_template">%1$d%%：%2$s</string>
+    <string name="pro_tools_reproducibility_template">%1$.1f%%</string>
+
 </resources>

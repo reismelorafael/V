@@ -238,7 +238,7 @@
             android:backgroundTint="?attr/colorPrimary"
             android:clickable="true"
             android:focusable="true"
-            android:text="TAB"
+            android:text="@string/tab_key"
             android:textColor="?attr/colorPrimary"
             app:layout_constraintLeft_toLeftOf="parent"
             app:layout_constraintTop_toTopOf="parent"/>
