@@ -419,5 +419,40 @@ static uint32_t logcat_safe_copy(char* dst, uint32_t dst_cap, const char* src){u
 static void logcat_push_line(const char* line){if(!line||!g_ring_entries||!g_entry_bytes)return; pthread_mutex_lock(&g_ring_lock); logcat_entry_t* s=&g_ring[g_head]; s->len=(uint16_t)logcat_safe_copy(s->text,g_entry_bytes,line); uint32_t n=g_head+1; if(n>=g_ring_entries)n=0; if(n==g_tail){g_tail++; if(g_tail>=g_ring_entries)g_tail=0;} g_head=n; pthread_mutex_unlock(&g_ring_lock);} 
 static void* logcat_capture_loop(void* arg){(void)arg; g_logcat_pipe=popen("logcat -v brief","r"); if(!g_logcat_pipe){atomic_store(&g_capture_running,0);return NULL;} char line[LOGCAT_ENTRY_MAX_BYTES]; while(atomic_load(&g_capture_running)){ if(!fgets(line,(int)sizeof(line),g_logcat_pipe))break; logcat_push_line(line);} if(g_logcat_pipe){pclose(g_logcat_pipe); g_logcat_pipe=NULL;} atomic_store(&g_capture_running,0); return NULL;}
 JNIEXPORT jint JNICALL Java_com_vectras_vm_core_NativeLogcatBridge_nativeInitCapture(JNIEnv* env, jclass clazz, jint ringEntries, jint entryBytes){(void)env;(void)clazz; if(ringEntries<=0)ringEntries=256; if(ringEntries>LOGCAT_RING_MAX_ENTRIES)ringEntries=LOGCAT_RING_MAX_ENTRIES; if(entryBytes<=64)entryBytes=256; if(entryBytes>LOGCAT_ENTRY_MAX_BYTES)entryBytes=LOGCAT_ENTRY_MAX_BYTES; pthread_mutex_lock(&g_ring_lock); g_ring_entries=(uint32_t)ringEntries; g_entry_bytes=(uint32_t)entryBytes; g_head=0; g_tail=0; for(uint32_t i=0;i<g_ring_entries;i++){g_ring[i].len=0;g_ring[i].text[0]='\0';} pthread_mutex_unlock(&g_ring_lock); if(atomic_exchange(&g_capture_running,1)==1)return 0; if(pthread_create(&g_capture_thread,NULL,logcat_capture_loop,NULL)!=0){atomic_store(&g_capture_running,0);return -1;} return 0;}
-JNIEXPORT jstring JNICALL Java_com_vectras_vm_core_NativeLogcatBridge_nativeReadBatch(JNIEnv* env, jclass clazz, jint maxEvents){(void)clazz; if(maxEvents<=0)maxEvents=1; if(maxEvents>256)maxEvents=256; char payload[LOGCAT_BATCH_PAYLOAD_BYTES]; uint32_t out=0; int count=0; pthread_mutex_lock(&g_ring_lock); while(g_tail!=g_head && count<maxEvents && out+2<sizeof(payload)){ logcat_entry_t* s=&g_ring[g_tail]; if(s->len>0){uint32_t copy=s->len; if(out+copy+1>=sizeof(payload)) copy=(uint32_t)(sizeof(payload)-out-2); memcpy(payload+out,s->text,copy); out+=copy; payload[out++]='\n'; count++;} s->len=0; s->text[0]='\0'; g_tail++; if(g_tail>=g_ring_entries) g_tail=0;} pthread_mutex_unlock(&g_ring_lock); payload[out]='\0'; return (*env)->NewStringUTF(env,payload);} 
+JNIEXPORT jstring JNICALL Java_com_vectras_vm_core_NativeLogcatBridge_nativeReadBatch(JNIEnv* env, jclass clazz, jint maxEvents){
+    (void)clazz;
+    if(maxEvents<=0)maxEvents=1;
+    if(maxEvents>256)maxEvents=256;
+
+    const size_t payloadBytes = (size_t)LOGCAT_BATCH_PAYLOAD_BYTES;
+    char* payload = (char*)malloc(payloadBytes);
+    if(!payload){
+        return (*env)->NewStringUTF(env, "");
+    }
+
+    uint32_t out=0;
+    int count=0;
+    pthread_mutex_lock(&g_ring_lock);
+    while(g_tail!=g_head && count<maxEvents && out+2<payloadBytes){
+        logcat_entry_t* s=&g_ring[g_tail];
+        if(s->len>0){
+            uint32_t copy=s->len;
+            if(out+copy+1>=payloadBytes) copy=(uint32_t)(payloadBytes-out-2);
+            memcpy(payload+out,s->text,copy);
+            out+=copy;
+            payload[out++]='\n';
+            count++;
+        }
+        s->len=0;
+        s->text[0]='\0';
+        g_tail++;
+        if(g_tail>=g_ring_entries) g_tail=0;
+    }
+    pthread_mutex_unlock(&g_ring_lock);
+
+    payload[out]='\0';
+    jstring result = (*env)->NewStringUTF(env,payload);
+    free(payload);
+    return result;
+}
 JNIEXPORT void JNICALL Java_com_vectras_vm_core_NativeLogcatBridge_nativeShutdownCapture(JNIEnv* env, jclass clazz){(void)env;(void)clazz; if(atomic_exchange(&g_capture_running,0)==1) pthread_join(g_capture_thread,NULL);}
