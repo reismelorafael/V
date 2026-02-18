@@ -97,6 +97,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
     boolean isServerError = false;
     boolean isNotEnoughStorageSpace = false;
     boolean isCustomSetupMode = false;
+    boolean pendingStandardSetupStart = false;
     final ArrayList<HashMap<String, String>> mirrorList = new ArrayList<>();
     ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ActivityResultLauncher<Uri> storagePermissionLauncher =
@@ -181,6 +182,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
         binding.standardSetupOption.setOnClickListener(v -> {
             if (downloadBootstrapsCommand.isEmpty()) {
+                pendingStandardSetupStart = true;
                 DialogUtils.twoDialog(SetupWizard2Activity.this, getString(R.string.oops),
                         getString(R.string.this_option_is_temporarily_unavailable_because_the_server_cannot_be_connected),
                         getString(R.string.try_again),
@@ -191,6 +193,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                         null,
                         null);
             } else {
+                pendingStandardSetupStart = false;
                 isCustomSetupMode = false;
                 startSetup();
             }
@@ -425,24 +428,27 @@ public class SetupWizard2Activity extends AppCompatActivity {
         RequestNetwork.RequestListener _net_request_listener = new RequestNetwork.RequestListener() {
             @Override
             public void onResponse(String tag, String response, HashMap<String, Object> responseHeaders) {
+                boolean hasResolvedBootstrap = false;
                 if (JSONUtils.isValidFromString(response)) {
-                    HashMap<String, Object> mmap;
-                    mmap = new Gson().fromJson(response, new TypeToken<HashMap<String, Object>>() {
+                    HashMap<String, Object> mmap = new Gson().fromJson(response, new TypeToken<HashMap<String, Object>>() {
                     }.getType());
-                    if (mmap.containsKey("aarch64") && mmap.containsKey("armhf") && mmap.containsKey("amd64") && mmap.containsKey("x86")) {
-                        if (DeviceUtils.isArm()) {
-                            bootstrapFileLink = Objects.requireNonNull(mmap.get(DeviceUtils.is64bit() ? "aarch64" : "armhf")).toString();
-                        } else {
-                            bootstrapFileLink = Objects.requireNonNull(mmap.get(DeviceUtils.is64bit() ? "amd64" : "x86")).toString();
-                        }
-                        downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
-                        MainSettingsManager.setLastSetupBootstrapUrl(SetupWizard2Activity.this, bootstrapFileLink);
-                    }
+                    hasResolvedBootstrap = updateBootstrapForCurrentArchitecture(mmap);
                 }
+
+                if (!hasResolvedBootstrap) {
+                    applyOfflineBootstrapFallback();
+                    hasResolvedBootstrap = !downloadBootstrapsCommand.isEmpty();
+                }
+
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    if (isSystemUpdateMode) {
+                    if (isSystemUpdateMode && hasResolvedBootstrap) {
+                        startSetup();
+                    } else if (pendingStandardSetupStart && hasResolvedBootstrap) {
+                        pendingStandardSetupStart = false;
+                        isCustomSetupMode = false;
                         startSetup();
                     } else {
+                        pendingStandardSetupStart = false;
                         uiController(STEP_SETUP_OPTIONS);
                     }
                 }, 1000);
@@ -451,6 +457,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
             @Override
             public void onErrorResponse(String tag, String message) {
                 applyOfflineBootstrapFallback();
+                pendingStandardSetupStart = false;
                 new Handler(Looper.getMainLooper()).postDelayed(() -> uiController(STEP_SETUP_OPTIONS), 1000);
             }
         };
@@ -775,6 +782,34 @@ public class SetupWizard2Activity extends AppCompatActivity {
             downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
             runOnUiThread(() -> UIUtils.toastShort(this, getString(R.string.this_option_is_temporarily_unavailable_because_the_server_cannot_be_connected)));
         }
+    }
+
+    private boolean updateBootstrapForCurrentArchitecture(HashMap<String, Object> bootstrapMap) {
+        if (bootstrapMap == null
+                || !bootstrapMap.containsKey("aarch64")
+                || !bootstrapMap.containsKey("armhf")
+                || !bootstrapMap.containsKey("amd64")
+                || !bootstrapMap.containsKey("x86")) {
+            return false;
+        }
+
+        String architectureKey;
+        if (DeviceUtils.isArm()) {
+            architectureKey = DeviceUtils.is64bit() ? "aarch64" : "armhf";
+        } else {
+            architectureKey = DeviceUtils.is64bit() ? "amd64" : "x86";
+        }
+
+        Object bootstrapUrlObject = bootstrapMap.get(architectureKey);
+        String resolvedBootstrapUrl = bootstrapUrlObject == null ? "" : bootstrapUrlObject.toString().trim();
+        if (!isBootstrapLinkValid(resolvedBootstrapUrl)) {
+            return false;
+        }
+
+        bootstrapFileLink = resolvedBootstrapUrl;
+        downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
+        MainSettingsManager.setLastSetupBootstrapUrl(this, bootstrapFileLink);
+        return !downloadBootstrapsCommand.isEmpty();
     }
 
     private void selectMirror() {
