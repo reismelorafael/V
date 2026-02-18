@@ -760,6 +760,32 @@ public class SetupWizard2Activity extends AppCompatActivity {
                     return;
                 }
 
+                if (exitValue == 0) {
+                    SetupFeatureCore.PostInstallCheckResult postInstallCheck = SetupFeatureCore.runPostInstallCheck(this);
+                    if (postInstallCheck.ok) {
+                        runOnUiThread(() -> {
+                            MainSettingsManager.setStandardSetupVersion(this, AppConfig.standardSetupVersion);
+                            MainSettingsManager.setsetUpWithManualSetupBefore(this, isCustomSetupMode);
+                            uiController(STEP_PATERON);
+                            if (isSystemUpdateMode) {
+                                uiControllerFinalSteps(STEP_FINISH);
+                            } else {
+                                uiControllerFinalSteps(STEP_PATERON);
+                            }
+                            isExecutingCommand = false;
+                        });
+                    } else {
+                        isExecutingCommand = false;
+                        executeBestEffortRollback(setupTimestamp, "post install check failed");
+                        runOnUiThread(() -> {
+                            String technicalMessage = withSetupSourceDiagnostic(postInstallCheck.technicalMessage());
+                            appendTextAndScroll("Error: " + technicalMessage + "\n");
+                            uiController(STEP_ERROR, technicalMessage);
+                        });
+                    }
+                    return;
+                }
+
                 if (exitValue != 0) {
                     isExecutingCommand = false;
                     if (aria2Error && downloadBootstrapsCommand.contains("aria2c")) {
@@ -775,6 +801,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                             uiController(STEP_ERROR, logs);
                         });
                     }
+                    return;
                 }
             } catch (IOException e) {
                 isExecutingCommand = false;
@@ -833,15 +860,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
         logs += newLog;
 
         if (newLog.contains("xssFjnj58Id")) {
-            isExecutingCommand = false;
-            MainSettingsManager.setStandardSetupVersion(this, AppConfig.standardSetupVersion);
-            MainSettingsManager.setsetUpWithManualSetupBefore(this, isCustomSetupMode);
-            uiController(STEP_PATERON);
-            if (isSystemUpdateMode) {
-                uiControllerFinalSteps(STEP_FINISH);
-            } else {
-                uiControllerFinalSteps(STEP_PATERON);
-            }
+            advanceSetupProgress(100);
         } else if (newLog.contains("libproot.so --help") || newLog.contains("/bin/sh: can't fork:")) {
             isLibProotError = true;
         } else if (newLog.contains("not complete: /root/setup.tar.gz")) {

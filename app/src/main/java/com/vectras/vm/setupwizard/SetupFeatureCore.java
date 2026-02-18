@@ -134,6 +134,46 @@ public class SetupFeatureCore {
         }
     }
 
+    public static final class PostInstallCheckResult {
+        public final boolean ok;
+        public final String summary;
+        public final ArrayList<String> failures;
+
+        private PostInstallCheckResult(boolean ok, String summary, ArrayList<String> failures) {
+            this.ok = ok;
+            this.summary = summary;
+            this.failures = failures;
+        }
+
+        public String technicalMessage() {
+            if (failures.isEmpty()) {
+                return summary;
+            }
+            StringJoiner joiner = new StringJoiner("\n");
+            for (String failure : failures) {
+                joiner.add("- " + failure);
+            }
+            return summary + "\n" + joiner;
+        }
+    }
+
+    public static PostInstallCheckResult runPostInstallCheck(Context context) {
+        ArrayList<String> failures = new ArrayList<>();
+        if (!isInstalledProot(context)) {
+            failures.add("missing required binary: proot");
+        }
+        if (!isInstalledDistro(context)) {
+            failures.add("missing required distro busybox");
+        }
+        if (!isInstalledQemu(context)) {
+            failures.add("missing required qemu-system-x86_64 binary");
+        }
+
+        boolean ok = failures.isEmpty();
+        String summary = ok ? "Post-install check passed." : "Post-install check failed.";
+        return new PostInstallCheckResult(ok, summary, failures);
+    }
+
     public static PreflightResult runVmStartPreflight(
             Context context,
             String requiredQemuBinary,
