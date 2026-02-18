@@ -82,6 +82,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
         OFFLINE_FALLBACK,
         MANUAL_FILE
     }
+
     ActivitySetupWizard2Binding binding;
     SetupQemuDoneBinding bindingFinalSteps;
     public static final int ACTION_SYSTEM_UPDATE = 1;
@@ -231,7 +232,12 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 intent.setData(Uri.parse(AppConfig.community));
                 startActivity(intent);
             } else if (SetupFeatureCore.isInstalledSystemFiles(this)) {
-                getDataForStandardSetup();
+                SetupFeatureCore.PostInstallCheckResult postInstallCheckResult = SetupFeatureCore.runPostInstallCheck(this);
+                if (postInstallCheckResult.ok) {
+                    getDataForStandardSetup();
+                } else {
+                    uiController(STEP_ERROR, withSetupSourceDiagnostic(postInstallCheckResult.summary()));
+                }
             } else {
                 extractSystemFiles();
             }
@@ -419,7 +425,12 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
                     runOnUiThread(() -> new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         if (result) {
-                            getDataForStandardSetup();
+                            SetupFeatureCore.PostInstallCheckResult postInstallCheckResult = SetupFeatureCore.runPostInstallCheck(this);
+                            if (postInstallCheckResult.ok) {
+                                getDataForStandardSetup();
+                            } else {
+                                uiController(STEP_ERROR, withSetupSourceDiagnostic(postInstallCheckResult.summary()));
+                            }
                         } else {
                             uiController(STEP_ERROR, withSetupSourceDiagnostic(getString(R.string.system_files_installation_failed_content) + (!SetupFeatureCore.lastErrorLog.isEmpty() ? "\n\n" + SetupFeatureCore.lastErrorLog : "")));
                         }
@@ -550,7 +561,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
                 String bootstrapAcquireCommand;
                 if (isCustomSetupMode) {
-                    bootstrapAcquireCommand = "cp '" + tarPath + "' '" + setupArchive + "'";
+                    bootstrapAcquireCommand = "cp '" + tarPath.replace("'", "'\\''") + "' '" + setupArchive + "'";
                 } else {
                     if (FileUtils.isFileExists(getFilesDir().getAbsolutePath() + "/distro/root/setup.tar.gz"))
                         FileUtils.deleteDirectory(getFilesDir().getAbsolutePath() + "/distro/root/setup.tar.gz");
@@ -569,7 +580,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                         " STATE_FILE='" + stateBase + "/setup_state.json';" +
                         " mkdir -p \"$STAGING_BASE\" \"$BACKUP_BASE\" \"$STATE_BASE\" \"$STAGE_ROOT\";" +
                         " ln -sfn \"$STAGE_DIR\" \"$STAGING_BASE/latest\";" +
-                        " write_state(){ PHASE=\"$1\"; MSG=\"$2\"; printf '{\\\"timestamp\\\":\\\"%s\\\",\\\"phase\\\":\\\"%s\\\",\\\"stage_dir\\\":\\\"%s\\\",\\\"message\\\":\\\"%s\\\"}\\n' \"$SETUP_TS\" \"$PHASE\" \"$STAGE_DIR\" \"$MSG\" > \"$STATE_FILE\"; };" +
+                        " write_state(){ PHASE=\"$1\"; MSG=\"$2\"; printf '{\\\"version\\\":1,\\\"timestamp\\\":\\\"%s\\\",\\\"phase\\\":\\\"%s\\\",\\\"stage_dir\\\":\\\"%s\\\",\\\"message\\\":\\\"%s\\\"}\\n' \"$SETUP_TS\" \"$PHASE\" \"$STAGE_DIR\" \"$MSG\" > \"$STATE_FILE\"; };" +
                         " rollback_setup(){ REASON=\"$1\"; write_state ROLLED_BACK \"$REASON\"; echo \"CRITICAL_STDERR: rollback reason=$REASON\"; if [ -d \"$BACKUP_BASE/current/usr-local-bin\" ]; then rm -rf /usr/local/bin; cp -a \"$BACKUP_BASE/current/usr-local-bin\" /usr/local/bin; fi; if [ -f \"$BACKUP_BASE/current/etc-profile\" ]; then cp -a \"$BACKUP_BASE/current/etc-profile\" /etc/profile; fi; rm -rf \"$STAGE_DIR\"; };" +
                         " write_state PREPARE 'Preparing staging pipeline';" +
                         " echo \"Starting setup...\";" +
@@ -752,6 +763,32 @@ public class SetupWizard2Activity extends AppCompatActivity {
                     return;
                 }
 
+                if (exitValue == 0) {
+                    SetupFeatureCore.PostInstallCheckResult postInstallCheck = SetupFeatureCore.runPostInstallCheck(this);
+                    if (postInstallCheck.ok) {
+                        runOnUiThread(() -> {
+                            MainSettingsManager.setStandardSetupVersion(this, AppConfig.standardSetupVersion);
+                            MainSettingsManager.setsetUpWithManualSetupBefore(this, isCustomSetupMode);
+                            uiController(STEP_PATERON);
+                            if (isSystemUpdateMode) {
+                                uiControllerFinalSteps(STEP_FINISH);
+                            } else {
+                                uiControllerFinalSteps(STEP_PATERON);
+                            }
+                            isExecutingCommand = false;
+                        });
+                    } else {
+                        isExecutingCommand = false;
+                        executeBestEffortRollback(setupTimestamp, "post install check failed");
+                        runOnUiThread(() -> {
+                            String technicalMessage = withSetupSourceDiagnostic(postInstallCheck.technicalMessage());
+                            appendTextAndScroll("Error: " + technicalMessage + "\n");
+                            uiController(STEP_ERROR, technicalMessage);
+                        });
+                    }
+                    return;
+                }
+
                 if (exitValue != 0) {
                     isExecutingCommand = false;
                     if (aria2Error && downloadBootstrapsCommand.contains("aria2c")) {
@@ -824,6 +861,70 @@ public class SetupWizard2Activity extends AppCompatActivity {
         runOnUiThread(() -> triggerStepErrorWithSetupDiagnostic(errorIdentifier));
     }
 
+    private String validatePostInstallSynchronously(String setupTimestamp) {
+        if (setupTimestamp == null || setupTimestamp.isEmpty()) {
+            return "missing setup timestamp";
+        }
+
+        String validationCommand = "set -e; " +
+                "STATE_FILE='/root/.vectras-setup/setup_state.json'; " +
+                "test -f /usr/local/bin/qemu-system-x86_64 -o -f /usr/local/bin/qemu-system-aarch64 || exit 61; " +
+                "test -f \"$STATE_FILE\" || exit 62; " +
+                "grep -q '\"phase\":\"PROMOTED\"' \"$STATE_FILE\" || exit 63; " +
+                "grep -q '\"timestamp\":\"" + setupTimestamp + "\"' \"$STATE_FILE\" || exit 64;";
+
+        try {
+            ProcessBuilder processBuilder = new ProcessBuilder();
+            String filesDir = getFilesDir().getAbsolutePath();
+            String tmpDirPath = getFilesDir().getAbsolutePath() + "/usr/tmp";
+            ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(this, filesDir + "/distro", "/root")
+                    .setPath("/bin:/usr/bin:/sbin:/usr/sbin")
+                    .setTmpDir(tmpDirPath);
+            prootCommandBuilder.applyEnvironment(processBuilder.environment());
+            processBuilder.command(prootCommandBuilder.buildCommand());
+            processBuilder.redirectErrorStream(true);
+
+            Process process = processBuilder.start();
+            StringBuilder output = new StringBuilder();
+            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                writer.write(validationCommand);
+                writer.newLine();
+                writer.flush();
+
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (output.length() > 0) {
+                        output.append(" | ");
+                    }
+                    output.append(line);
+                }
+            }
+
+            ProcessRuntimeOps.TimeoutExecutionResult validationWaitResult = ProcessRuntimeOps.waitForByCategory(
+                    process,
+                    ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION
+            );
+
+            if (validationWaitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.TIMEOUT) {
+                return "validation timeout: " + validationWaitResult.message;
+            }
+
+            if (validationWaitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.ERROR) {
+                return "validation execution error: " + validationWaitResult.message;
+            }
+
+            if (validationWaitResult.exitCode != 0) {
+                String processOutput = output.length() == 0 ? "no validation output" : output.toString();
+                return "validation exit code " + validationWaitResult.exitCode + " | " + processOutput;
+            }
+
+            return null;
+        } catch (Exception e) {
+            return "validation exception: " + e.getMessage();
+        }
+    }
+
     private void executeBestEffortRollback(String setupTimestamp, String reason) {
         if (setupTimestamp == null || setupTimestamp.isEmpty()) {
             return;
@@ -838,7 +939,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                         "if [ -d \"$BACKUP_BASE/current/usr-local-bin\" ]; then rm -rf /usr/local/bin; cp -a \"$BACKUP_BASE/current/usr-local-bin\" /usr/local/bin; fi; " +
                         "if [ -f \"$BACKUP_BASE/current/etc-profile\" ]; then cp -a \"$BACKUP_BASE/current/etc-profile\" /etc/profile; fi; " +
                         "rm -rf \"$STAGE_DIR\"; " +
-                        "printf '{\\"timestamp\\":\\"" + setupTimestamp + "\\",\\"phase\\":\\"ROLLED_BACK\\",\\"stage_dir\\":\\"/root/.vectras-staging/" + setupTimestamp + "\\",\\"message\\":\\"" + sanitizedReason + "\\"}\\n' > /root/.vectras-setup/setup_state.json";
+                        "printf '{\\"version\\":1,\\"timestamp\\":\\"" + setupTimestamp + "\\",\\"phase\\":\\"ROLLED_BACK\\",\\"stage_dir\\":\\"/root/.vectras-staging/" + setupTimestamp + "\\",\\"message\\":\\"" + sanitizedReason + "\\"}\\n' > /root/.vectras-setup/setup_state.json";
 
                 ProcessBuilder processBuilder = new ProcessBuilder();
                 String filesDir = getFilesDir().getAbsolutePath();
@@ -874,7 +975,11 @@ public class SetupWizard2Activity extends AppCompatActivity {
             aria2Error = true;
         } else if (newLog.contains("temporary error")) {
             isServerError = true;
-        } else if (newLog.contains("CRITICAL_STDERR:")) {
+        } else if (newLog.contains("CRITICAL_STDERR:")
+                || newLog.contains("permission denied")
+                || newLog.contains("No such file or directory")
+                || newLog.contains("cannot stat")
+                || newLog.contains("segmentation fault")) {
             criticalSetupStderr = true;
         }
 
@@ -956,6 +1061,17 @@ public class SetupWizard2Activity extends AppCompatActivity {
         }
 
         progressText = setupProgressPercent + "% | ";
+    }
+
+    private void finalizeSetupSuccess() {
+        MainSettingsManager.setStandardSetupVersion(this, AppConfig.standardSetupVersion);
+        MainSettingsManager.setsetUpWithManualSetupBefore(this, isCustomSetupMode);
+        uiController(STEP_PATERON);
+        if (isSystemUpdateMode) {
+            uiControllerFinalSteps(STEP_FINISH);
+        } else {
+            uiControllerFinalSteps(STEP_PATERON);
+        }
     }
 
     private void advanceSetupProgress(int targetPercent) {
