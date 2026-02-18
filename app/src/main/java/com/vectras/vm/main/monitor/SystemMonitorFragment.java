@@ -88,21 +88,23 @@ public class SystemMonitorFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
+        stopMonitor();
+        stopDelayedRefreshExecutor();
         super.onDestroyView();
-        if (executorUpdate != null && !executorUpdate.isShutdown()) {
-            executorUpdate.shutdownNow();
+        binding = null;
+    }
+
+    @Override
+    public void onDestroy() {
+        if (!executor.isShutdown()) {
+            executor.shutdownNow();
         }
+        super.onDestroy();
     }
 
     private void initialize() {
         binding.btStopqemu.setOnClickListener(v -> VMManager.requestKillAllQemuProcess(requireActivity(), () -> {
-
-            executorUpdate = Executors.newSingleThreadScheduledExecutor();
-            executorUpdate.schedule(() -> {
-                if (getContext() != null) {
-                    requireActivity().runOnUiThread(this::getQemuInfo);
-                }
-            }, 500, TimeUnit.MILLISECONDS);
+            startDelayedRefreshExecutor();
         }));
 
         binding.btRafaeliaLogs.setOnClickListener(v -> {
@@ -161,9 +163,34 @@ public class SystemMonitorFragment extends Fragment {
         handler.removeCallbacks(monitorTask);
     }
 
+    private void startDelayedRefreshExecutor() {
+        stopDelayedRefreshExecutor();
+        executorUpdate = Executors.newSingleThreadScheduledExecutor();
+        executorUpdate.schedule(() -> {
+            if (!isViewBindingAvailable()) {
+                return;
+            }
+            requireActivity().runOnUiThread(() -> {
+                if (isViewBindingAvailable()) {
+                    getQemuInfo();
+                }
+            });
+        }, 500, TimeUnit.MILLISECONDS);
+    }
+
+    private void stopDelayedRefreshExecutor() {
+        if (executorUpdate != null && !executorUpdate.isShutdown()) {
+            executorUpdate.shutdownNow();
+        }
+    }
+
+    private boolean isViewBindingAvailable() {
+        return isAdded() && binding != null;
+    }
+
     @SuppressLint("SetTextI18n")
     private void updateSystemMonitor() {
-        if (!isAdded()) return;
+        if (!isViewBindingAvailable()) return;
 
         ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
         ActivityManager activityManager = (ActivityManager) requireActivity().getSystemService(ACTIVITY_SERVICE);
@@ -205,7 +232,7 @@ public class SystemMonitorFragment extends Fragment {
 
     @SuppressLint("SetTextI18n")
     private void getQemuInfo() {
-        if (!isAdded()) return;
+        if (!isViewBindingAvailable()) return;
 
         String currentArch = MainSettingsManager.getArch(requireActivity());
 
@@ -213,7 +240,7 @@ public class SystemMonitorFragment extends Fragment {
 
         executor.execute(() -> {
             String qemuVersionName = CommandUtils.getQemuVersionName();
-            if (!isAdded()) return;
+            if (!isViewBindingAvailable()) return;
             String result = Terminal.executeShellCommandWithResult("ps -e command && echo \"psendhere\" && cat /proc/cpuinfo", requireActivity());
             requireActivity().runOnUiThread(() -> {
                 int markerIndex = result.indexOf("\npsendhere");
@@ -258,7 +285,7 @@ public class SystemMonitorFragment extends Fragment {
 
     @SuppressLint("SetTextI18n")
     private void getVNCServerStatus(String resultCommand) {
-        if (!isAdded()) return;
+        if (!isViewBindingAvailable()) return;
         binding.tvVncport.setText(getString(R.string.port_qemu) + " " + (Integer.parseInt(MainSettingsManager.getVncExternalDisplay(requireActivity())) + 5900) + ".");
 
         if (resultCommand.contains(Config.defaultVNCHost + ":" + Config.defaultVNCPort)) {
@@ -271,12 +298,12 @@ public class SystemMonitorFragment extends Fragment {
     }
     private void get3dfxStatus(String qemuVersion, String resultCommand) {
         if(qemuVersion.contains("3dfx")) {
-            if (!isAdded()) return;
+            if (!isViewBindingAvailable()) return;
             binding.tv3dfxContent.setText(
                     requireActivity().getString(resultCommand.contains("crc32") || resultCommand.contains("sse4_2") ?
                             R.string.cpu_support_3dfx_content : R.string.cpu_not_support_3dfx_content));
         } else {
-            if (!isAdded()) return;
+            if (!isViewBindingAvailable()) return;
             binding.tv3dfxContent.setText(getText(R.string.threedfx_is_not_available));
         }
     }
