@@ -30,6 +30,8 @@ import com.vectras.vm.main.vms.DataMainRoms;
 import com.vectras.vm.databinding.ActivityVmCreatorBinding;
 import com.vectras.vm.databinding.DialogProgressStyleBinding;
 import com.vectras.vm.main.MainActivity;
+import com.vectras.vm.core.VmFlowState;
+import com.vectras.vm.core.VmFlowTracker;
 import com.vectras.vm.rafaelia.RafaeliaQemuProfile;
 import com.vectras.vm.utils.DeviceUtils;
 import com.vectras.vm.utils.DialogUtils;
@@ -531,6 +533,7 @@ public class VMCreatorActivity extends AppCompatActivity {
     }
 
     private void createNewVM() {
+        VmFlowTracker.mark(this, vmID, VmFlowState.CREATING, "create_vm_requested", "create");
         if (FileUtils.isFileExists(AppConfig.romsdatajson)) {
             if (!VMManager.isRomsDataJsonValid(true, this)) {
                 return;
@@ -558,6 +561,7 @@ public class VMCreatorActivity extends AppCompatActivity {
         }
 
         if (!isSaveCompleted) {
+            VmFlowTracker.mark(this, vmID, VmFlowState.ERROR, "create_vm_persist_failed", "abort");
             DialogUtils.oneDialog(
                     this,
                     getString(R.string.oops),
@@ -567,6 +571,7 @@ public class VMCreatorActivity extends AppCompatActivity {
         }
 
         created = true;
+        VmFlowTracker.mark(this, vmID, VmFlowState.READY, "create_vm_saved", "ready");
 
         if (getIntent().hasExtra("addromnow")) {
             RomInfo.isFinishNow = true;
@@ -737,6 +742,7 @@ public class VMCreatorActivity extends AppCompatActivity {
     @SuppressLint("SetTextI18n")
     private void importRom(Uri fileUri, String filePath, String fileName) {
         if (!(fileName.endsWith(".cvbi") || fileName.endsWith(".cvbi.zip") || filePath.endsWith(".cvbi") || filePath.endsWith(".cvbi.zip"))) {
+            VmFlowTracker.mark(this, vmID, VmFlowState.ERROR, "import_invalid_extension", "abort");
             DialogUtils.oneDialog(this,
                     getResources().getString(R.string.problem_has_been_detected),
                     getResources().getString(R.string.format_not_supported_please_select_file_with_format_cvbi),
@@ -756,6 +762,7 @@ public class VMCreatorActivity extends AppCompatActivity {
             if (fileUri != null && !fileUri.toString().isEmpty()) {
                 isUseUri = true;
             } else {
+                VmFlowTracker.mark(this, vmID, VmFlowState.ERROR, "import_source_missing", "abort");
                 DialogUtils.oneDialog(this,
                         getResources().getString(R.string.oops),
                         getResources().getString(R.string.error_CR_CVBI1),
@@ -773,6 +780,7 @@ public class VMCreatorActivity extends AppCompatActivity {
         }
 
         if (!createVMFolder(false)) {
+            VmFlowTracker.mark(this, vmID, VmFlowState.ERROR, "import_vm_dir_create_failed", "abort");
             DialogUtils.oneDialog(this,
                     getString(R.string.oops),
                     getString(R.string.unable_to_cvbi_file_vm_dir_content),
@@ -786,6 +794,7 @@ public class VMCreatorActivity extends AppCompatActivity {
         }
 
         isImportingCVBI = true;
+        VmFlowTracker.mark(this, vmID, VmFlowState.CREATING, "import_started", "extract");
 
         View progressView = LayoutInflater.from(this).inflate(R.layout.dialog_progress_style, null);
         TextView progressText = progressView.findViewById(R.id.progress_text);
@@ -826,6 +835,7 @@ public class VMCreatorActivity extends AppCompatActivity {
                 if (result) {
                     afterExtractCVBIFile(fileName);
                 } else {
+                    VmFlowTracker.mark(VMCreatorActivity.this, vmID, VmFlowState.ERROR, "import_extract_failed", "abort");
                     runOnUiThread(() -> DialogUtils.oneDialog(VMCreatorActivity.this,
                             getString(R.string.oops),
                             getString(R.string.could_not_process_cvbi_file_content),
@@ -885,9 +895,11 @@ public class VMCreatorActivity extends AppCompatActivity {
                         VMManager.setArch("X86_64", this);
                     }
 
+                    VmFlowTracker.mark(this, vmID, VmFlowState.READY, "import_missing_metadata_fallback", "ready");
                     DialogUtils.oneDialog(this, getResources().getString(R.string.oops), getResources().getString(R.string.error_CR_CVBI2), getResources().getString(R.string.ok), true, R.drawable.warning_48px, true, null, null);
                 } else {
                     //Error code: CR_CVBI3
+                    VmFlowTracker.mark(this, vmID, VmFlowState.ERROR, "import_missing_metadata_no_disk", "abort");
                     if (getIntent().hasExtra("addromnow")) {
                         DialogUtils.oneDialog(this, getResources().getString(R.string.oops), getResources().getString(R.string.error_CR_CVBI3), getResources().getString(R.string.ok), true, R.drawable.error_96px, true,
                                 this::finish, this::finish);
@@ -896,6 +908,7 @@ public class VMCreatorActivity extends AppCompatActivity {
                     }
                 }
             } else {
+                VmFlowTracker.mark(this, vmID, VmFlowState.READY, "import_metadata_loaded", "ready");
                 JSONObject jObj = new JSONObject(FileUtils.readFromFile(this, new File(AppConfig.vmFolder + vmID + "/rom-data.json")));
 
                 if (jObj.has("vmID")) {
