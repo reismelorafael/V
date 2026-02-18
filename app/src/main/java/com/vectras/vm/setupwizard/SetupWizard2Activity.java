@@ -51,6 +51,7 @@ import com.vectras.vm.utils.ListUtils;
 import com.vectras.vm.utils.PermissionUtils;
 import com.vectras.vm.utils.TarUtils;
 import com.vectras.vm.utils.UIUtils;
+import com.vectras.vm.utils.CommandUtils;
 import com.vectras.vterm.Terminal;
 import com.vectras.vterm.TerminalBottomSheetDialog;
 
@@ -62,7 +63,6 @@ import java.io.OutputStreamWriter;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -76,6 +76,9 @@ public class SetupWizard2Activity extends AppCompatActivity {
     private static final Pattern ARIA2_PROGRESS_PATTERN = Pattern.compile("\\((\\d{1,3})%\\)");
     private static final Pattern CURL_PROGRESS_PATTERN = Pattern.compile("^\\s*(\\d{1,3})\\s+\\d");
     private static final Pattern PACKAGE_PROGRESS_PATTERN = Pattern.compile("\\((\\d+)/(\\d+)\\)");
+    private static final Pattern BOOTSTRAP_HOST_PATTERN = Pattern.compile("^(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,63}$");
+    private static final Pattern BOOTSTRAP_ALLOWED_PATH_PATTERN = Pattern.compile("^/[^?#]*vectras-vm-[A-Za-z0-9_-]+\\.tar\\.gz$");
+    private static final String[] BOOTSTRAP_ALLOWED_HOST_SUFFIXES = new String[]{"vectras.vercel.app", "raw.githubusercontent.com"};
 
     private enum SetupSource {
         REMOTE,
@@ -539,7 +542,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                     vncPassword = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
                     MainSettingsManager.setVncExternalPassword(this, vncPassword);
                 }
-                String escapedVncPassword = vncPassword.replace("'", "'\\''");
+                String escapedVncPassword = CommandUtils.shellSingleQuote(vncPassword);
                 LibraryChecker.PackageManagerType managerType = LibraryChecker.detectPackageManagerType(this);
                 String requiredPackages = resolveRequiredPackages(managerType);
                 String updateCommand = resolveUpdateCommand(managerType);
@@ -561,12 +564,14 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
                 String bootstrapAcquireCommand;
                 if (isCustomSetupMode) {
-                    bootstrapAcquireCommand = "cp '" + tarPath.replace("'", "'\\''") + "' '" + setupArchive + "'";
+                    bootstrapAcquireCommand = "cp " + CommandUtils.shellSingleQuote(tarPath) + " " + CommandUtils.shellSingleQuote(setupArchive);
                 } else {
                     if (FileUtils.isFileExists(getFilesDir().getAbsolutePath() + "/distro/root/setup.tar.gz"))
                         FileUtils.deleteDirectory(getFilesDir().getAbsolutePath() + "/distro/root/setup.tar.gz");
                     bootstrapAcquireCommand = "cd '" + stageDir + "' && " + downloadBootstrapsCommand;
                 }
+
+                Log.i(TAG, "AUDIT setup command template=mirror;set -e;... | setupTs=" + setupTimestamp + " | customSetup=" + isCustomSetupMode + " | setupArchive=" + setupArchive + " | stageDir=" + stageDir + " | mirrorLocation=" + selectedMirrorLocation + " | bootstrapSource=" + setupSource);
 
                 String cmd = selectedMirrorCommand + ";" +
                         " set -e;" +
@@ -607,7 +612,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                         " grep -q 'export TMPDIR=/tmp' /etc/profile || echo export TMPDIR=/tmp >> /etc/profile;" +
                         " mkdir -p $TMPDIR/pulse;" +
                         " grep -q 'export PULSE_SERVER=127.0.0.1' /etc/profile || echo export PULSE_SERVER=127.0.0.1 >> /etc/profile;" +
-                        " mkdir -p ~/.vnc && printf '%s\n' '" + escapedVncPassword + "' '" + escapedVncPassword + "' | vncpasswd -f > ~/.vnc/passwd && chmod 0600 ~/.vnc/passwd;" +
+                        " mkdir -p ~/.vnc && printf '%s\n' " + escapedVncPassword + " " + escapedVncPassword + " | vncpasswd -f > ~/.vnc/passwd && chmod 0600 ~/.vnc/passwd;" +
                         " rm -rf \"$STAGE_DIR\";" +
                         " echo \"Installation successful! xssFjnj58Id\"";
 
@@ -695,16 +700,14 @@ public class SetupWizard2Activity extends AppCompatActivity {
         isExecutingCommand = true;
         new Thread(() -> {
             try {
-                ProcessBuilder processBuilder = new ProcessBuilder();
-
                 String filesDir = getFilesDir().getAbsolutePath();
                 String tmpDirPath = getFilesDir().getAbsolutePath() + "/usr/tmp";
 
                 ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(this, filesDir + "/distro", "/root")
                         .setPath("/bin:/usr/bin:/sbin:/usr/sbin")
                         .setTmpDir(tmpDirPath);
+                ProcessBuilder processBuilder = new ProcessBuilder(prootCommandBuilder.buildCommand());
                 prootCommandBuilder.applyEnvironment(processBuilder.environment());
-                processBuilder.command(prootCommandBuilder.buildCommand());
                 processBuilder.redirectErrorStream(true);
                 Process process = processBuilder.start();
 
@@ -1111,37 +1114,108 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
 
     private String buildBootstrapDownloadCommand(String link, boolean forceCurl) {
-        if (!isBootstrapLinkValid(link)) {
+        String sanitizedBootstrapUrl = sanitizeBootstrapUrl(link);
+        if (sanitizedBootstrapUrl == null) {
             return "";
         }
+
+        String template = forceCurl
+                ? "curl -o setup.tar.gz -L <bootstrap-url>"
+                : "aria2c -x 4 --async-dns=false --disable-ipv6 --check-certificate=false -o setup.tar.gz <bootstrap-url>";
+        Log.i(TAG, "AUDIT bootstrap download template=" + template + " | url=" + sanitizedBootstrapUrl);
+
         String prefix = forceCurl ? BOOTSTRAP_PREFIX_CURL : BOOTSTRAP_PREFIX_ARIA2;
-        return prefix + link;
+        return prefix + CommandUtils.shellSingleQuote(sanitizedBootstrapUrl);
     }
 
     private boolean isBootstrapLinkValid(String link) {
-        return link != null && !link.trim().isEmpty()
-                && (link.startsWith("https://") || link.startsWith("http://"));
+        return sanitizeBootstrapUrl(link) != null;
     }
 
-    private void applyOfflineBootstrapFallback() {
+    private String sanitizeBootstrapUrl(String link) {
+        if (link == null) {
+            return null;
+        }
+
+        String trimmed = link.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+
+        try {
+            Uri parsed = Uri.parse(trimmed);
+            String scheme = parsed.getScheme();
+            String host = parsed.getHost();
+            String encodedPath = parsed.getEncodedPath();
+
+            if (scheme == null || host == null || encodedPath == null) {
+                return null;
+            }
+
+            String normalizedScheme = scheme.toLowerCase();
+            if (!"https".equals(normalizedScheme) && !"http".equals(normalizedScheme)) {
+                return null;
+            }
+
+            String normalizedHost = host.toLowerCase();
+            if (!BOOTSTRAP_HOST_PATTERN.matcher(normalizedHost).matches()) {
+                return null;
+            }
+
+            boolean allowedHost = false;
+            for (String suffix : BOOTSTRAP_ALLOWED_HOST_SUFFIXES) {
+                if (normalizedHost.equals(suffix) || normalizedHost.endsWith("." + suffix)) {
+                    allowedHost = true;
+                    break;
+                }
+            }
+            if (!allowedHost) {
+                return null;
+            }
+
+            if (!BOOTSTRAP_ALLOWED_PATH_PATTERN.matcher(encodedPath).matches()) {
+                return null;
+            }
+
+            String authority = parsed.getEncodedAuthority();
+            if (authority == null || authority.contains("@") || authority.contains(":")) {
+                return null;
+            }
+
+            if (parsed.getEncodedQuery() != null || parsed.getEncodedFragment() != null) {
+                return null;
+            }
+
+            return normalizedScheme + "://" + normalizedHost + encodedPath;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private boolean applyOfflineBootstrapFallback(boolean forceCurlDownload) {
         if (isBootstrapLinkValid(bootstrapFileLink)) {
             if (downloadBootstrapsCommand.isEmpty()) {
-                downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
+                downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, forceCurlDownload);
             }
             setSetupSource(SetupSource.OFFLINE_FALLBACK, "Using cached bootstrap link already loaded in memory.");
-            return;
+            return !downloadBootstrapsCommand.isEmpty();
         }
 
         String persistedBootstrapLink = MainSettingsManager.getLastSetupBootstrapUrl(this);
         if (isBootstrapLinkValid(persistedBootstrapLink)) {
             bootstrapFileLink = persistedBootstrapLink;
-            downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
+            downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, forceCurlDownload);
             setSetupSource(SetupSource.OFFLINE_FALLBACK, "Using persisted bootstrap URL as offline fallback.");
             runOnUiThread(() -> UIUtils.toastShort(this, getString(R.string.this_option_is_temporarily_unavailable_because_the_server_cannot_be_connected)));
-            return;
+            return !downloadBootstrapsCommand.isEmpty();
         }
 
         Log.d(TAG, "Offline fallback unavailable, source remains=" + setupSource);
+        return false;
+    }
+
+    private void applyOfflineBootstrapFallback() {
+        applyOfflineBootstrapFallback(false);
     }
 
     private void setSetupSource(SetupSource source, String reason) {
@@ -1213,8 +1287,114 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
         int safePosition = Math.max(0, Math.min(position, mirrorList.size() - 1));
         HashMap<String, String> item = mirrorList.get(safePosition);
-        selectedMirrorCommand = Objects.requireNonNull(item.get("mirror"));
-        selectedMirrorLocation = Objects.requireNonNull(item.get("location"));
+
+        String mirrorCommandCandidate = item.get("mirror");
+        String locationCandidate = item.get("location");
+        if (mirrorCommandCandidate == null || locationCandidate == null) {
+            Log.w(TAG, "AUDIT mirror selection fallback: null entry at index=" + safePosition);
+            selectedMirrorCommand = "echo ";
+            selectedMirrorLocation = "";
+            return;
+        }
+
+        String expectedMirrorCommand;
+        try {
+            expectedMirrorCommand = buildMirrorCommandForLocation(locationCandidate);
+        } catch (IllegalArgumentException invalidMirrorConfig) {
+            Log.w(TAG, "AUDIT mirror selection rejected invalid internal config location=" + locationCandidate + " reason=" + invalidMirrorConfig.getMessage());
+            selectedMirrorCommand = "echo ";
+            selectedMirrorLocation = "";
+            return;
+        }
+
+        if (!mirrorCommandCandidate.equals(expectedMirrorCommand)) {
+            Log.w(TAG, "AUDIT mirror command mismatch for location=" + locationCandidate + ". Enforcing internal template.");
+        }
+
+        selectedMirrorCommand = expectedMirrorCommand;
+        selectedMirrorLocation = locationCandidate;
+        Log.i(TAG, "AUDIT mirror command template=printf '%s\n' <repo-main> <repo-community> <repo-edge-testing> > /etc/apk/repositories | location=" + locationCandidate);
+    }
+
+    private String buildMirrorCommandForLocation(String location) {
+        switch (location) {
+            case "Default":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "dl-cdn.alpinelinux.org", "/alpine");
+            case "Australia":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(false, "mirror.aarnet.edu.au", "/pub/alpine");
+            case "Austria":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.alwyzon.net", "/alpine");
+            case "Bulgaria":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirrors.neterra.net", "/alpine");
+            case "Brazil":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.uepg.br", "/alpine");
+            case "Cambodia":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.sabay.com.kh", "/alpine");
+            case "Canada":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.csclub.uwaterloo.ca", "/alpine");
+            case "Chile":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "elmirror.cl", "/alpine");
+            case "China":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirrors.tuna.tsinghua.edu.cn", "/alpine");
+            case "Czech Republic":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.fel.cvut.cz", "/alpine");
+            case "Denmark":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirrors.dotsrc.org", "/alpine");
+            case "Finland":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.5i.fi", "/alpine");
+            case "France":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirrors.ircam.fr", "/pub/alpine");
+            case "Germany":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "ftp.halifax.rwth-aachen.de", "/alpine");
+            case "Hong Kong":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.xtom.com.hk", "/alpine");
+            case "Indonesia":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(false, "foobar.turbo.net.id", "/alpine");
+            case "Iran":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.bardia.tech", "/alpine");
+            case "Italy":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "alpinelinux.mirror.garr.it", "");
+            case "Japan":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "repo.jing.rocks", "/alpine");
+            case "Kazakhstan":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.ps.kz", "/alpine");
+            case "Moldova":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.ihost.md", "/alpine");
+            case "Morocco":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.marwan.ma", "/alpine");
+            case "New Caledonia":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.lagoon.nc", "/alpine");
+            case "New Zealand":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.2degrees.nz", "/alpine");
+            case "Poland":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "ftp.icm.edu.pl", "/pub/Linux/distributions/alpine");
+            case "Portugal":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.leitecastro.com", "/alpine");
+            case "Romania":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirrors.hosterion.ro", "/alpinelinux");
+            case "Russia":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.hyperdedic.ru", "/alpinelinux");
+            case "Singapore":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.jingk.ai", "/alpine");
+            case "Slovenia":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.tux.si", "/alpine");
+            case "Spain":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.raiolanetworks.com", "/alpine");
+            case "Sweden":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "ftp.lysator.liu.se/pub", "/alpine");
+            case "Switzerland":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "pkg.adfinis.com", "/alpine");
+            case "Taiwan":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.twds.com.tw", "/alpine");
+            case "Thailand":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "mirror.kku.ac.th", "/alpine");
+            case "The Netherlands":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "alpine.mirror.wearetriple.com", "");
+            case "United Kingdom":
+                return com.vectras.vm.utils.CommandUtils.createForSelectedMirror(true, "uk.alpinelinux.org", "/alpine");
+            default:
+                throw new IllegalArgumentException("Unknown mirror location: " + location);
+        }
     }
 
     public static class SpinnerSelectMirrorAdapter extends BaseAdapter {

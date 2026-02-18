@@ -105,7 +105,10 @@ public class CommandUtils {
         return left + right;
     }
 
-    private static String shellSingleQuote(String value) {
+    public static String shellSingleQuote(String value) {
+        if (value == null) {
+            return "''";
+        }
         return "'" + value.replace("'", "'\\''") + "'";
     }
 
