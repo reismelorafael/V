@@ -804,7 +804,6 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
                 + " hit=" + hitRatePercent
                 + " mono(native/audit)=" + nativeMonoMs + "/" + snapshot.auditLastMonoMillis
                 + " drift=" + drift;
-        binding.tvVmFlowState.setText("VM Flow: " + snapshot.state.name() + " (" + snapshot.vmId + ") [" + interop + "]
-" + metrics);
+        binding.tvVmFlowState.setText("VM Flow: " + snapshot.state.name() + " (" + snapshot.vmId + ") [" + interop + "]\n" + metrics);
     }
 }

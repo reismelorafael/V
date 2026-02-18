@@ -173,11 +173,11 @@ public class RafaeliaMvp {
   }
 
 
-  static int nextU16(DeterministicRng rng) {
+  static int nextU16(Random rng) {
     return rng.nextInt(0x10000);
   }
 
-  static int nextBitIndex(DeterministicRng rng) {
+  static int nextBitIndex(Random rng) {
     return rng.nextInt(16);
   }
 
@@ -233,7 +233,7 @@ public class RafaeliaMvp {
     return 3;
   }
 
-  static int generatePayloadWithOptionalDrop(int payload, double bitDropProbability, DeterministicRng rng) {
+  static int generatePayloadWithOptionalDrop(int payload, double bitDropProbability, Random rng) {
     int bits16 = payload & 0xFFFF;
     if (rng.nextDouble() < bitDropProbability) {
       int drop = rng.nextInt(BLOCK_BITS);

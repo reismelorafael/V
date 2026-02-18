@@ -309,7 +309,7 @@ public class ProcessSupervisor {
         return ExecutionBudgetPolicy.defaults().processSupervisorQmp().maxThreads;
     }
 
-    public static ExecutionExecutors.DomainSnapshot getQmpExecutorSnapshot() {
+    public static ExecutionExecutors.Snapshot getQmpExecutorSnapshot() {
         return ExecutionExecutors.get().processSupervisorQmpSnapshot();
     }
 

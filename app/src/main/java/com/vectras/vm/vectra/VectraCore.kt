@@ -450,6 +450,15 @@ class VectraEventBus(private val arenaHandle: Int = 0) {
         )
     }
 
+    fun resolvePayload(event: VectraEvent?): ByteArray {
+        if (event == null || event.payloadLength <= 0) return ByteArray(0)
+        val source = event.payload ?: return ByteArray(0)
+        val len = event.payloadLength.coerceAtMost(source.size)
+        val resolved = ByteArray(len)
+        NativeFastPath.copyBytes(source, 0, resolved, 0, len)
+        return resolved
+    }
+
     private fun postInternal(
         type: VectraEvent.EventType,
         priority: Int,
@@ -683,7 +692,7 @@ class VectraCycle(
             processEvent(event, payloadRef)
             Log.d(
                 TAG,
-                "event_processed timestamp=${event.timestamp} type=$eventType priority=${event.priority}"
+                "event_processed timestamp=${event.timestamp} type=${event.type} priority=${event.priority}"
             )
         }
 
@@ -702,7 +711,7 @@ class VectraCycle(
         eventBus.recycle(event)
     }
 
-    private fun updatePolicy(event: VectraEventBus.EventView?) {
+    private fun updatePolicy(event: VectraEvent?) {
         if (event == null) {
             state.missStreak++
             state.hitStreak = 0
@@ -720,6 +729,7 @@ class VectraCycle(
 
     private fun processEvent(event: VectraEvent, payload: ByteArray) {
         // Update entropy hint based on event type
+        val eventType = event.type
         val baseWeight = when (eventType) {
             VectraEvent.EventType.RADIO_EVENT -> 10 // Radio events add more rho
             VectraEvent.EventType.NETWORK_CHANGE -> 5
@@ -1253,14 +1263,7 @@ object VectraCore {
      * Post an event to the event bus.
      */
     fun postEvent(event: VectraEvent) {
-        val payload = event.payload
-        eventBus?.post(
-            type = event.type,
-            priority = event.priority,
-            timestamp = event.wallClockMs,
-            payload = payload,
-            payloadLength = payload?.size ?: 0
-        )
+        eventBus?.post(event)
     }
 
     /**

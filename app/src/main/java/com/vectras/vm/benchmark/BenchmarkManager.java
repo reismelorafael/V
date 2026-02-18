@@ -8,6 +8,7 @@ import android.os.Process;
 
 import com.vectras.vm.core.BareMetalProfile;
 import com.vectras.vm.core.ExecutionPolicyCenter;
+import com.vectras.vm.core.ExecutionGovernance;
 import com.vectras.vm.core.NativeFastPath;
 
 import java.io.BufferedReader;
@@ -154,8 +155,24 @@ public class BenchmarkManager {
             this.isValid = isValid;
         }
 
-        public BenchmarkResult withGovernanceTelemetry(ExecutionGovernance.PolicyTelemetry telemetry) {
-            return new BenchmarkResult(metrics, validation, environment, diagnostics, telemetry, durationMs, isValid);
+        public BenchmarkResult withGovernanceTelemetry(com.vectras.vm.core.ExecutionGovernance.PolicyTelemetry telemetry) {
+            if (telemetry == null) {
+                return this;
+            }
+            BenchmarkManager.ExecutionGovernance governanceView = new BenchmarkManager.ExecutionGovernance(
+                    telemetry.profileLabel,
+                    telemetry.effectiveSmp,
+                    telemetry.maxThreads,
+                    telemetry.maxThreads,
+                    telemetry.maxQueueDepth,
+                    telemetry.maxObservedQueueDepth,
+                    telemetry.rejectionCount,
+                    telemetry.callerRunsCount,
+                    telemetry.callerRunsCount > 0,
+                    telemetry.maxProcesses,
+                    telemetry.maxObservedQueueDepth
+            );
+            return new BenchmarkResult(metrics, validation, environment, diagnostics, governanceView, durationMs, isValid);
         }
 
         public DiagnosticMetricsView getDiagnosticsView() {
