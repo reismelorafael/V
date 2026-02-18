@@ -436,8 +436,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 }
 
                 if (!hasResolvedBootstrap) {
-                    applyOfflineBootstrapFallback();
-                    hasResolvedBootstrap = !downloadBootstrapsCommand.isEmpty();
+                    hasResolvedBootstrap = applyOfflineBootstrapFallback(false);
                 }
 
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -456,7 +455,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
             @Override
             public void onErrorResponse(String tag, String message) {
-                applyOfflineBootstrapFallback();
+                applyOfflineBootstrapFallback(true);
                 pendingStandardSetupStart = false;
                 new Handler(Looper.getMainLooper()).postDelayed(() -> uiController(STEP_SETUP_OPTIONS), 1000);
             }
@@ -768,20 +767,30 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 && (link.startsWith("https://") || link.startsWith("http://"));
     }
 
-    private void applyOfflineBootstrapFallback() {
-        if (isBootstrapLinkValid(bootstrapFileLink)) {
-            if (downloadBootstrapsCommand.isEmpty()) {
-                downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
-            }
-            return;
-        }
-
+    private boolean applyOfflineBootstrapFallback(boolean showFailureFeedback) {
         String persistedBootstrapLink = MainSettingsManager.getLastSetupBootstrapUrl(this);
         if (isBootstrapLinkValid(persistedBootstrapLink)) {
             bootstrapFileLink = persistedBootstrapLink;
             downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
-            runOnUiThread(() -> UIUtils.toastShort(this, getString(R.string.this_option_is_temporarily_unavailable_because_the_server_cannot_be_connected)));
+            if (!downloadBootstrapsCommand.isEmpty()) {
+                runOnUiThread(() -> UIUtils.toastShort(this, getString(R.string.setup_using_saved_bootstrap_fallback)));
+                return true;
+            }
         }
+
+        if (showFailureFeedback) {
+            runOnUiThread(() -> DialogUtils.oneDialog(this,
+                    getString(R.string.unable_to_connect_to_server),
+                    getString(R.string.setup_fallback_not_available_try_again_or_manual),
+                    getString(R.string.ok),
+                    true,
+                    R.drawable.warning_48px,
+                    true,
+                    null,
+                    null));
+        }
+
+        return false;
     }
 
     private boolean updateBootstrapForCurrentArchitecture(HashMap<String, Object> bootstrapMap) {

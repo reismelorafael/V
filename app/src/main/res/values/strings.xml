@@ -555,6 +555,8 @@
     <string name="something_went_wrong">Something went wrong</string>
     <string name="the_setup_could_not_be_completed_and_below_is_the_log">The setup could not be completed and below is the log.</string>
     <string name="this_option_is_temporarily_unavailable_because_the_server_cannot_be_connected">This option is temporarily unavailable because the server cannot be connected.</string>
+    <string name="setup_using_saved_bootstrap_fallback">No internet. Using the last saved bootstrap to continue setup.</string>
+    <string name="setup_fallback_not_available_try_again_or_manual">Internet is unavailable and no valid saved bootstrap was found. Please try again later or use manual setup.</string>
     <string name="vectras_vm_cannot_run_on_this_device">Vectras VM cannot run on this device.</string>
     <string name="not_enough_storage_space">Not enough storage space.</string>
     <string name="there_are_no_logs">There are no logs.</string>
