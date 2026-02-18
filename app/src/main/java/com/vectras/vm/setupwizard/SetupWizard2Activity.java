@@ -74,6 +74,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
     private static final String BOOTSTRAP_PREFIX_CURL = " curl -o setup.tar.gz -L ";
     private static final Pattern ARIA2_PROGRESS_PATTERN = Pattern.compile("\\((\\d{1,3})%\\)");
     private static final Pattern CURL_PROGRESS_PATTERN = Pattern.compile("^\\s*(\\d{1,3})\\s+\\d");
+    private static final Pattern PACKAGE_PROGRESS_PATTERN = Pattern.compile("\\((\\d+)/(\\d+)\\)");
 
     private enum SetupSource {
         REMOTE,
@@ -102,6 +103,8 @@ public class SetupWizard2Activity extends AppCompatActivity {
     String progressText ="0%";
     int setupProgressPercent = 0;
     boolean bootstrapDownloadActive = false;
+    int packageInstallTotal = 0;
+    int extractEntryCounter = 0;
     SetupSource setupSource = SetupSource.REMOTE;
     boolean isSystemUpdateMode = false;
     boolean isExecutingCommand = false;
@@ -512,6 +515,8 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 progressText = "";
                 setupProgressPercent = 0;
                 bootstrapDownloadActive = false;
+                packageInstallTotal = 0;
+                extractEntryCounter = 0;
                 aria2Error = false;
                 isServerError = false;
                 String vncPassword = MainSettingsManager.getVncExternalPassword(this);
@@ -767,29 +772,26 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
     private void updateProgressText(String newLog) {
         if (newLog.contains("Starting setup...")) {
-            advanceSetupProgress(5);
-        } else if (newLog.contains("fetch http")) {
-            advanceSetupProgress(10);
+            advanceSetupProgress(3);
+        } else if (newLog.contains("fetch http") || newLog.contains("Hit:") || newLog.contains("Get:")) {
+            advanceSetupProgress(8);
         } else if (newLog.contains("Installing packages...")) {
-            advanceSetupProgress(20);
-        } else if (newLog.contains("(50/")) {
-            advanceSetupProgress(25);
-        } else if (newLog.contains("100/")) {
-            advanceSetupProgress(30);
-        } else if (newLog.contains("150/")) {
-            advanceSetupProgress(35);
-        } else if (newLog.contains("200/")) {
-            advanceSetupProgress(40);
-        } else if (newLog.contains("250/")) {
-            advanceSetupProgress(50);
-        } else if (newLog.contains("300/")) {
-            advanceSetupProgress(60);
-        } else if (newLog.contains("325/")) {
-            advanceSetupProgress(65);
-        } else if (newLog.contains("350/")) {
-            advanceSetupProgress(68);
-        } else if (newLog.contains("375/")) {
-            advanceSetupProgress(69);
+            packageInstallTotal = 0;
+            advanceSetupProgress(12);
+        }
+
+        if (setupProgressPercent < 70) {
+            Matcher packageProgressMatcher = PACKAGE_PROGRESS_PATTERN.matcher(newLog);
+            if (packageProgressMatcher.find()) {
+                int done = safeParseInt(packageProgressMatcher.group(1));
+                int total = safeParseInt(packageProgressMatcher.group(2));
+                if (total > 0) {
+                    packageInstallTotal = Math.max(packageInstallTotal, total);
+                    int normalizedDone = Math.min(done, packageInstallTotal);
+                    int mappedPackageProgress = 12 + (normalizedDone * 58) / packageInstallTotal;
+                    advanceSetupProgress(Math.min(mappedPackageProgress, 70));
+                }
+            }
         }
 
         if (newLog.contains("Downloading Qemu...")) {
@@ -801,33 +803,39 @@ public class SetupWizard2Activity extends AppCompatActivity {
             Matcher aria2Matcher = ARIA2_PROGRESS_PATTERN.matcher(newLog);
             if (aria2Matcher.find()) {
                 int downloadPercent = safeParseInt(aria2Matcher.group(1));
-                int mappedDownloadProgress = 70 + Math.min(5, Math.max(0, (downloadPercent * 5) / 100));
+                int mappedDownloadProgress = 70 + Math.min(10, Math.max(0, (downloadPercent * 10) / 100));
                 advanceSetupProgress(mappedDownloadProgress);
             }
 
             Matcher curlMatcher = CURL_PROGRESS_PATTERN.matcher(newLog);
             if (curlMatcher.find()) {
                 int curlPercent = safeParseInt(curlMatcher.group(1));
-                int mappedCurlProgress = 70 + Math.min(5, Math.max(0, (curlPercent * 5) / 100));
+                int mappedCurlProgress = 70 + Math.min(10, Math.max(0, (curlPercent * 10) / 100));
                 advanceSetupProgress(mappedCurlProgress);
             }
         }
 
         if (newLog.contains("Installing Qemu...")) {
             bootstrapDownloadActive = false;
-            advanceSetupProgress(75);
-        }
-
-        if (newLog.contains("tar -xzvf ") || newLog.startsWith("x ")) {
-            advanceSetupProgress(78);
-        }
-
-        if (newLog.contains("qemu-system")) {
             advanceSetupProgress(80);
         }
 
+        if (newLog.contains("tar -xzvf ") || newLog.startsWith("x ")) {
+            if (newLog.startsWith("x ")) {
+                extractEntryCounter++;
+                int extractionProgress = 80 + Math.min(10, extractEntryCounter / 25);
+                advanceSetupProgress(extractionProgress);
+            } else {
+                advanceSetupProgress(81);
+            }
+        }
+
+        if (newLog.contains("qemu-system")) {
+            advanceSetupProgress(92);
+        }
+
         if (newLog.contains("Just a sec...")) {
-            advanceSetupProgress(95);
+            advanceSetupProgress(97);
         }
 
         if (newLog.contains("xssFjnj58Id")) {
