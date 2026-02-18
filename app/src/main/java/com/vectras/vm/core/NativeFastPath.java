@@ -580,11 +580,14 @@ public final class NativeFastPath {
         return NATIVE_AVAILABLE && payload != null && nativeVerify(payload, expectedCrc) == 1;
     }
 
-    public static long audit(int crc, long matrixDeterminant, long routeTag, boolean verifyOk) {
+    public static long audit(int crc, long entropy, long matrixDeterminant, long routeTag, boolean verifyOk) {
         if (!NATIVE_AVAILABLE) {
             return 0L;
         }
-        return nativeAudit(crc, matrixDeterminant, routeTag, verifyOk ? 1 : 0);
+        if ((entropy & ~0xFFFF_FFFFL) != 0L) {
+            throw new IllegalArgumentException("Entropy out of uint32 range");
+        }
+        return nativeAudit(crc, entropy, matrixDeterminant, routeTag, verifyOk ? 1 : 0);
     }
 
     public static int crc32c(int initial, byte[] data, int offset, int length) {
@@ -735,7 +738,7 @@ public final class NativeFastPath {
 
     private static native int nativeVerify(byte[] payload, int expectedCrc);
 
-    private static native long nativeAudit(int crc, long matrixDeterminant, long routeTag, int verifyOk);
+    private static native long nativeAudit(int crc, long entropy, long matrixDeterminant, long routeTag, int verifyOk);
 
     private static native int nativeDeterministicCrc32c(int initial, byte[] data, int offset, int length);
 

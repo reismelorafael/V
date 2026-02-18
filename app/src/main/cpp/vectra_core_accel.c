@@ -154,7 +154,58 @@ JNIEXPORT jint JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeArenaWrite(
 JNIEXPORT jint JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeIngest(JNIEnv* env, jclass clazz, jbyteArray payload){(void)clazz; if(vectra_kernel_ensure()!=RMR_KERNEL_OK)return RMR_KERNEL_ERR_STATE; if(!payload)return RMR_KERNEL_ERR_ARG; jsize n=(*env)->GetArrayLength(env,payload); jbyte* p=(*env)->GetPrimitiveArrayCritical(env,payload,NULL); if(!p)return RMR_KERNEL_ERR_STATE; uint32_t out=0u; pthread_mutex_lock(&g_unified_lock); int rc=rmr_jni_kernel_ingest(&g_unified_state,(const uint8_t*)p,(uint32_t)n,&out); pthread_mutex_unlock(&g_unified_lock); (*env)->ReleasePrimitiveArrayCritical(env,payload,p,JNI_ABORT); return (rc==RMR_KERNEL_OK)?(jint)out:(jint)rc;}
 JNIEXPORT jlongArray JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeProcessRoute(JNIEnv* env, jclass clazz, jlong cpu, jlong sR, jlong sW, jlong inB, jlong outB, jlong m00, jlong m01, jlong m10, jlong m11){(void)clazz; if(vectra_kernel_ensure()!=RMR_KERNEL_OK)return NULL; rmr_jni_route_input_t in; in.cpu_cycles=(uint64_t)cpu; in.storage_read_bytes=(uint64_t)sR; in.storage_write_bytes=(uint64_t)sW; in.input_bytes=(uint64_t)inB; in.output_bytes=(uint64_t)outB; in.m00=(int64_t)m00; in.m01=(int64_t)m01; in.m10=(int64_t)m10; in.m11=(int64_t)m11; rmr_jni_route_output_t out_state; pthread_mutex_lock(&g_unified_lock); int rc=rmr_jni_kernel_route(&g_unified_state,&in,&out_state); pthread_mutex_unlock(&g_unified_lock); if(rc!=RMR_KERNEL_OK)return NULL; jlong out[5]={(jlong)out_state.cpu_pressure,(jlong)out_state.storage_pressure,(jlong)out_state.io_pressure,(jlong)out_state.matrix_determinant,(jlong)out_state.route_tag}; jlongArray arr=(*env)->NewLongArray(env,5); if(!arr)return NULL; (*env)->SetLongArrayRegion(env,arr,0,5,out); return arr;}
 JNIEXPORT jint JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeVerify(JNIEnv* env, jclass clazz, jbyteArray payload, jint expected){(void)clazz; if(vectra_kernel_ensure()!=RMR_KERNEL_OK||!payload)return 0; jsize n=(*env)->GetArrayLength(env,payload); jbyte* p=(*env)->GetPrimitiveArrayCritical(env,payload,NULL); if(!p)return 0; uint32_t verify_ok=0u; pthread_mutex_lock(&g_unified_lock); int rc=rmr_jni_kernel_verify(&g_unified_state,(const uint8_t*)p,(uint32_t)n,(uint32_t)expected,&verify_ok); pthread_mutex_unlock(&g_unified_lock); (*env)->ReleasePrimitiveArrayCritical(env,payload,p,JNI_ABORT); return (rc==RMR_KERNEL_OK)?(jint)verify_ok:0;}
-JNIEXPORT jlong JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeAudit(JNIEnv* env, jclass clazz, jint crc, jlong matrixDet, jlong routeTag, jint verifyOk){(void)env;(void)clazz;(void)crc;(void)matrixDet;(void)routeTag;(void)verifyOk; if(vectra_kernel_ensure()!=RMR_KERNEL_OK)return 0; uint64_t counters[7]={0}; pthread_mutex_lock(&g_unified_lock); int rc=rmr_jni_kernel_audit(&g_unified_state,counters,7u); pthread_mutex_unlock(&g_unified_lock); if(rc!=RMR_KERNEL_OK)return 0; return (jlong)counters[0];}
+JNIEXPORT jlong JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeAudit(JNIEnv* env, jclass clazz, jint crc, jlong entropy, jlong matrixDet, jlong routeTag, jint verifyOk){
+    (void)env;
+    (void)clazz;
+    if (vectra_kernel_ensure() != RMR_KERNEL_OK) return (jlong)RMR_KERNEL_ERR_STATE;
+    if (entropy < 0 || (uint64_t)entropy > 0xFFFFFFFFull) return (jlong)RMR_KERNEL_ERR_ARG;
+    if (verifyOk != 0 && verifyOk != 1) return (jlong)RMR_KERNEL_ERR_ARG;
+
+    uint64_t counters[7] = {0};
+    pthread_mutex_lock(&g_unified_lock);
+    int rc = rmr_jni_kernel_audit(&g_unified_state, counters, 7u);
+    if (rc != RMR_KERNEL_OK) {
+        pthread_mutex_unlock(&g_unified_lock);
+        return (jlong)rc;
+    }
+
+    const uint32_t kernel_crc32c = (uint32_t)counters[2];
+    const uint32_t kernel_entropy = (uint32_t)counters[3];
+    const uint32_t kernel_stage_counter = (uint32_t)counters[4];
+    if (((uint32_t)crc != kernel_crc32c) || ((uint32_t)entropy != kernel_entropy)) {
+        pthread_mutex_unlock(&g_unified_lock);
+        return (jlong)RMR_KERNEL_ERR_ARG;
+    }
+    if (((uint32_t)entropy == 0u) && (kernel_crc32c != 0u || kernel_stage_counter != 0u)) {
+        pthread_mutex_unlock(&g_unified_lock);
+        return (jlong)RMR_KERNEL_ERR_ARG;
+    }
+
+    RmR_UnifiedIngestState ingest;
+    ingest.crc32c = kernel_crc32c;
+    ingest.entropy = kernel_entropy;
+    ingest.stage_counter = kernel_stage_counter;
+
+    RmR_UnifiedProcessState process;
+    process.cpu_pressure = 0u;
+    process.storage_pressure = 0u;
+    process.io_pressure = 0u;
+    process.matrix_determinant = (int64_t)matrixDet;
+
+    RmR_UnifiedRouteState route;
+    route.route_id = (uint32_t)counters[5];
+    route.route_tag = (uint64_t)routeTag;
+
+    RmR_UnifiedVerifyState verify;
+    verify.computed_crc32c = kernel_crc32c;
+    verify.verify_ok = (verifyOk != 0) ? 1u : 0u;
+
+    RmR_UnifiedAuditState out;
+    rc = RmR_UnifiedKernel_Audit(&g_unified_state, &ingest, &process, &route, &verify, &out);
+    pthread_mutex_unlock(&g_unified_lock);
+    if (rc != RMR_UK_OK) return (jlong)rc;
+    return (jlong)out.audit_signature;
+}
 
 JNIEXPORT jint JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeDeterministicCrc32c(JNIEnv* env, jclass clazz, jint initial, jbyteArray data, jint offset, jint length){(void)clazz; if(vectra_kernel_ensure()!=RMR_KERNEL_OK||!data||offset<0||length<0)return (jint)0x80000000u; jsize n=(*env)->GetArrayLength(env,data); if(offset+length>n)return (jint)0x80000000u; jbyte* p=(*env)->GetPrimitiveArrayCritical(env,data,NULL); if(!p)return (jint)0x80000000u; uint32_t crc=(uint32_t)initial; const uint8_t* src=(const uint8_t*)p+offset; for(jsize i=0;i<length;i++){ crc^=(uint32_t)src[i]; for(uint32_t b=0;b<8;b++){ uint32_t mask=(uint32_t)-(int32_t)(crc&1u); crc=(crc>>1u)^(0x82F63B78u&mask);} } (*env)->ReleasePrimitiveArrayCritical(env,data,p,JNI_ABORT); return (jint)crc;}
 JNIEXPORT jint JNICALL Java_com_vectras_vm_core_NativeFastPath_nativeDeterministicParity2D8(JNIEnv* env, jclass clazz, jint data16){(void)env;(void)clazz; uint32_t parity=0u; uint32_t d=(uint32_t)data16; for(uint32_t row=0;row<4;row++){ uint32_t rowParity=0u; for(uint32_t col=0;col<4;col++){ uint32_t idx=(row<<2u)|col; rowParity^=(d>>idx)&1u; } parity|=(rowParity<<(row+4u)); } for(uint32_t col=0;col<4;col++){ uint32_t colParity=0u; for(uint32_t row=0;row<4;row++){ uint32_t idx=(row<<2u)|col; colParity^=(d>>idx)&1u; } parity|=(colParity<<col); } return (jint)(parity&0xFFu);} 
