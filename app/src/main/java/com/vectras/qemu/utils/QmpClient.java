@@ -38,6 +38,7 @@ public class QmpClient {
 
 	public synchronized static String sendCommand(String command, int maxRetries, int retryDelayMs) {
 		String response = null;
+		boolean isQueryMigrateCommand = isQueryMigrateCommand(command);
 		int trial=0;
 		Socket pingSocket = null;
 		LocalSocket localSocket = null;
@@ -70,7 +71,7 @@ public class QmpClient {
 			sendRequest(out, command);
 			trial=0;
 			while (trial < maxRetries) {
-				response = getResponse(in);
+				response = isQueryMigrateCommand ? getQueryMigrateResponse(in) : getResponse(in);
 				if (response != null && !response.isEmpty()) {
 					break;
 				}
@@ -109,6 +110,19 @@ public class QmpClient {
 		}
 
 		return response;
+	}
+
+	private static boolean isQueryMigrateCommand(String command) {
+		if (command == null || command.trim().isEmpty()) {
+			return false;
+		}
+
+		try {
+			JSONObject object = new JSONObject(command);
+			return "query-migrate".equals(object.optString("execute"));
+		} catch (Exception ignored) {
+			return false;
+		}
 	}
 
 	static String negotiateCapabilities(PrintWriter out, BufferedReader in, int maxRetries, int retryDelayMs) throws Exception {
@@ -208,47 +222,14 @@ public class QmpClient {
 	}
 
     private static String getResponse(BufferedReader in) throws Exception {
-
-        String line;
-        StringBuilder stringBuilder = new StringBuilder("");
-
-        try {
-            for (int linesRead = 0; linesRead < MAX_RESPONSE_LINES; linesRead++) {
-                line = in.readLine();
-                if (line != null) {
-                    if(Config.debugQmp)
-                        Log.i(TAG, "QMP response: " + line);
-                    JSONObject object = new JSONObject(line);
-                    boolean hasReturn = object.has("return") && !object.isNull("return");
-                    boolean hasError = object.has("error") && !object.isNull("error");
-
-                    if (hasReturn) {
-						stringBuilder.append(line);
-						stringBuilder.append("\n");
-                        break;
-                    }
-
-                    stringBuilder.append(line);
-                    stringBuilder.append("\n");
-
-                    if (hasError) {
-                        break;
-                    }
-
-
-                } else
-                    break;
-            }
-        } catch (Exception ex) {
-            Log.e(TAG, "Could not get Response: " + ex.getMessage());
-            if(Config.debugQmp)
-                ex.printStackTrace();
-        }
-        return stringBuilder.toString();
-    }
+		return readResponse(in, "QMP response: ");
+	}
 
 	private static String getQueryMigrateResponse(BufferedReader in) throws Exception {
+		return readResponse(in, "QMP query-migrate response: ");
+	}
 
+	private static String readResponse(BufferedReader in, String responseLogPrefix) throws Exception {
 		String line;
 		StringBuilder stringBuilder = new StringBuilder("");
 
@@ -257,12 +238,14 @@ public class QmpClient {
 				line = in.readLine();
 				if (line != null) {
 				    if(Config.debugQmp)
-					    Log.i(TAG, "QMP query-migrate response: " + line);
+					    Log.i(TAG, responseLogPrefix + line);
 					JSONObject object = new JSONObject(line);
 					boolean hasReturn = object.has("return") && !object.isNull("return");
 					boolean hasError = object.has("error") && !object.isNull("error");
 
 					if (hasReturn) {
+						stringBuilder.append(line);
+						stringBuilder.append("\n");
 						break;
 					}
 
@@ -278,7 +261,7 @@ public class QmpClient {
 					break;
 			}
 		} catch (Exception ex) {
-			Log.e(TAG, "Could not get query-migrate response: " + ex.getMessage());
+			Log.e(TAG, "Could not get response: " + ex.getMessage());
 			if (Config.debugQmp)
 				ex.printStackTrace();
 		}
