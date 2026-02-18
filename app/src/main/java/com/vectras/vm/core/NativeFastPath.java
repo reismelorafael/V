@@ -1,5 +1,9 @@
 package com.vectras.vm.core;
 
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+
 /**
  * NativeFastPath: JNI thin adapter for unified kernel contracts.
  */
@@ -50,6 +54,20 @@ public final class NativeFastPath {
     public static final int FEATURE_SSE42 = 1 << 4;
     public static final int FEATURE_AVX2 = 1 << 5;
     public static final int FEATURE_SIMD = 1 << 6;
+
+    private static final AtomicLong TELEMETRY_COPY_CALLS = new AtomicLong();
+    private static final AtomicLong TELEMETRY_COPY_BYTES = new AtomicLong();
+    private static final AtomicLong TELEMETRY_XOR_CALLS = new AtomicLong();
+    private static final AtomicLong TELEMETRY_CRC_CALLS = new AtomicLong();
+    private static final AtomicLong TELEMETRY_ROUTE_CALLS = new AtomicLong();
+    private static final AtomicLong TELEMETRY_AUDIT_CALLS = new AtomicLong();
+    private static final AtomicLong TELEMETRY_NATIVE_HITS = new AtomicLong();
+    private static final AtomicLong TELEMETRY_FALLBACK_HITS = new AtomicLong();
+    private static final AtomicBoolean TELEMETRY_BOOT_EMITTED = new AtomicBoolean(false);
+
+    private static final int ENTERPRISE_NECESSARY_COUNT = 7;
+    private static final int ENTERPRISE_URGENT_COUNT = 5;
+    private static final int ENTERPRISE_COMPLEMENTARY_COUNT = 14;
 
     private static final HardwareProfile BOOT_PROFILE;
 
@@ -102,14 +120,147 @@ public final class NativeFastPath {
         return BOOT_PROFILE.featureMask;
     }
 
+    public static NativeBridgeTelemetrySnapshot readNativeBridgeTelemetry() {
+        KernelUnitProfile kernel = readKernelUnitProfile();
+        return new NativeBridgeTelemetrySnapshot(
+                NATIVE_AVAILABLE,
+                BOOT_PROFILE,
+                kernel,
+                TELEMETRY_COPY_CALLS.get(),
+                TELEMETRY_COPY_BYTES.get(),
+                TELEMETRY_XOR_CALLS.get(),
+                TELEMETRY_CRC_CALLS.get(),
+                TELEMETRY_ROUTE_CALLS.get(),
+                TELEMETRY_AUDIT_CALLS.get(),
+                TELEMETRY_NATIVE_HITS.get(),
+                TELEMETRY_FALLBACK_HITS.get(),
+                ENTERPRISE_NECESSARY_COUNT,
+                ENTERPRISE_URGENT_COUNT,
+                ENTERPRISE_COMPLEMENTARY_COUNT);
+    }
+
+    public static String formatHardwareKernelContractLine(String sourceTag) {
+        NativeBridgeTelemetrySnapshot snapshot = readNativeBridgeTelemetry();
+        return String.format(Locale.US,
+                "NATIVE_CONTRACT[%s] avail=%s sig=0x%08X ptr=%d cache=%d page=%d features=%s cores=%d arena=%d io=%d",
+                sourceTag,
+                snapshot.nativeAvailable ? "1" : "0",
+                snapshot.hardwareSignature,
+                snapshot.pointerBits,
+                snapshot.cacheLineBytes,
+                snapshot.pageBytes,
+                describeFeatureMask(snapshot.featureMask),
+                snapshot.kernelCpuCores,
+                snapshot.kernelArenaBytes,
+                snapshot.kernelIoQuantumBytes);
+    }
+
+    public static String describeFeatureMask(int featureMask) {
+        StringBuilder sb = new StringBuilder();
+        appendFeature(sb, featureMask, FEATURE_NEON, "NEON");
+        appendFeature(sb, featureMask, FEATURE_AES, "AES");
+        appendFeature(sb, featureMask, FEATURE_CRC32, "CRC32");
+        appendFeature(sb, featureMask, FEATURE_POPCNT, "POPCNT");
+        appendFeature(sb, featureMask, FEATURE_SSE42, "SSE4_2");
+        appendFeature(sb, featureMask, FEATURE_AVX2, "AVX2");
+        appendFeature(sb, featureMask, FEATURE_SIMD, "SIMD");
+        if (sb.length() == 0) {
+            return "none";
+        }
+        return sb.toString();
+    }
+
+    private static void appendFeature(StringBuilder sb, int featureMask, int flag, String label) {
+        if ((featureMask & flag) == 0) {
+            return;
+        }
+        if (sb.length() > 0) {
+            sb.append('|');
+        }
+        sb.append(label);
+    }
+
+    public static int getDeterminismScore() {
+        NativeBridgeTelemetrySnapshot snapshot = readNativeBridgeTelemetry();
+        long nativeHits = snapshot.nativeHits;
+        long fallbackHits = snapshot.fallbackHits;
+        long total = nativeHits + fallbackHits;
+        if (total <= 0) {
+            return snapshot.nativeAvailable ? 100 : 60;
+        }
+        long weighted = (nativeHits * 100L) / total;
+        if (!snapshot.nativeAvailable) {
+            weighted = Math.min(weighted, 70L);
+        }
+        if (weighted < 0L) {
+            weighted = 0L;
+        }
+        if (weighted > 100L) {
+            weighted = 100L;
+        }
+        return (int) weighted;
+    }
+
+    public static String formatNativeBridgeTelemetryLine(String sourceTag) {
+        NativeBridgeTelemetrySnapshot snapshot = readNativeBridgeTelemetry();
+        int determinismScore = getDeterminismScore();
+        return String.format(Locale.US,
+                "NATIVE_BRIDGE[%s] avail=%s hw(sig=0x%08X ptr=%d cache=%d page=%d feat=0x%08X/%s) kernel(cores=%d arena=%d io=%d) ops(copy=%d bytes=%d xor=%d crc=%d route=%d audit=%d nativeHit=%d fallback=%d) gates(n=%d/u=%d/c=%d) det=%d",
+                sourceTag,
+                snapshot.nativeAvailable ? "1" : "0",
+                snapshot.hardwareSignature,
+                snapshot.pointerBits,
+                snapshot.cacheLineBytes,
+                snapshot.pageBytes,
+                snapshot.featureMask,
+                describeFeatureMask(snapshot.featureMask),
+                snapshot.kernelCpuCores,
+                snapshot.kernelArenaBytes,
+                snapshot.kernelIoQuantumBytes,
+                snapshot.copyCalls,
+                snapshot.copyBytes,
+                snapshot.xorCalls,
+                snapshot.crcCalls,
+                snapshot.routeCalls,
+                snapshot.auditCalls,
+                snapshot.nativeHits,
+                snapshot.fallbackHits,
+                snapshot.necessaryCount,
+                snapshot.urgentCount,
+                snapshot.complementaryCount,
+                determinismScore);
+    }
+
+    public static String emitBootTelemetryLineIfNeeded() {
+        if (TELEMETRY_BOOT_EMITTED.compareAndSet(false, true)) {
+            return formatNativeBridgeTelemetryLine("boot");
+        }
+        return null;
+    }
+
+    private static void telemetryNativeHit() {
+        TELEMETRY_NATIVE_HITS.incrementAndGet();
+    }
+
+    private static void telemetryFallbackHit() {
+        TELEMETRY_FALLBACK_HITS.incrementAndGet();
+    }
+
+    private static void telemetryAddBytes(AtomicLong counter, int bytes) {
+        counter.addAndGet(Math.max(0, bytes));
+    }
+
     public static KernelUnitProfile readKernelUnitProfile() {
         if (NATIVE_AVAILABLE) {
             int[] contract = nativeReadKernelUnitContract();
             if (contract != null && contract.length == KERNEL_CONTRACT_SIZE) {
+                telemetryNativeHit();
                 return KernelUnitProfile.fromKernelContract(contract);
             }
+            telemetryFallbackHit();
             return CompatibilityFallback.kernelUnitProfile("invalid kernel unit contract");
         }
+        telemetryFallbackHit();
         return CompatibilityFallback.kernelUnitProfile("native library unavailable");
     }
 
@@ -117,23 +268,30 @@ public final class NativeFastPath {
         if (NATIVE_AVAILABLE) {
             int[] contract = nativeReadHardwareContract();
             if (contract != null && contract.length == HW_CONTRACT_SIZE) {
+                telemetryNativeHit();
                 return HardwareProfile.fromHardwareContract(contract);
             }
+            telemetryFallbackHit();
             return CompatibilityFallback.hardwareProfile("invalid hardware contract");
         }
+        telemetryFallbackHit();
         return CompatibilityFallback.hardwareProfile("native library unavailable");
     }
 
     public static void copyBytes(byte[] src, int srcOffset, byte[] dst, int dstOffset, int length) {
         if (src == null || dst == null || length <= 0) return;
+        TELEMETRY_COPY_CALLS.incrementAndGet();
+        telemetryAddBytes(TELEMETRY_COPY_BYTES, length);
         if (srcOffset < 0 || dstOffset < 0 || srcOffset + length > src.length || dstOffset + length > dst.length) {
             throw new IllegalArgumentException("Invalid copy range");
         }
 
         // Explicit fallback path when JNI arena acceleration is not available.
         if (NATIVE_AVAILABLE && nativeCopyBytes(src, srcOffset, dst, dstOffset, length) == 0) {
+            telemetryNativeHit();
             return;
         }
+        telemetryFallbackHit();
 
         if (src == dst && dstOffset > srcOffset && dstOffset < srcOffset + length) {
             for (int i = length - 1; i >= 0; i--) {
@@ -171,6 +329,7 @@ public final class NativeFastPath {
 
     public static int xorChecksum(byte[] data, int offset, int length) {
         if (data == null || length <= 0) return 0;
+        TELEMETRY_XOR_CALLS.incrementAndGet();
         if (offset < 0 || offset + length > data.length) {
             throw new IllegalArgumentException("Invalid checksum range");
         }
@@ -179,9 +338,11 @@ public final class NativeFastPath {
         if (NATIVE_AVAILABLE) {
             int value = nativeXorChecksum(data, offset, length);
             if (value != Integer.MIN_VALUE) {
+                telemetryNativeHit();
                 return value;
             }
         }
+        telemetryFallbackHit();
 
         int x = 0;
         int i = 0;
@@ -569,11 +730,18 @@ public final class NativeFastPath {
     public static long[] processRoute(long cpuCycles, long storageReadBytes, long storageWriteBytes,
                                       long inputBytes, long outputBytes,
                                       long m00, long m01, long m10, long m11) {
+        TELEMETRY_ROUTE_CALLS.incrementAndGet();
         if (!NATIVE_AVAILABLE) {
+            telemetryFallbackHit();
             return new long[]{0L, 0L, 0L, (m00 * m11) - (m01 * m10), 0L};
         }
         long[] route = nativeProcessRoute(cpuCycles, storageReadBytes, storageWriteBytes, inputBytes, outputBytes, m00, m01, m10, m11);
-        return route != null && route.length == 5 ? route : new long[]{0L, 0L, 0L, 0L, 0L};
+        if (route != null && route.length == 5) {
+            telemetryNativeHit();
+            return route;
+        }
+        telemetryFallbackHit();
+        return new long[]{0L, 0L, 0L, 0L, 0L};
     }
 
     public static boolean verify(byte[] payload, int expectedCrc) {
@@ -581,28 +749,39 @@ public final class NativeFastPath {
     }
 
     public static long audit(int crc, long entropy, long matrixDeterminant, long routeTag, boolean verifyOk) {
+        TELEMETRY_AUDIT_CALLS.incrementAndGet();
         if (!NATIVE_AVAILABLE) {
+            telemetryFallbackHit();
             return 0L;
         }
         if ((entropy & ~0xFFFF_FFFFL) != 0L) {
             throw new IllegalArgumentException("Entropy out of uint32 range");
         }
-        return nativeAudit(crc, entropy, matrixDeterminant, routeTag, verifyOk ? 1 : 0);
+        long signature = nativeAudit(crc, entropy, matrixDeterminant, routeTag, verifyOk ? 1 : 0);
+        if (signature != 0L) {
+            telemetryNativeHit();
+            return signature;
+        }
+        telemetryFallbackHit();
+        return signature;
     }
 
     public static int crc32c(int initial, byte[] data, int offset, int length) {
         if (data == null || length <= 0) {
             return initial;
         }
+        TELEMETRY_CRC_CALLS.incrementAndGet();
         if (offset < 0 || offset + length > data.length) {
             throw new IllegalArgumentException("Invalid crc range");
         }
         if (NATIVE_AVAILABLE) {
             int nativeValue = nativeDeterministicCrc32c(initial, data, offset, length);
             if (nativeValue != Integer.MIN_VALUE) {
+                telemetryNativeHit();
                 return nativeValue;
             }
         }
+        telemetryFallbackHit();
         int crc = initial;
         for (int i = offset; i < offset + length; i++) {
             crc ^= data[i];
@@ -665,6 +844,65 @@ public final class NativeFastPath {
         }
         int policy = misses >= 2 ? 1 : 0;
         return new int[]{hits, misses, policy};
+    }
+
+    public static final class NativeBridgeTelemetrySnapshot {
+        public final boolean nativeAvailable;
+        public final int hardwareSignature;
+        public final int pointerBits;
+        public final int cacheLineBytes;
+        public final int pageBytes;
+        public final int featureMask;
+        public final int kernelCpuCores;
+        public final int kernelArenaBytes;
+        public final int kernelIoQuantumBytes;
+        public final long copyCalls;
+        public final long copyBytes;
+        public final long xorCalls;
+        public final long crcCalls;
+        public final long routeCalls;
+        public final long auditCalls;
+        public final long nativeHits;
+        public final long fallbackHits;
+        public final int necessaryCount;
+        public final int urgentCount;
+        public final int complementaryCount;
+
+        NativeBridgeTelemetrySnapshot(boolean nativeAvailable,
+                                     HardwareProfile hardware,
+                                     KernelUnitProfile kernel,
+                                     long copyCalls,
+                                     long copyBytes,
+                                     long xorCalls,
+                                     long crcCalls,
+                                     long routeCalls,
+                                     long auditCalls,
+                                     long nativeHits,
+                                     long fallbackHits,
+                                     int necessaryCount,
+                                     int urgentCount,
+                                     int complementaryCount) {
+            this.nativeAvailable = nativeAvailable;
+            this.hardwareSignature = hardware.signature;
+            this.pointerBits = hardware.pointerBits;
+            this.cacheLineBytes = hardware.cacheLineBytes;
+            this.pageBytes = hardware.pageBytes;
+            this.featureMask = hardware.featureMask;
+            this.kernelCpuCores = kernel.cpuCores;
+            this.kernelArenaBytes = kernel.arenaBytes;
+            this.kernelIoQuantumBytes = kernel.ioQuantumBytes;
+            this.copyCalls = copyCalls;
+            this.copyBytes = copyBytes;
+            this.xorCalls = xorCalls;
+            this.crcCalls = crcCalls;
+            this.routeCalls = routeCalls;
+            this.auditCalls = auditCalls;
+            this.nativeHits = nativeHits;
+            this.fallbackHits = fallbackHits;
+            this.necessaryCount = necessaryCount;
+            this.urgentCount = urgentCount;
+            this.complementaryCount = complementaryCount;
+        }
     }
 
     private static native int nativeInit();

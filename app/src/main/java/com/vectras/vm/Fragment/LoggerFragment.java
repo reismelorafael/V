@@ -13,9 +13,12 @@ import com.vectras.vm.R;
 import com.vectras.vm.VectrasApp;
 import com.vectras.vm.adapter.LogsAdapter;
 import com.vectras.vm.core.LogcatRuntime;
+import com.vectras.vm.logger.VectrasStatus;
 
 
 public class LoggerFragment extends Fragment {
+
+    private static volatile long sLastNativeBridgeLogMs;
 
     View view;
     private LogsAdapter mLogAdapter;
@@ -42,6 +45,12 @@ public class LoggerFragment extends Fragment {
         };
         logcatRuntime.addListener(logListener);
         logcatRuntime.acquire();
+
+        long now = System.currentTimeMillis();
+        if (now - sLastNativeBridgeLogMs >= 15000L) {
+            sLastNativeBridgeLogMs = now;
+            VectrasStatus.logInfo(com.vectras.vm.core.NativeFastPath.formatNativeBridgeTelemetryLine("LoggerFragment#onCreateView"));
+        }
 
         return view;
     }

@@ -140,6 +140,10 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
         setContentView(binding.getRoot());
         isActivate = true;
 
+        VectrasStatus.logNativeBridgeBootTelemetryIfNeeded();
+        VectrasStatus.logInfo(com.vectras.vm.core.NativeFastPath.formatHardwareKernelContractLine("MainActivity#onCreate"));
+        VectrasStatus.logInfo(com.vectras.vm.core.NativeFastPath.formatNativeBridgeTelemetryLine("MainActivity#onCreate"));
+
         mainUiStateViewModel = new ViewModelProvider(this).get(MainUiStateViewModel.class);
         mainUiStateViewModel.getSearchReady().observe(this, isReady -> {
             if (isReady != null) {
