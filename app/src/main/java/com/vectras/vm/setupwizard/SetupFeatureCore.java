@@ -16,6 +16,8 @@ import com.vectras.vm.utils.FileUtils;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -215,13 +217,15 @@ public class SetupFeatureCore {
         if (!file.exists()) {
             return "";
         }
-        try (FileInputStream in = new FileInputStream(file)) {
-            byte[] bytes = new byte[(int) file.length()];
-            int read = in.read(bytes);
-            if (read <= 0) {
-                return "";
+        try (FileInputStream fileInputStream = new FileInputStream(file);
+             BufferedInputStream in = new BufferedInputStream(fileInputStream);
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int n;
+            while ((n = in.read(buffer)) != -1) {
+                out.write(buffer, 0, n);
             }
-            return new String(bytes, 0, read, StandardCharsets.UTF_8);
+            return out.toString(StandardCharsets.UTF_8.name());
         } catch (IOException e) {
             Log.e(TAG, "readTextFile: ", e);
             return "";
