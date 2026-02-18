@@ -82,6 +82,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
         OFFLINE_FALLBACK,
         MANUAL_FILE
     }
+
     ActivitySetupWizard2Binding binding;
     SetupQemuDoneBinding bindingFinalSteps;
     public static final int ACTION_SYSTEM_UPDATE = 1;
@@ -116,6 +117,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
     boolean isNotEnoughStorageSpace = false;
     boolean isCustomSetupMode = false;
     boolean pendingStandardSetupStart = false;
+    boolean setupSuccessMarkerSeen = false;
     final ArrayList<HashMap<String, String>> mirrorList = new ArrayList<>();
     ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ActivityResultLauncher<Uri> storagePermissionLauncher =
@@ -230,7 +232,12 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 intent.setData(Uri.parse(AppConfig.community));
                 startActivity(intent);
             } else if (SetupFeatureCore.isInstalledSystemFiles(this)) {
-                getDataForStandardSetup();
+                SetupFeatureCore.PostInstallCheckResult postInstallCheckResult = SetupFeatureCore.runPostInstallCheck(this);
+                if (postInstallCheckResult.ok) {
+                    getDataForStandardSetup();
+                } else {
+                    uiController(STEP_ERROR, withSetupSourceDiagnostic(postInstallCheckResult.summary()));
+                }
             } else {
                 extractSystemFiles();
             }
@@ -418,7 +425,12 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
                     runOnUiThread(() -> new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         if (result) {
-                            getDataForStandardSetup();
+                            SetupFeatureCore.PostInstallCheckResult postInstallCheckResult = SetupFeatureCore.runPostInstallCheck(this);
+                            if (postInstallCheckResult.ok) {
+                                getDataForStandardSetup();
+                            } else {
+                                uiController(STEP_ERROR, withSetupSourceDiagnostic(postInstallCheckResult.summary()));
+                            }
                         } else {
                             uiController(STEP_ERROR, withSetupSourceDiagnostic(getString(R.string.system_files_installation_failed_content) + (!SetupFeatureCore.lastErrorLog.isEmpty() ? "\n\n" + SetupFeatureCore.lastErrorLog : "")));
                         }
@@ -521,6 +533,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 extractEntryCounter = 0;
                 aria2Error = false;
                 isServerError = false;
+                setupSuccessMarkerSeen = false;
                 String vncPassword = MainSettingsManager.getVncExternalPassword(this);
                 if (vncPassword == null || vncPassword.isEmpty()) {
                     vncPassword = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
@@ -682,12 +695,9 @@ public class SetupWizard2Activity extends AppCompatActivity {
         isExecutingCommand = true;
         new Thread(() -> {
             try {
-                // Set up the process builder to start PRoot with environmental variables and commands
                 ProcessBuilder processBuilder = new ProcessBuilder();
 
-                // Adjust these environment variables as necessary for your app
                 String filesDir = getFilesDir().getAbsolutePath();
-
                 String tmpDirPath = getFilesDir().getAbsolutePath() + "/usr/tmp";
 
                 ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(this, filesDir + "/distro", "/root")
@@ -697,16 +707,13 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 processBuilder.command(prootCommandBuilder.buildCommand());
                 processBuilder.redirectErrorStream(true);
                 Process process = processBuilder.start();
-                // Get the merged output stream and write command input safely
+
                 try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
                      BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-
-                    // Send user command to PRoot
                     writer.write(userCommand);
                     writer.newLine();
                     writer.flush();
 
-                    // Read the merged stdout/stderr stream continuously
                     String line;
                     while ((line = reader.readLine()) != null) {
                         final String outputLine = line;
@@ -775,19 +782,168 @@ public class SetupWizard2Activity extends AppCompatActivity {
                             uiController(STEP_ERROR, logs);
                         });
                     }
+                    return;
                 }
-            } catch (IOException e) {
+
+                if (!setupSuccessMarkerSeen) {
+                    isExecutingCommand = false;
+                    handleSetupFailureWithRollback(
+                            setupTimestamp,
+                            "success marker missing",
+                            SetupFeatureCore.formatPostCheckFailure(java.util.Arrays.asList("success-marker-missing"))
+                    );
+                    return;
+                }
+
+                SetupFeatureCore.SetupPostCheckResult postCheckResult = SetupFeatureCore.runSetupPostCheck(this);
+                if (!postCheckResult.ok) {
+                    isExecutingCommand = false;
+                    String postCheckIdentifier = postCheckResult.technicalReason();
+                    handleSetupFailureWithRollback(setupTimestamp, postCheckIdentifier, postCheckIdentifier);
+                    return;
+                }
+
                 isExecutingCommand = false;
                 // Handle exceptions by printing the stack trace in the terminal output
                 final String errorMessage = e.getMessage();
                 Log.e(TAG, withSetupSourceDiagnostic("executeShellCommand IO error: " + errorMessage), e);
                 executeBestEffortRollback(setupTimestamp, "io error during setup");
                 runOnUiThread(() -> {
-                    appendTextAndScroll("Error: " + withSetupSourceDiagnostic(errorMessage) + "\n");
-                    uiController(STEP_ERROR, logs);
+                    MainSettingsManager.setStandardSetupVersion(this, AppConfig.standardSetupVersion);
+                    MainSettingsManager.setsetUpWithManualSetupBefore(this, isCustomSetupMode);
+                    uiController(STEP_PATERON);
+                    if (isSystemUpdateMode) {
+                        uiControllerFinalSteps(STEP_FINISH);
+                    } else {
+                        uiControllerFinalSteps(STEP_PATERON);
+                    }
                 });
+            } catch (IOException e) {
+                isExecutingCommand = false;
+                Log.e(TAG, withSetupSourceDiagnostic("executeShellCommand IO error: " + e.getMessage()), e);
+                handleSetupFailureWithRollback(
+                        setupTimestamp,
+                        "io error during setup",
+                        SetupFeatureCore.formatPostCheckFailure(java.util.Arrays.asList("io-error"))
+                );
             }
-        }).start(); // Execute the command in a separate thread to prevent blocking the UI thread
+        }).start();
+    }
+
+    private void triggerStepErrorWithSetupDiagnostic(String errorIdentifier) {
+        String safeErrorIdentifier = errorIdentifier == null || errorIdentifier.trim().isEmpty()
+                ? SetupFeatureCore.POST_CHECK_FAIL_PREFIX + "unknown"
+                : errorIdentifier.trim();
+        Log.e(TAG, withSetupSourceDiagnostic(safeErrorIdentifier));
+        appendTextAndScroll("Error: " + withSetupSourceDiagnostic(safeErrorIdentifier) + "\n");
+        uiController(STEP_ERROR, withSetupSourceDiagnostic(logs));
+    }
+
+    private void handleSetupFailureWithRollback(String setupTimestamp, String rollbackReason, String errorIdentifier) {
+        executeBestEffortRollback(setupTimestamp, rollbackReason);
+        runOnUiThread(() -> triggerStepErrorWithSetupDiagnostic(errorIdentifier));
+    }
+
+    private String validatePostInstallSynchronously(String setupTimestamp) {
+        if (setupTimestamp == null || setupTimestamp.isEmpty()) {
+            return "missing setup timestamp";
+        }
+
+        String validationCommand = "set -e; " +
+                "STATE_FILE='/root/.vectras-setup/setup_state.json'; " +
+                "test -f /usr/local/bin/qemu-system-x86_64 -o -f /usr/local/bin/qemu-system-aarch64 || exit 61; " +
+                "test -f \"$STATE_FILE\" || exit 62; " +
+                "grep -q '\"phase\":\"PROMOTED\"' \"$STATE_FILE\" || exit 63; " +
+                "grep -q '\"timestamp\":\"" + setupTimestamp + "\"' \"$STATE_FILE\" || exit 64;";
+
+        try {
+            ProcessBuilder processBuilder = new ProcessBuilder();
+            String filesDir = getFilesDir().getAbsolutePath();
+            String tmpDirPath = getFilesDir().getAbsolutePath() + "/usr/tmp";
+            ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(this, filesDir + "/distro", "/root")
+                    .setPath("/bin:/usr/bin:/sbin:/usr/sbin")
+                    .setTmpDir(tmpDirPath);
+            prootCommandBuilder.applyEnvironment(processBuilder.environment());
+            processBuilder.command(prootCommandBuilder.buildCommand());
+            processBuilder.redirectErrorStream(true);
+
+            Process process = processBuilder.start();
+            StringBuilder output = new StringBuilder();
+            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                writer.write(validationCommand);
+                writer.newLine();
+                writer.flush();
+
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (output.length() > 0) {
+                        output.append(" | ");
+                    }
+                    output.append(line);
+                }
+            }
+
+            ProcessRuntimeOps.TimeoutExecutionResult validationWaitResult = ProcessRuntimeOps.waitForByCategory(
+                    process,
+                    ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION
+            );
+
+            if (validationWaitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.TIMEOUT) {
+                return "validation timeout: " + validationWaitResult.message;
+            }
+
+            if (validationWaitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.ERROR) {
+                return "validation execution error: " + validationWaitResult.message;
+            }
+
+            if (validationWaitResult.exitCode != 0) {
+                String processOutput = output.length() == 0 ? "no validation output" : output.toString();
+                return "validation exit code " + validationWaitResult.exitCode + " | " + processOutput;
+            }
+
+            return null;
+        } catch (Exception e) {
+            return "validation exception: " + e.getMessage();
+        }
+    }
+
+    private void executeBestEffortRollback(String setupTimestamp, String reason) {
+        if (setupTimestamp == null || setupTimestamp.isEmpty()) {
+            return;
+        }
+        new Thread(() -> {
+            try {
+                String sanitizedReason = reason == null ? "unknown error" : reason.replace("\"", "").replace("\n", " ");
+                String rollbackCommand = "set -e; " +
+                        "BACKUP_BASE=/root/.vectras-backups; " +
+                        "STAGE_DIR=/root/.vectras-staging/" + setupTimestamp + "; " +
+                        "mkdir -p /root/.vectras-setup; " +
+                        "if [ -d \"$BACKUP_BASE/current/usr-local-bin\" ]; then rm -rf /usr/local/bin; cp -a \"$BACKUP_BASE/current/usr-local-bin\" /usr/local/bin; fi; " +
+                        "if [ -f \"$BACKUP_BASE/current/etc-profile\" ]; then cp -a \"$BACKUP_BASE/current/etc-profile\" /etc/profile; fi; " +
+                        "rm -rf \"$STAGE_DIR\"; " +
+                        "printf '{\\"version\\":1,\\"timestamp\\":\\"" + setupTimestamp + "\\",\\"phase\\":\\"ROLLED_BACK\\",\\"stage_dir\\":\\"/root/.vectras-staging/" + setupTimestamp + "\\",\\"message\\":\\"" + sanitizedReason + "\\"}\\n' > /root/.vectras-setup/setup_state.json";
+
+                ProcessBuilder processBuilder = new ProcessBuilder();
+                String filesDir = getFilesDir().getAbsolutePath();
+                String tmpDirPath = getFilesDir().getAbsolutePath() + "/usr/tmp";
+                ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(this, filesDir + "/distro", "/root")
+                        .setPath("/bin:/usr/bin:/sbin:/usr/sbin")
+                        .setTmpDir(tmpDirPath);
+                prootCommandBuilder.applyEnvironment(processBuilder.environment());
+                processBuilder.command(prootCommandBuilder.buildCommand());
+                processBuilder.redirectErrorStream(true);
+                Process process = processBuilder.start();
+                try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()))) {
+                    writer.write(rollbackCommand);
+                    writer.newLine();
+                    writer.flush();
+                }
+                process.waitFor();
+            } catch (Exception e) {
+                Log.e(TAG, "Best-effort rollback failed: " + e.getMessage(), e);
+            }
+        }).start();
     }
 
     private void executeBestEffortRollback(String setupTimestamp, String reason) {
@@ -833,15 +989,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
         logs += newLog;
 
         if (newLog.contains("xssFjnj58Id")) {
-            isExecutingCommand = false;
-            MainSettingsManager.setStandardSetupVersion(this, AppConfig.standardSetupVersion);
-            MainSettingsManager.setsetUpWithManualSetupBefore(this, isCustomSetupMode);
-            uiController(STEP_PATERON);
-            if (isSystemUpdateMode) {
-                uiControllerFinalSteps(STEP_FINISH);
-            } else {
-                uiControllerFinalSteps(STEP_PATERON);
-            }
+            setupSuccessMarkerSeen = true;
         } else if (newLog.contains("libproot.so --help") || newLog.contains("/bin/sh: can't fork:")) {
             isLibProotError = true;
         } else if (newLog.contains("not complete: /root/setup.tar.gz")) {
@@ -934,6 +1082,17 @@ public class SetupWizard2Activity extends AppCompatActivity {
         }
 
         progressText = setupProgressPercent + "% | ";
+    }
+
+    private void finalizeSetupSuccess() {
+        MainSettingsManager.setStandardSetupVersion(this, AppConfig.standardSetupVersion);
+        MainSettingsManager.setsetUpWithManualSetupBefore(this, isCustomSetupMode);
+        uiController(STEP_PATERON);
+        if (isSystemUpdateMode) {
+            uiControllerFinalSteps(STEP_FINISH);
+        } else {
+            uiControllerFinalSteps(STEP_PATERON);
+        }
     }
 
     private void advanceSetupProgress(int targetPercent) {
