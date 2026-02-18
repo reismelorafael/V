@@ -20,5 +20,6 @@ Manter um estado único e explícito do ciclo de vida do projeto, evitando ambig
 - `archive/root-history/IMPLEMENTATION_SUMMARY.md`
 - `archive/root-history/BENCHMARK_REFACTORING_SUMMARY.md`
 - `archive/root-history/ADVANCED_OPTIMIZATIONS.md`
+- `docs/navigation/TECHNOLOGY_INNOVATION_AUTHORSHIP.md`
 
 > Atualize este arquivo sempre que o estado do projeto mudar.

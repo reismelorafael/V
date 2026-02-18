@@ -26,11 +26,10 @@ Navegação por audiência para documentos técnicos e operacionais alinhados ao
 - `../PERFORMANCE_INTEGRITY.md`
 - `../SOURCE_TRACEABILITY_MATRIX.md`
 - `TECHNOLOGY_INNOVATION_AUTHORSHIP.md`
+- `../../PROJECT_STATE.md`
 - `../../archive/root-history/IMPLEMENTATION_SUMMARY.md`
 - `../../archive/root-history/IMPLEMENTATION_COMPLETE.md`
 
 ## Metadados
-- Versão do documento: 1.3
-- Última atualização: 2026-02-18
-- Commit de referência: `5f551f0`
-- Domínio de código coberto: Índice de navegação documental e ponte para domínios app, engine, tools, web e runtime.
+- Versão: 1.2
+- Última atualização: 2026-02
