@@ -238,7 +238,7 @@ public class QmpClient {
 	}
 
 	public static String migrate(boolean block, boolean inc, String uri) {
-		
+
 		// XXX: Detach should not be used via QMP according to docs
 		// return "{\"execute\":\"migrate\",\"arguments\":{\"detach\":" + detach
 		// + ",\"blk\":" + block + ",\"inc\":" + inc
@@ -247,26 +247,59 @@ public class QmpClient {
 		// its better not to use block (full disk copy) cause its slow (though
 		// safer)
 		// see qmp-commands.hx for more info
-		return "{\"execute\":\"migrate\",\"arguments\":{\"blk\":" + block + ",\"inc\":" + inc + ",\"uri\":\"" + uri
-				+ "\"},\"id\":\"vectras\"}";
+		JSONObject arguments = new JSONObject();
+		arguments.put("blk", block);
+		arguments.put("inc", inc);
+		arguments.put("uri", uri);
+
+		JSONObject jsonObject = new JSONObject();
+		jsonObject.put("execute", "migrate");
+		jsonObject.put("arguments", arguments);
+		jsonObject.put("id", "vectras");
+
+		return jsonObject.toString();
 
 	}
 
     public static String changevncpasswd(String passwd) {
+		JSONObject arguments = new JSONObject();
+		arguments.put("device", "vnc");
+		arguments.put("target", "password");
+		arguments.put("arg", passwd);
 
-		return "{\"execute\": \"change\", \"arguments\": { \"device\": \"vnc\", \"target\": \"password\", \"arg\": \"" + passwd +"\" } }";
+		JSONObject jsonObject = new JSONObject();
+		jsonObject.put("execute", "change");
+		jsonObject.put("arguments", arguments);
+		jsonObject.put("id", "vectras");
+
+		return jsonObject.toString();
 
     }
 
     public static String ejectdev(String dev) {
+		JSONObject arguments = new JSONObject();
+		arguments.put("device", dev);
 
-        return "{ \"execute\": \"eject\", \"arguments\": { \"device\": \""+ dev +"\" } }";
+		JSONObject jsonObject = new JSONObject();
+		jsonObject.put("execute", "eject");
+		jsonObject.put("arguments", arguments);
+		jsonObject.put("id", "vectras");
+
+		return jsonObject.toString();
 
     }
 
     public static String changedev(String dev, String value) {
+		JSONObject arguments = new JSONObject();
+		arguments.put("device", dev);
+		arguments.put("target", value);
 
-        return "{ \"execute\": \"change\", \"arguments\": { \"device\": \""+dev+"\", \"target\": \"" + value + "\" } }";
+		JSONObject jsonObject = new JSONObject();
+		jsonObject.put("execute", "change");
+		jsonObject.put("arguments", arguments);
+		jsonObject.put("id", "vectras");
+
+		return jsonObject.toString();
 
     }
 
