@@ -8,6 +8,7 @@ import java.util.LinkedList;
 import java.util.Vector;
 import android.os.Build;
 import com.vectras.vm.R;
+import com.vectras.vm.core.NativeFastPath;
 import android.content.Intent;
 import android.content.Context;
 import android.os.Message;
@@ -350,6 +351,18 @@ public class VectrasStatus
 
     public static void logError(int resourceId, Object... args) {
         newLogItem(new LogItem(LogLevel.ERROR, resourceId, args));
+    }
+
+    public static void logNativeBridgeTelemetry(String sourceTag) {
+        String line = NativeFastPath.formatNativeBridgeTelemetryLine(sourceTag);
+        logInfo(line);
+    }
+
+    public static void logNativeBridgeBootTelemetryIfNeeded() {
+        String line = NativeFastPath.emitBootTelemetryLineIfNeeded();
+        if (line != null) {
+            logInfo(line);
+        }
     }
 
 }

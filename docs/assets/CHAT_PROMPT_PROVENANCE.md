@@ -4,5 +4,5 @@ Entradas recebidas por chat só podem ser consideradas concluídas quando houver
 
 | expected_file | current_origin | required_traceable_origin | status |
 |---|---|---|---|
-| `ascii/rafaelia-core-eye-toroid.ascii.md` | Provided via chat prompt | Link de issue/PR (ou artefato versionado com URL permanente) + arquivo em `docs/assets/` | ⏳ Pending provenance |
-| `ascii/rafaelia-coherence-layers.ascii.md` | Provided via chat prompt | Link de issue/PR (ou artefato versionado com URL permanente) + arquivo em `docs/assets/` | ⏳ Pending provenance |
+| `ascii/rafaelia-core-eye-toroid.ascii.md` | Provided via chat prompt | Commit versionado com arquivo canônico local em `docs/assets/ascii/` + manifesto atualizado | ✅ Concluído (local_ascii canônico) |
+| `ascii/rafaelia-coherence-layers.ascii.md` | Provided via chat prompt | Commit versionado com arquivo canônico local em `docs/assets/ascii/` + manifesto atualizado | ✅ Concluído (local_ascii canônico) |
