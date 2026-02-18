@@ -90,6 +90,12 @@ class RafaeliaLogActivity : AppCompatActivity() {
         }
 
         RandomAccessFile(file, "r").use { raf ->
+            // Maintenance note: if log capture/VM restarts and truncates the file,
+            // reset incremental state to avoid seeking past EOF and mixing old/new sessions.
+            if (file.length() < filePointer) {
+                filePointer = 0L
+                logLines.clear()
+            }
             raf.seek(filePointer)
             var line = raf.readLine()
             while (line != null) {
