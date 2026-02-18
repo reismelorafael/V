@@ -154,7 +154,12 @@ public class MainStartVM {
 
         SetupFeatureCore.PreflightResult preflightResult = SetupFeatureCore.runVmStartPreflight(
                 context,
-                StartVM.requiredQemuBinary(context)
+                StartVM.requiredQemuBinary(context),
+                new SetupFeatureCore.VmStartPreflightOptions(
+                        MainSettingsManager.getVmUi(context),
+                        MainSettingsManager.getRunQemuWithXterm(context),
+                        headless
+                )
         );
         if (!preflightResult.ok) {
             VectrasStatus.logError("VM preflight failed: " + preflightResult.shortSummary());

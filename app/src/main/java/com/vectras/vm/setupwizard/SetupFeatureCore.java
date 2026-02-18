@@ -59,11 +59,18 @@ public class SetupFeatureCore {
     public static final class PreflightResult {
         public final boolean ok;
         public final ArrayList<String> missingBinaries;
+        public final ArrayList<String> missingOptionalModeBinaries;
         public final ArrayList<String> missingPackages;
 
-        private PreflightResult(boolean ok, ArrayList<String> missingBinaries, ArrayList<String> missingPackages) {
+        private PreflightResult(
+                boolean ok,
+                ArrayList<String> missingBinaries,
+                ArrayList<String> missingOptionalModeBinaries,
+                ArrayList<String> missingPackages
+        ) {
             this.ok = ok;
             this.missingBinaries = missingBinaries;
+            this.missingOptionalModeBinaries = missingOptionalModeBinaries;
             this.missingPackages = missingPackages;
         }
 
@@ -77,10 +84,15 @@ public class SetupFeatureCore {
         public String uiSummary() {
             StringBuilder summary = new StringBuilder("Preflight check failed. Missing components:\n");
             if (!missingBinaries.isEmpty()) {
-                summary.append("• Binaries: ").append(joinLimited(missingBinaries)).append("\n");
+                summary.append("• Required binaries: ").append(joinLimited(missingBinaries)).append("\n");
+            }
+            if (!missingOptionalModeBinaries.isEmpty()) {
+                summary.append("• Optional components for current mode: ")
+                        .append(joinLimited(missingOptionalModeBinaries))
+                        .append("\n");
             }
             if (!missingPackages.isEmpty()) {
-                summary.append("• Packages: ").append(joinLimited(missingPackages));
+                summary.append("• Required packages: ").append(joinLimited(missingPackages));
             }
             return summary.toString().trim();
         }
@@ -104,15 +116,44 @@ public class SetupFeatureCore {
         }
     }
 
-    public static PreflightResult runVmStartPreflight(Context context, String requiredQemuBinary) {
+    public static final class VmStartPreflightOptions {
+        public final String vmUi;
+        public final boolean runWithXterm;
+        public final boolean headless;
+
+        public VmStartPreflightOptions(String vmUi, boolean runWithXterm, boolean headless) {
+            this.vmUi = vmUi;
+            this.runWithXterm = runWithXterm;
+            this.headless = headless;
+        }
+
+        boolean shouldRequireXterm() {
+            return "X11".equals(vmUi) && runWithXterm && !headless;
+        }
+    }
+
+    public static PreflightResult runVmStartPreflight(
+            Context context,
+            String requiredQemuBinary,
+            VmStartPreflightOptions options
+    ) {
         ArrayList<String> missingBinaries = new ArrayList<>();
+        ArrayList<String> missingOptionalModeBinaries = new ArrayList<>();
         ArrayList<String> missingPackages = new ArrayList<>();
+
+        VmStartPreflightOptions resolvedOptions = options == null
+                ? new VmStartPreflightOptions("", false, false)
+                : options;
 
         if (!hasBinary(context, requiredQemuBinary)) {
             missingBinaries.add(requiredQemuBinary);
         }
-        if (!hasBinary(context, "xterm")) {
-            missingBinaries.add("xterm");
+        if (resolvedOptions.shouldRequireXterm()) {
+            if (!hasBinary(context, "xterm")) {
+                missingBinaries.add("xterm");
+            }
+        } else if (!hasBinary(context, "xterm")) {
+            missingOptionalModeBinaries.add("xterm");
         }
 
         String pkgDbPath = context.getFilesDir().getAbsolutePath() + "/distro/lib/apk/db/installed";
@@ -132,7 +173,7 @@ public class SetupFeatureCore {
         }
 
         boolean ok = missingBinaries.isEmpty() && missingPackages.isEmpty();
-        return new PreflightResult(ok, missingBinaries, missingPackages);
+        return new PreflightResult(ok, missingBinaries, missingOptionalModeBinaries, missingPackages);
     }
 
     public static void launchReinstallSetup(Context context) {
