@@ -59,7 +59,7 @@ public class SystemMonitorFragment extends Fragment {
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         // Inflate the layout for this fragment
-        binding = FragmentHomeSystemMonitorBinding.inflate(getLayoutInflater());
+        binding = FragmentHomeSystemMonitorBinding.inflate(inflater, container, false);
         return binding.getRoot();
     }
 
