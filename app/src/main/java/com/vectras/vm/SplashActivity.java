@@ -140,7 +140,7 @@ public class SplashActivity extends AppCompatActivity implements Runnable {
 
     private void setupFolders() {
         try {
-            StartVM.cache = getCacheDir().getAbsolutePath();
+            getCacheDir().getAbsolutePath();
         } catch (Exception e) {
             Log.e(TAG, getCacheDir().getAbsolutePath() + ": Directory creation failed!", e);
         }

@@ -25,8 +25,6 @@ import java.util.List;
 import java.util.Objects;
 
 public class StartVM {
-    public static String cache;
-
     public static String cdrompath;
     public static volatile String lastResolvedProfile = "BALANCED";
     public static volatile boolean lastKvmEnabled = false;
