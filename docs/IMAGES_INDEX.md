@@ -1,6 +1,6 @@
 # Images Index / Índice de Imagens
 
-> **Documentation Version**: 1.1.0 | **Last Updated**: 2026-02-15
+> **Documentation Version**: 1.1.0 | **Last Updated**: 2026-02-18
 
 This document provides a comprehensive mapping of architecture, UI, and system images to their corresponding code implementations in the Vectras VM Android application.
 
@@ -46,10 +46,8 @@ Formato canônico adotado neste repositório: **híbrido controlado**.
 | 4 | `ascii/vectra-mystical-ui-concept.ascii.md` | [aa58501e-263c-47fe-91b6-406b373cb3f6](https://github.com/user-attachments/assets/aa58501e-263c-47fe-91b6-406b373cb3f6) | ✅ Complete |
 | 5 | `ascii/ziprafa-integrity-architecture.ascii.md` | [97010343-3677-4766-b070-9fece88ba754](https://github.com/user-attachments/assets/97010343-3677-4766-b070-9fece88ba754) | ✅ Complete |
 | 6 | `ascii/additional-image-01.ascii.md` | [2123ec50-7240-490a-8975-bd675ca1fa92](https://github.com/user-attachments/assets/2123ec50-7240-490a-8975-bd675ca1fa92) | ✅ Complete |
-
-### Pending provenance regularization
-
-Entradas que anteriormente estavam como “Provided via chat prompt” foram movidas para o artefato versionado [`docs/assets/CHAT_PROMPT_PROVENANCE.md`](assets/CHAT_PROMPT_PROVENANCE.md), onde devem receber vínculo de issue/PR/artefato e artefato ASCII correspondente antes de voltar ao índice.
+| 7 | `ascii/rafaelia-core-eye-toroid.ascii.md` | Provided via chat prompt (canonicalized in-repo) | ✅ Complete |
+| 8 | `ascii/rafaelia-coherence-layers.ascii.md` | Provided via chat prompt (canonicalized in-repo) | ✅ Complete |
 
 ---
 
@@ -64,6 +62,8 @@ Based on images with complete metadata in `docs/assets/MANIFEST.md`, here is the
 | `ascii/rafaelia-mathematical.ascii.md` | Geometric/mathematical model with Traceçilda/ICAZC formulas | **QEMU / Engine** | `QemuParamsEditorActivity.java`, `Config.java` | Mathematical parameter optimization | Complex config not user-friendly | Add preset profiles for common configurations |
 | `ascii/vectra-mystical-ui-concept.ascii.md` | Vertical layered visualization concept (1008 Hz, FIAT DEI/FIAT VIAT LUX) | **UI/UX Concept** | `MainActivity.java`, layouts in `res/layout/` | Visual representation of system layers | N/A - Conceptual only | Consider animated splash/about screen |
 | `ascii/ziprafa-integrity-architecture.ascii.md` | ZIPRAFA integrity framework: Data Recovery, Blake3 Hashing, Ed25519 Signing, Modular Core (Core/Crypto/FEC), CLI & API | **Integrity / Logging** | `VectraCore.kt` (CRC32C parity), `VectraBitStackLog`, `RafaeliaMvp.java` | Data integrity verification, error recovery, secure identity | Blake3/Ed25519 not implemented (CRC32C used instead) | Document roadmap for advanced crypto; current CRC32C is sufficient for MVP |
+| `ascii/rafaelia-core-eye-toroid.ascii.md` | Blueprint do núcleo de observabilidade com anel toroidal (ingest→verify→index→feedback) e domínios Integridade/Segurança/Governança | **Core / Observability / Governance** | `MainActivity.java`, `LoggerFragment.java`, `VectraCore.kt`, `PermissionUtils.java`, `SOURCE_TRACEABILITY_MATRIX.md` | Coleta contínua, validação, indexação e feedback operacional rastreável | Sem dashboard explícito unificado do ciclo toroidal | Consolidar painel de estado com métricas de ciclo e evidências append-only |
+| `ascii/rafaelia-coherence-layers.ascii.md` | Pilha de coerência L1→L5 (UI, Runtime, Integridade, Segurança, Governança) com feedback para operação | **Cross-layer Coherence** | `MainActivity.java`, `MainVNCActivity.java`, `QmpClient.java`, `VMStatus.java`, `MANIFEST.md` | Fluxo de promoção por camadas com retorno de status ao operador | Relações de camada estavam implícitas e dispersas | Manter matriz de mapeamento por camada atualizada em documentação canônica |
 
 ---
 
