@@ -9,39 +9,45 @@
 
     <ImageButton
         android:id="@+id/btnTerminal"
+        style="@style/Widget.Vectras.IconOnlyControlButton"
         android:layout_width="64dp"
         android:layout_height="64dp"
+        android:layout_margin="4dp"
         android:layout_marginRight="8dp"
         android:background="@drawable/controls_button"
         android:backgroundTint="?attr/colorPrimary"
-        android:src="@drawable/round_terminal_24"
+        android:contentDescription="@string/a11y_open_terminal_program"
         android:scaleType="fitCenter"
-        android:layout_margin="4dp"
+        android:src="@drawable/round_terminal_24"
         app:tint="?attr/colorPrimary" />
 
     <ImageButton
         android:id="@+id/btnGlxGears"
+        style="@style/Widget.Vectras.IconOnlyControlButton"
         android:layout_width="64dp"
         android:layout_height="64dp"
+        android:layout_margin="4dp"
         android:layout_marginRight="8dp"
         android:background="@drawable/controls_button"
         android:backgroundTint="?attr/colorPrimary"
-        android:src="@drawable/manufacturing_24px"
+        android:contentDescription="@string/a11y_open_glxgears"
         android:scaleType="fitCenter"
-        android:layout_margin="4dp"
+        android:src="@drawable/manufacturing_24px"
         app:tint="?attr/colorPrimary" />
 
     <ImageButton
         android:id="@+id/btnVkCube"
+        style="@style/Widget.Vectras.IconOnlyControlButton"
         android:layout_width="64dp"
         android:layout_height="64dp"
+        android:layout_margin="4dp"
         android:layout_marginRight="8dp"
         android:background="@drawable/controls_button"
         android:backgroundTint="?attr/colorPrimary"
+        android:contentDescription="@string/a11y_open_vkcube"
+        android:scaleType="fitCenter"
         android:src="@drawable/deployed_code_24px"
         android:visibility="gone"
-        android:scaleType="fitCenter"
-        android:layout_margin="4dp"
         app:tint="?attr/colorPrimary" />
 
 </LinearLayout>

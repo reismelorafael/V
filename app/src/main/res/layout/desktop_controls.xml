@@ -40,36 +40,42 @@
 
             <ImageButton
                 android:id="@+id/upBtn"
+                style="@style/Widget.Vectras.IconOnlyControlButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_margin="2dp"
                 android:background="@drawable/controls_button1"
                 android:backgroundTint="?attr/colorPrimary"
                 android:clickable="true"
+                android:contentDescription="@string/a11y_arrow_up"
                 android:focusable="true"
                 android:src="@drawable/ic_arrow_up"
                 app:tint="?attr/colorPrimary" />
 
             <ImageButton
                 android:id="@+id/leftBtn"
+                style="@style/Widget.Vectras.IconOnlyControlButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_margin="2dp"
                 android:background="@drawable/controls_button1"
                 android:backgroundTint="?attr/colorPrimary"
                 android:clickable="true"
+                android:contentDescription="@string/a11y_arrow_left"
                 android:focusable="true"
                 android:src="@drawable/ic_arrow_left"
                 app:tint="?attr/colorPrimary" />
 
             <ImageButton
                 android:id="@+id/downBtn"
+                style="@style/Widget.Vectras.IconOnlyControlButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_margin="2dp"
                 android:background="@drawable/controls_button1"
                 android:backgroundTint="?attr/colorPrimary"
                 android:clickable="true"
+                android:contentDescription="@string/a11y_arrow_down"
                 android:focusable="true"
                 android:src="@drawable/ic_arrow_down"
                 app:tint="?attr/colorPrimary" />
@@ -83,12 +89,14 @@
 
             <ImageButton
                 android:id="@+id/rightBtn"
+                style="@style/Widget.Vectras.IconOnlyControlButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_margin="2dp"
                 android:background="@drawable/controls_button1"
                 android:backgroundTint="?attr/colorPrimary"
                 android:clickable="true"
+                android:contentDescription="@string/a11y_arrow_right"
                 android:focusable="true"
                 android:src="@drawable/ic_arrow_right"
                 app:tint="?attr/colorPrimary" />
@@ -105,51 +113,61 @@
 
         <ImageButton
             android:id="@+id/escBtn"
+            style="@style/Widget.Vectras.IconOnlyControlButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_margin="2dp"
             android:background="@drawable/controls_button1"
             android:backgroundTint="?attr/colorPrimary"
+            android:contentDescription="@string/a11y_escape"
             android:src="@drawable/ic_esc"
             app:tint="?attr/colorPrimary" />
 
         <ImageButton
             android:id="@+id/delBtn"
+            style="@style/Widget.Vectras.IconOnlyControlButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_margin="2dp"
             android:background="@drawable/controls_button1"
             android:backgroundTint="?attr/colorPrimary"
+            android:contentDescription="@string/a11y_delete"
             android:src="@drawable/ic_del"
             app:tint="?attr/colorPrimary" />
 
         <ImageButton
             android:id="@+id/enterBtn"
+            style="@style/Widget.Vectras.IconOnlyControlButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_margin="2dp"
             android:background="@drawable/controls_button1"
             android:backgroundTint="?attr/colorPrimary"
+            android:contentDescription="@string/a11y_enter"
             android:src="@drawable/ic_enter"
             app:tint="?attr/colorPrimary" />
 
         <ImageButton
             android:id="@+id/ctrlBtn"
+            style="@style/Widget.Vectras.IconOnlyControlButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_margin="2dp"
             android:background="@drawable/controls_button1"
             android:backgroundTint="?attr/colorPrimary"
+            android:contentDescription="@string/a11y_ctrl"
             android:src="@drawable/ic_ctrl"
             app:tint="?attr/colorPrimary" />
 
         <ImageButton
             android:id="@+id/altBtn"
+            style="@style/Widget.Vectras.IconOnlyControlButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_margin="2dp"
             android:background="@drawable/controls_button1"
             android:backgroundTint="?attr/colorPrimary"
+            android:contentDescription="@string/a11y_alt"
             android:src="@drawable/ic_alt"
             app:tint="?attr/colorPrimary" />
     </LinearLayout>
@@ -193,11 +211,13 @@
 
     <ImageButton
         android:id="@+id/winBtn"
+        style="@style/Widget.Vectras.IconOnlyControlButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:background="@drawable/controls_button1"
         android:backgroundTint="?attr/colorPrimary"
         android:layout_margin="15dp"
+        android:contentDescription="@string/a11y_windows_key"
         android:src="@drawable/ic_windows"
         app:tint="?attr/colorPrimary"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -226,15 +246,18 @@
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"/>
+            android:layout_weight="1"
+            android:importantForAccessibility="no"/>
 
         <ImageButton
             android:id="@+id/ctrlaltdelBtn"
+            style="@style/Widget.Vectras.IconOnlyControlButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/controls_button1"
             android:backgroundTint="?attr/colorPrimary"
             android:layout_margin="15dp"
+            android:contentDescription="@string/a11y_ctrl_alt_del"
             android:src="@drawable/power_input_24px"
             app:tint="?attr/colorPrimary"
             app:layout_constraintBottom_toBottomOf="parent"

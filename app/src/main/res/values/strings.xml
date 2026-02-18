@@ -1023,4 +1023,34 @@ CPU1 %3$d%% · CPUm %4$d%% · MEM %5$d%% · IO %6$d%% · INT %7$d%% · EMU %8$d%
     <string name="qemu_assist_qmp">QMP</string>
     <string name="benchmark_fusion_micrograph_placeholder">Micrograph will be generated after benchmark execution.</string>
 
+
+    <string name="a11y_open_menu">Open menu</string>
+    <string name="a11y_open_settings">Open settings</string>
+    <string name="a11y_open_programs">Open programs</string>
+    <string name="a11y_open_qmp_terminal">Open QMP terminal</string>
+    <string name="a11y_fit_to_screen">Fit to screen</string>
+    <string name="a11y_toggle_game_controls">Toggle game controls</string>
+    <string name="a11y_toggle_keyboard">Toggle keyboard</string>
+    <string name="a11y_shutdown_vm">Shut down virtual machine</string>
+    <string name="a11y_arrow_up">Arrow up</string>
+    <string name="a11y_arrow_down">Arrow down</string>
+    <string name="a11y_arrow_left">Arrow left</string>
+    <string name="a11y_arrow_right">Arrow right</string>
+    <string name="a11y_escape">Escape</string>
+    <string name="a11y_delete">Delete</string>
+    <string name="a11y_enter">Enter</string>
+    <string name="a11y_ctrl">Control</string>
+    <string name="a11y_alt">Alt</string>
+    <string name="a11y_windows_key">Windows key</string>
+    <string name="a11y_ctrl_alt_del" translatable="false">Ctrl Alt Del</string>
+    <string name="a11y_send_text">Send text</string>
+    <string name="a11y_select_all">Select all</string>
+    <string name="a11y_cut">Cut</string>
+    <string name="a11y_copy">Copy</string>
+    <string name="a11y_paste">Paste</string>
+    <string name="a11y_hide_send_keys">Hide send keys</string>
+    <string name="a11y_open_terminal_program">Open terminal program</string>
+    <string name="a11y_open_glxgears">Open GLXGears</string>
+    <string name="a11y_open_vkcube">Open Vulkan cube</string>
+
 </resources>

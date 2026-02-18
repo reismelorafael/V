@@ -47,6 +47,7 @@
                     android:layout_height="match_parent"
                     android:layout_gravity="left"
                     android:layout_weight="1.0"
+                    android:importantForAccessibility="no"
                     android:orientation="vertical"
                     android:padding="10dp">
 
@@ -66,11 +67,13 @@
 
                     <ImageButton
                         android:id="@+id/btnVterm"
+                        style="@style/Widget.Vectras.IconOnlyControlButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginRight="8dp"
                         android:background="@drawable/controls_button"
                         android:backgroundTint="?attr/colorPrimary"
+                        android:contentDescription="@string/a11y_open_menu"
                         android:src="@drawable/round_menu_24"
                         android:clickable="true"
                         app:tint="?attr/colorPrimary"
@@ -78,71 +81,85 @@
 
                     <ImageButton
                         android:id="@+id/btnSettings"
+                        style="@style/Widget.Vectras.IconOnlyControlButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginRight="8dp"
                         android:background="@drawable/controls_button"
                         android:backgroundTint="?attr/colorPrimary"
+                        android:contentDescription="@string/a11y_open_settings"
                         android:src="@drawable/round_settings_24"
                         app:tint="?attr/colorPrimary" />
 
                     <ImageButton
                         android:id="@+id/btnPrograms"
+                        style="@style/Widget.Vectras.IconOnlyControlButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginRight="8dp"
                         android:background="@drawable/controls_button"
                         android:backgroundTint="?attr/colorPrimary"
+                        android:contentDescription="@string/a11y_open_programs"
                         android:src="@drawable/apps_24px"
                         app:tint="?attr/colorPrimary" />
 
                     <ImageButton
                         android:id="@+id/btnQmp"
+                        style="@style/Widget.Vectras.IconOnlyControlButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginRight="8dp"
                         android:background="@drawable/controls_button"
                         android:backgroundTint="?attr/colorPrimary"
+                        android:contentDescription="@string/a11y_open_qmp_terminal"
                         android:src="@drawable/round_terminal_24"
                         app:tint="?attr/colorPrimary" />
 
                     <ImageButton
                         android:id="@+id/btnFit"
+                        style="@style/Widget.Vectras.IconOnlyControlButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginRight="8dp"
                         android:background="@drawable/controls_button"
                         android:backgroundTint="?attr/colorPrimary"
+                        android:contentDescription="@string/a11y_fit_to_screen"
                         android:src="@drawable/open_in_full_24px"
                         app:tint="?attr/colorPrimary" />
 
                     <ImageButton
                         android:id="@+id/btnMode"
+                        style="@style/Widget.Vectras.IconOnlyControlButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginRight="8dp"
                         android:background="@drawable/controls_button"
                         android:backgroundTint="?attr/colorPrimary"
+                        android:contentDescription="@string/a11y_toggle_game_controls"
                         android:src="@drawable/round_games_24"
                         app:tint="?attr/colorPrimary" />
 
                     <ImageButton
                         android:id="@+id/kbdBtn"
+                        style="@style/Widget.Vectras.IconOnlyControlButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginLeft="0dp"
                         android:background="@drawable/controls_button"
                         android:backgroundTint="?attr/colorPrimary"
+                        android:contentDescription="@string/a11y_toggle_keyboard"
                         android:src="@drawable/round_keyboard_24"
                         app:tint="?attr/colorPrimary" />
 
                     <ImageButton
                         android:id="@+id/shutdownBtn"
+                        style="@style/Widget.Vectras.IconOnlyControlButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginLeft="8dp"
                         android:background="@drawable/controls_button"
                         android:backgroundTint="?attr/colorPrimary"
+                        android:contentDescription="@string/a11y_shutdown_vm"
                         android:src="@drawable/round_logout_24"
                         app:tint="?attr/colorPrimary" />
                 </LinearLayout>
@@ -151,6 +168,7 @@
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1.0"
+                    android:importantForAccessibility="no"
                     android:orientation="horizontal" />
 
             </LinearLayout>
@@ -159,6 +177,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1.0"
+                android:importantForAccessibility="no"
                 android:orientation="horizontal">
 
             </LinearLayout>
@@ -168,6 +187,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="left"
                 android:gravity="center_horizontal"
+                android:importantForAccessibility="no"
                 android:orientation="horizontal"
                 android:padding="15dp">
 
