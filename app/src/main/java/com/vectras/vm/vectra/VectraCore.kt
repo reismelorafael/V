@@ -2,7 +2,6 @@ package com.vectras.vm.vectra
 
 import android.content.Context
 import android.os.Build
-import android.provider.Settings
 import android.util.Log
 import com.vectras.vm.BuildConfig
 import com.vectras.vm.core.NativeFastPath
@@ -10,7 +9,7 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.ArrayDeque
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
@@ -138,7 +137,7 @@ object VectraBlock {
         buffer.putInt(stripeCfg)
         buffer.putLong(idPrefix)
         buffer.putLong(seed.toLong() * PRE6_FACTOR) // pre6 derivation
-        while (buffer.position() < HEADER_BYTES) buffer.putLong(0)
+        while (buffer.position() < HEADER_BYTES) buffer.put(0)
         val header = buffer.array()
         val crc = CRC32C.update(0, header)
         ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).putInt(CRC_OFFSET, crc)
@@ -218,23 +217,23 @@ class VectraMemPool(private val chunkSize: Int, poolSize: Int) {
         private const val MAX_POOL_SIZE = 32
     }
 
-    private val pool = ArrayDeque<ByteArray>()
+    private val pool = ArrayBlockingQueue<ByteArray>(MAX_POOL_SIZE)
 
     init {
-        repeat(poolSize) { pool.add(ByteArray(chunkSize)) }
+        repeat(poolSize.coerceAtMost(MAX_POOL_SIZE)) { pool.offer(ByteArray(chunkSize)) }
     }
 
     fun borrow(size: Int = chunkSize): ByteArray {
-        return if (size <= chunkSize && pool.isNotEmpty()) {
-            pool.removeFirst()
+        return if (size <= chunkSize) {
+            pool.poll() ?: ByteArray(size)
         } else {
             ByteArray(size)
         }
     }
 
     fun release(buffer: ByteArray) {
-        if (buffer.size == chunkSize && pool.size < MAX_POOL_SIZE) {
-            pool.addLast(buffer)
+        if (buffer.size == chunkSize) {
+            pool.offer(buffer)
         }
     }
 }
@@ -679,8 +678,9 @@ class VectraCycle(
 
         // Phase 2: Process
         if (event != null) {
-            val payloadRef = eventBus.resolvePayload(event)
-            processEvent(event, payloadRef)
+            val payload = event.payload ?: EMPTY_PAYLOAD
+            processEvent(event, payload)
+            val eventType = event.type
             Log.d(
                 TAG,
                 "event_processed timestamp=${event.timestamp} type=$eventType priority=${event.priority}"
@@ -689,7 +689,7 @@ class VectraCycle(
 
         // Phase 3: Output
         logger?.let {
-            val payload = eventBus.resolvePayload(event)
+            val payload = event?.payload ?: EMPTY_PAYLOAD
             val payloadLength = event?.payloadLength ?: 0
             val meta = (event?.type?.ordinal ?: 0) or ((event?.priority ?: 0) shl 8)
             it.append(payload, payloadLength, meta)
@@ -702,7 +702,7 @@ class VectraCycle(
         eventBus.recycle(event)
     }
 
-    private fun updatePolicy(event: VectraEventBus.EventView?) {
+    private fun updatePolicy(event: VectraEvent?) {
         if (event == null) {
             state.missStreak++
             state.hitStreak = 0
@@ -719,6 +719,7 @@ class VectraCycle(
     }
 
     private fun processEvent(event: VectraEvent, payload: ByteArray) {
+        val eventType = event.type
         // Update entropy hint based on event type
         val baseWeight = when (eventType) {
             VectraEvent.EventType.RADIO_EVENT -> 10 // Radio events add more rho
@@ -867,24 +868,6 @@ class VectraBitStackLog(logFile: File) {
         }
     }
 
-    private fun writeIntLE(buffer: ByteArray, offset: Int, value: Int) {
-        buffer[offset] = (value and 0xFF).toByte()
-        buffer[offset + 1] = ((value ushr 8) and 0xFF).toByte()
-        buffer[offset + 2] = ((value ushr 16) and 0xFF).toByte()
-        buffer[offset + 3] = ((value ushr 24) and 0xFF).toByte()
-    }
-
-    private fun writeLongLE(buffer: ByteArray, offset: Int, value: Long) {
-        buffer[offset] = (value and 0xFF).toByte()
-        buffer[offset + 1] = ((value ushr 8) and 0xFF).toByte()
-        buffer[offset + 2] = ((value ushr 16) and 0xFF).toByte()
-        buffer[offset + 3] = ((value ushr 24) and 0xFF).toByte()
-        buffer[offset + 4] = ((value ushr 32) and 0xFF).toByte()
-        buffer[offset + 5] = ((value ushr 40) and 0xFF).toByte()
-        buffer[offset + 6] = ((value ushr 48) and 0xFF).toByte()
-        buffer[offset + 7] = ((value ushr 56) and 0xFF).toByte()
-    }
-
     private fun maybeFlush() {
         val now = System.currentTimeMillis()
         if (recordsSinceFlush >= FLUSH_RECORDS || now - lastFlushAtMs >= FLUSH_INTERVAL_MS) {
@@ -903,15 +886,6 @@ class VectraBitStackLog(logFile: File) {
             file.close()
         }
     }
-
-    private fun putIntLe(dst: ByteArray, offset: Int, value: Int) {
-        dst[offset] = value.toByte()
-        dst[offset + 1] = (value ushr 8).toByte()
-        dst[offset + 2] = (value ushr 16).toByte()
-        dst[offset + 3] = (value ushr 24).toByte()
-    }
-
-    private val recordHeaderBuffer = littleEndianThreadLocal(RECORD_HEADER_SIZE)
 
     fun getRecordCount(): Long = recordCount
     fun getFileSize(): Long = file.length()
@@ -986,32 +960,6 @@ object VectraCore {
             TAG,
             "init deterministic_tick=0 wall_clock_ms=${System.currentTimeMillis()} seed=${state.seed} crc=${state.crc32c} entropy=${state.entropyHint} logPath=${logFile.absolutePath}"
         )
-    }
-
-    private fun resolveDeterministicSeed(context: Context): Int {
-        val configured = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(PREF_SEED_KEY, Int.MIN_VALUE)
-        if (configured != Int.MIN_VALUE) {
-            return configured and Int.MAX_VALUE
-        }
-
-        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
-        val fingerprint = buildString {
-            append(context.packageName)
-            append('|')
-            append(Build.BOARD)
-            append('|')
-            append(Build.BRAND)
-            append('|')
-            append(Build.DEVICE)
-            append('|')
-            append(Build.HARDWARE)
-            append('|')
-            append(Build.FINGERPRINT)
-            append('|')
-            append(androidId)
-        }
-        val bytes = fingerprint.toByteArray(Charsets.UTF_8)
-        return CRC32C.update(0, bytes) and Int.MAX_VALUE
     }
 
     /**
@@ -1103,18 +1051,6 @@ object VectraCore {
             start()
         }
     }
-
-    private fun writeLongLe(dst: ByteArray, offset: Int, value: Long) {
-        dst[offset] = value.toByte()
-        dst[offset + 1] = (value ushr 8).toByte()
-        dst[offset + 2] = (value ushr 16).toByte()
-        dst[offset + 3] = (value ushr 24).toByte()
-        dst[offset + 4] = (value ushr 32).toByte()
-        dst[offset + 5] = (value ushr 40).toByte()
-        dst[offset + 6] = (value ushr 48).toByte()
-        dst[offset + 7] = (value ushr 56).toByte()
-    }
-
 
     private fun putLongLE(dst: ByteArray, offset: Int, value: Long) {
         dst[offset] = value.toByte()
@@ -1253,14 +1189,7 @@ object VectraCore {
      * Post an event to the event bus.
      */
     fun postEvent(event: VectraEvent) {
-        val payload = event.payload
-        eventBus?.post(
-            type = event.type,
-            priority = event.priority,
-            timestamp = event.wallClockMs,
-            payload = payload,
-            payloadLength = payload?.size ?: 0
-        )
+        eventBus?.post(event)
     }
 
     /**

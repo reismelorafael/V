@@ -35,7 +35,6 @@ object RafaeliaBenchManager {
 
         benchRunnable?.let { handler.removeCallbacks(it) }
         benchRunnable = Runnable {
-            VMManager.killallqemuprocesses(context)
             generateReportAsync(context, vmName, durationMs)
         }
         handler.postDelayed(benchRunnable!!, durationMs)
@@ -44,6 +43,7 @@ object RafaeliaBenchManager {
     private fun generateReportAsync(context: Context, vmName: String, durationMs: Long) {
         executor.execute {
             val report = parseBenchReport(context, RafaeliaSettings.logFile(context), durationMs)
+            VMManager.killallqemuprocesses(context)
             if (report != null) {
                 RafaeliaReportStorage.saveBenchReport(context, report)
                 RafaeliaEventRecorder.recordBench(context, report, vmName)
