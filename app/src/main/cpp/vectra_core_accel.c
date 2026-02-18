@@ -7,6 +7,9 @@
 #include <stdatomic.h>
 #include "rmr_unified_kernel.h"
 
+// Bridge JNI oficializa retorno via RMR_KERNEL_OK e família RMR_KERNEL_ERR_*.
+// RMR_UK_* fica restrito à base/compat (ou pontos explicitamente documentados).
+
 #define VECTRA_KERNEL_CONTRACT_SIZE 8
 #define VECTRA_HW_CONTRACT_SIZE 10
 
