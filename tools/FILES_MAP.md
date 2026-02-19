@@ -77,6 +77,18 @@ Mapa arquivo-a-arquivo em três linhas por item: papel, ligação e comando de i
 - **Inspeção**: `file "tools/termux-arm64-orchestrator/c/storage_spill_allocator.c"` e, quando texto, `sed -n "1,260p" "tools/termux-arm64-orchestrator/c/storage_spill_allocator.c"`.
 
 
+
+## `tools/export_source_tarball.sh`
+- **Papel**: exporta código-fonte do repositório e também downloads/código instalado via SDK/NDK/CMake (quando presentes), gerando pacote `.tar.gz` para redação/edição externa.
+- **Liga com**: integra `git ls-files`, `.android-sdk` (cmdline-tools/platform-tools/build-tools/ndk/cmake/platforms) e cache `~/.android/cache`, organizando saída em `archive/source-export/` por timestamp.
+- **Inspeção**: `bash tools/export_source_tarball.sh` e `find archive/source-export -maxdepth 3 -type f | sort`.
+
+
+## `tools/prefetch_bootstrap_downloads.sh`
+- **Papel**: executa bootstrap oficial para baixar/instalar componentes Android em `archive/download-mirror/` e depois chama export para gerar `.tar.gz` com conteúdo pós-download.
+- **Liga com**: usa [`tools/termux-arm64-orchestrator/bootstrap-termux-android15.sh`](termux-arm64-orchestrator/bootstrap-termux-android15.sh) e [`tools/export_source_tarball.sh`](export_source_tarball.sh).
+- **Inspeção**: `bash tools/prefetch_bootstrap_downloads.sh` e `find archive/download-mirror -maxdepth 3 -type f | sort`.
+
 ## `tools/audit_non_md_inventory.py`
 - **Papel**: script de auditoria forense para inventariar todos os arquivos não-Markdown com hash SHA-256.
 - **Liga com**: gera [`reports/NON_MD_AUDIT_REPORT.md`](../reports/NON_MD_AUDIT_REPORT.md) e [`reports/non_md_inventory.tsv`](../reports/non_md_inventory.tsv).
