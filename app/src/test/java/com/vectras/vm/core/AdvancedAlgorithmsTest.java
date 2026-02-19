@@ -124,6 +124,85 @@ public class AdvancedAlgorithmsTest {
     }
 
     @Test
+    public void testSimulatedAnnealingSameSeedSameResult() {
+        int[] initial = {3, -2, 7, 0, 5};
+
+        AdvancedAlgorithms.CostFunction cost = new AdvancedAlgorithms.CostFunction() {
+            @Override
+            public double evaluate(int[] state) {
+                return state[0] * state[0] + state[1] * state[1] + state[2] * state[2] + state[3] * state[3] + state[4] * state[4];
+            }
+        };
+
+        AdvancedAlgorithms.NeighborFunction neighbor = new AdvancedAlgorithms.NeighborFunction() {
+            @Override
+            public int[] generate(int[] currentState) {
+                int[] next = currentState.clone();
+                next[0] += 1;
+                next[1] -= 1;
+                return next;
+            }
+        };
+
+        long seed = 987654321L;
+        int[] resultA = AdvancedAlgorithms.simulatedAnnealing(initial, cost, neighbor, 25.0, 0.98, 200, seed);
+        int[] resultB = AdvancedAlgorithms.simulatedAnnealing(initial, cost, neighbor, 25.0, 0.98, 200, seed);
+
+        assertArrayEquals("Same seed and same input must produce same state", resultA, resultB);
+    }
+
+    @Test
+    public void testSimulatedAnnealingDifferentSeedsCanDiffer() {
+        int[] initial = {1};
+
+        AdvancedAlgorithms.CostFunction cost = new AdvancedAlgorithms.CostFunction() {
+            @Override
+            public double evaluate(int[] state) {
+                return Math.abs(state[0]);
+            }
+        };
+
+        AdvancedAlgorithms.NeighborFunction neighbor = new AdvancedAlgorithms.NeighborFunction() {
+            @Override
+            public int[] generate(int[] currentState) {
+                return new int[]{currentState[0] + 1};
+            }
+        };
+
+        int[] seededOne = AdvancedAlgorithms.simulatedAnnealing(initial, cost, neighbor, 1.0, 1.0, 1, 1L);
+        int[] seededTwo = AdvancedAlgorithms.simulatedAnnealing(initial, cost, neighbor, 1.0, 1.0, 1, 2L);
+
+        assertNotEquals("Different seeds should be able to produce distinct trajectories", seededOne[0], seededTwo[0]);
+    }
+
+    @Test
+    public void testSimulatedAnnealingLegacyOverloadsStillCompileAndRun() {
+        int[] initial = {2, 2, 2};
+
+        AdvancedAlgorithms.CostFunction cost = new AdvancedAlgorithms.CostFunction() {
+            @Override
+            public double evaluate(int[] state) {
+                return Math.abs(state[0]) + Math.abs(state[1]) + Math.abs(state[2]);
+            }
+        };
+
+        AdvancedAlgorithms.NeighborFunction neighbor = new AdvancedAlgorithms.NeighborFunction() {
+            @Override
+            public int[] generate(int[] currentState) {
+                return new int[]{currentState[0] - 1, currentState[1], currentState[2]};
+            }
+        };
+
+        int[] legacyResult = AdvancedAlgorithms.simulatedAnnealing(initial, cost, neighbor, 10.0, 0.95, 50);
+        int[] intoResult = AdvancedAlgorithms.simulatedAnnealingInto(initial, cost, neighbor, 10.0, 0.95, 50, new int[initial.length]);
+
+        assertNotNull(legacyResult);
+        assertEquals(initial.length, legacyResult.length);
+        assertNotNull(intoResult);
+        assertEquals(initial.length, intoResult.length);
+    }
+
+    @Test
     public void testGradientDescent() {
         // Minimize (x-1)^2 + (y-2)^2, minimum at (1, 2)
         double[] initial = {0.0, 0.0};

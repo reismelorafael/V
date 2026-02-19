@@ -312,6 +312,36 @@ public final class AdvancedAlgorithms {
             double initialTemp,
             double coolingRate,
             int maxIterations) {
+        return simulatedAnnealing(
+                initialState,
+                costFunction,
+                neighbor,
+                initialTemp,
+                coolingRate,
+                maxIterations,
+                deriveDeterministicSeed(initialState));
+    }
+
+    /**
+     * Simulated annealing for combinatorial optimization using a caller-provided seed.
+     *
+     * @param initialState Initial state
+     * @param costFunction Cost function to minimize
+     * @param neighbor Function to generate neighboring states
+     * @param initialTemp Initial temperature
+     * @param coolingRate Cooling rate (0 < rate < 1)
+     * @param maxIterations Maximum iterations
+     * @param seed Deterministic seed used by the xorshift PRNG
+     * @return Best state found
+     */
+    public static int[] simulatedAnnealing(
+            int[] initialState,
+            CostFunction costFunction,
+            NeighborFunction neighbor,
+            double initialTemp,
+            double coolingRate,
+            int maxIterations,
+            long seed) {
         
         int[] currentState = initialState.clone();
         int[] bestState = initialState.clone();
@@ -320,7 +350,7 @@ public final class AdvancedAlgorithms {
         double temperature = initialTemp;
         
         // Use xorshift for fast random numbers
-        long seed = System.nanoTime();
+        long rngState = normalizeSeed(seed);
         
         for (int i = 0; i < maxIterations; i++) {
             // Generate neighbor
@@ -331,10 +361,10 @@ public final class AdvancedAlgorithms {
             // Accept if better or with probability exp(-delta/T)
             boolean accept = delta < 0;
             if (!accept && temperature > EPSILON) {
-                seed ^= seed << 13;
-                seed ^= seed >>> 7;
-                seed ^= seed << 17;
-                double rand = ((seed & 0x7FFFFFFFL) / (double) 0x7FFFFFFFL);
+                rngState ^= rngState << 13;
+                rngState ^= rngState >>> 7;
+                rngState ^= rngState << 17;
+                double rand = ((rngState & 0x7FFFFFFFL) / (double) 0x7FFFFFFFL);
                 accept = rand < Math.exp(-delta / temperature);
             }
             
@@ -376,6 +406,39 @@ public final class AdvancedAlgorithms {
             double coolingRate,
             int maxIterations,
             int[] outBestState) {
+        return simulatedAnnealingInto(
+                initialState,
+                costFunction,
+                neighbor,
+                initialTemp,
+                coolingRate,
+                maxIterations,
+                outBestState,
+                deriveDeterministicSeed(initialState));
+    }
+
+    /**
+     * Simulated annealing using a caller-provided output buffer and deterministic seed.
+     *
+     * @param initialState Initial state
+     * @param costFunction Cost function to minimize
+     * @param neighbor Function to generate neighboring states
+     * @param initialTemp Initial temperature
+     * @param coolingRate Cooling rate (0 < rate < 1)
+     * @param maxIterations Maximum iterations
+     * @param outBestState Output buffer for best state (may be reused)
+     * @param seed Deterministic seed used by the xorshift PRNG
+     * @return Best state found (same reference as {@code outBestState})
+     */
+    public static int[] simulatedAnnealingInto(
+            int[] initialState,
+            CostFunction costFunction,
+            NeighborFunction neighbor,
+            double initialTemp,
+            double coolingRate,
+            int maxIterations,
+            int[] outBestState,
+            long seed) {
 
         Buffers buffers = THREAD_LOCAL_BUFFERS.get();
         int stateLength = initialState.length;
@@ -391,7 +454,7 @@ public final class AdvancedAlgorithms {
         double bestCost = currentCost;
         double temperature = initialTemp;
 
-        long seed = System.nanoTime();
+        long rngState = normalizeSeed(seed);
 
         for (int i = 0; i < maxIterations; i++) {
             int[] newState = neighbor.generate(currentState);
@@ -400,10 +463,10 @@ public final class AdvancedAlgorithms {
 
             boolean accept = delta < 0;
             if (!accept && temperature > EPSILON) {
-                seed ^= seed << 13;
-                seed ^= seed >>> 7;
-                seed ^= seed << 17;
-                double rand = ((seed & 0x7FFFFFFFL) / (double) 0x7FFFFFFFL);
+                rngState ^= rngState << 13;
+                rngState ^= rngState >>> 7;
+                rngState ^= rngState << 17;
+                double rand = ((rngState & 0x7FFFFFFFL) / (double) 0x7FFFFFFFL);
                 accept = rand < Math.exp(-delta / temperature);
             }
 
@@ -421,6 +484,20 @@ public final class AdvancedAlgorithms {
         }
 
         return bestState;
+    }
+
+    private static long deriveDeterministicSeed(int[] initialState) {
+        long seed = 0x9E3779B97F4A7C15L;
+        for (int value : initialState) {
+            seed ^= value;
+            seed *= 0xBF58476D1CE4E5B9L;
+            seed ^= seed >>> 27;
+        }
+        return normalizeSeed(seed);
+    }
+
+    private static long normalizeSeed(long seed) {
+        return seed == 0L ? 0x2545F4914F6CDD1DL : seed;
     }
     
     /**
