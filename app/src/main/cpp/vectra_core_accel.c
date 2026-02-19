@@ -68,8 +68,8 @@ Java_com_vectras_vm_core_NativeFastPath_nativeReadHardwareContract(JNIEnv* env, 
     if (rc != RMR_KERNEL_OK) return NULL;
     jint payload[VECTRA_HW_CONTRACT_SIZE] = {
         (jint)caps.signature, (jint)caps.pointer_bits, (jint)caps.cache_line_bytes, (jint)caps.page_bytes,
-        (jint)caps.feature_mask, (jint)caps.register_width_bits, (jint)caps.pin_count_hint, (jint)caps.feature_bits_hi,
-        0, 0
+        (jint)caps.feature_mask, (jint)caps.reg_signature_0, (jint)caps.reg_signature_1, (jint)caps.reg_signature_2,
+        (jint)caps.gpio_word_bits, (jint)caps.gpio_pin_stride
     };
     jintArray arr = (*env)->NewIntArray(env, VECTRA_HW_CONTRACT_SIZE);
     if (!arr) return NULL;

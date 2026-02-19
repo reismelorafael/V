@@ -292,8 +292,14 @@ public final class NativeFastPath {
         if (NATIVE_AVAILABLE) {
             int[] contract = nativeReadHardwareContract();
             if (contract != null && contract.length == HW_CONTRACT_SIZE) {
-                telemetryNativeHit();
-                return HardwareProfile.fromHardwareContract(contract);
+                try {
+                    HardwareProfile profile = HardwareProfile.fromHardwareContract(contract);
+                    telemetryNativeHit();
+                    return profile;
+                } catch (IllegalArgumentException ex) {
+                    telemetryFallbackHit();
+                    return CompatibilityFallback.hardwareProfile("invalid hardware contract: " + ex.getMessage());
+                }
             }
             telemetryFallbackHit();
             return CompatibilityFallback.hardwareProfile("invalid hardware contract");
@@ -715,17 +721,37 @@ public final class NativeFastPath {
         }
 
         private static HardwareProfile fromHardwareContract(int[] contract) {
+            if (contract == null || contract.length != HW_CONTRACT_SIZE) {
+                throw new IllegalArgumentException("size");
+            }
+            int pointerBits = contract[HW_CONTRACT_POINTER_BITS];
+            int cacheLine = contract[HW_CONTRACT_CACHE_LINE];
+            int pageBytes = contract[HW_CONTRACT_PAGE_SIZE];
+            int reg0 = contract[HW_CONTRACT_REG0];
+            int reg1 = contract[HW_CONTRACT_REG1];
+            int reg2 = contract[HW_CONTRACT_REG2];
+            int gpioWordBits = contract[HW_CONTRACT_GPIO_WORD_BITS];
+            int gpioPinStride = contract[HW_CONTRACT_GPIO_PIN_STRIDE];
+            if (pointerBits <= 0 || cacheLine <= 0 || pageBytes <= 0) {
+                throw new IllegalArgumentException("layout");
+            }
+            if ((reg0 | reg1 | reg2) == 0) {
+                throw new IllegalArgumentException("register-signature");
+            }
+            if (gpioWordBits <= 0 || gpioPinStride <= 0) {
+                throw new IllegalArgumentException("gpio");
+            }
             return new HardwareProfile(
                     normalizeStableSignature(contract[HW_CONTRACT_SIGNATURE]),
-                    contract[HW_CONTRACT_POINTER_BITS],
-                    contract[HW_CONTRACT_CACHE_LINE],
-                    contract[HW_CONTRACT_PAGE_SIZE],
+                    pointerBits,
+                    cacheLine,
+                    pageBytes,
                     contract[HW_CONTRACT_FEATURES],
-                    contract[HW_CONTRACT_REG0],
-                    contract[HW_CONTRACT_REG1],
-                    contract[HW_CONTRACT_REG2],
-                    contract[HW_CONTRACT_GPIO_WORD_BITS],
-                    contract[HW_CONTRACT_GPIO_PIN_STRIDE]);
+                    reg0,
+                    reg1,
+                    reg2,
+                    gpioWordBits,
+                    gpioPinStride);
         }
     }
 
