@@ -7,13 +7,24 @@ option(RMR_ENABLE_BITRAF_MODULE "Enable BITRAF module" ON)
 set(VECTRA_REPO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../../../)
 set(VECTRA_RMR_INCLUDE_DIR ${VECTRA_REPO_ROOT}/engine/rmr/include)
 
+set(VECTRA_LOWLEVEL_SOURCES
+    ../../../../engine/rmr/src/rmr_lowlevel_portable.c
+    ../../../../engine/rmr/src/rmr_lowlevel_mix.c
+    ../../../../engine/rmr/src/rmr_lowlevel_reduce.c)
+
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    list(APPEND VECTRA_LOWLEVEL_SOURCES ../../../../engine/rmr/interop/rmr_lowlevel_x86_64.S)
+endif()
+
 add_library(vectra_core_accel SHARED
     vectra_core_accel.c
+    lowlevel_bridge.c
     ../../../../engine/rmr/src/rmr_unified_kernel.c
     ../../../../engine/rmr/src/rmr_hw_detect.c
     ../../../../engine/rmr/src/rmr_corelib.c
     ../../../../engine/rmr/src/rmr_ll_ops.c
-    ../../../../engine/rmr/src/rmr_cycles.c)
+    ../../../../engine/rmr/src/rmr_cycles.c
+    ${VECTRA_LOWLEVEL_SOURCES})
 
 if(RMR_ENABLE_POLICY_MODULE)
     add_library(rmr_policy_static STATIC

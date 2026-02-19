@@ -53,15 +53,14 @@ Save this as `app/google-services.json` to enable builds without a real Firebase
 
 **Note**: Firebase features (analytics, crashlytics, messaging) will not work with the placeholder configuration.
 
-## Produção / Ambiente Real (Obrigatório para Firebase funcional)
+## Produção / Ambiente Real
 
-Ao sair do fallback `minimal placeholder`, use configuração real de produção com passos objetivos:
+Ao sair do fallback `minimal placeholder`, siga estes passos objetivos:
 
-1. Substitua `project_id` e `storage_bucket` por valores reais do seu projeto Firebase (não use `vectras-vm-placeholder`).
-2. Baixe o `google-services.json` do Firebase Console para o app Android correto e use esse arquivo como fonte da verdade.
-3. Não publique build de produção com arquivo de placeholder.
+1. Substitua `project_id` e `storage_bucket` do exemplo por valores reais do seu projeto Firebase (não use `vectras-vm-placeholder`).
+2. Use o `google-services.json` real baixado do Firebase Console para o app Android correto.
 
-### Exemplo real (sem `*-placeholder`, apenas referência de estrutura)
+### Exemplo real (sem `*-placeholder`)
 
 ```json
 {
@@ -97,14 +96,13 @@ Ao sair do fallback `minimal placeholder`, use configuração real de produção
 
 ### Checklist de validação
 
-- [ ] Arquivo salvo em `app/google-services.json`.
-- [ ] `package_name` no JSON compatível com o package da aplicação (`com.vectras.vm`).
-- [ ] Executar **Sync Gradle** após substituir o arquivo para aplicar a configuração.
-- [ ] Confirmar que o build variante de release também resolve `google-services.json` corretamente.
+- [ ] Arquivo presente em `app/google-services.json`.
+- [ ] `package_name` do JSON compatível com o package da aplicação (`com.vectras.vm`).
+- [ ] Executar Sync Gradle após substituir o arquivo.
 
 ### Aviso de risco funcional
 
-Se `vectras-vm-placeholder` ou qualquer configuração de placeholder for mantida em produção, Firebase Analytics, Crashlytics e Messaging ficam inoperantes (risco funcional direto em telemetria, estabilidade e push notifications).
+Se `vectras-vm-placeholder` ou qualquer placeholder for mantido, Analytics, Crashlytics e Messaging ficam inoperantes.
 
 ## CI/CD
 
