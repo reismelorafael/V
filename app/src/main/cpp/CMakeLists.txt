@@ -8,24 +8,49 @@ set(VECTRA_REPO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../../../)
 set(VECTRA_RMR_INCLUDE_DIR ${VECTRA_REPO_ROOT}/engine/rmr/include)
 
 set(VECTRA_LOWLEVEL_SOURCES)
+set(VECTRA_CASM_SOURCES)
 
 if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
     list(APPEND VECTRA_LOWLEVEL_SOURCES ../../../../engine/rmr/interop/rmr_lowlevel_x86_64.S)
+    list(APPEND VECTRA_CASM_SOURCES ../../../../engine/rmr/interop/rmr_casm_x86_64.S)
 endif()
 
 if(NOT ANDROID AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
     list(APPEND VECTRA_LOWLEVEL_SOURCES ../../../../engine/rmr/interop/rmr_lowlevel_x86_64.S)
+    list(APPEND VECTRA_CASM_SOURCES ../../../../engine/rmr/interop/rmr_casm_x86_64.S)
+endif()
+
+if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+    set(VECTRA_CASM_ARM64_SOURCE ../../../../engine/rmr/interop/rmr_casm_arm64.S)
+    if(EXISTS ${VECTRA_CASM_ARM64_SOURCE})
+        list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_ARM64_SOURCE})
+    endif()
+endif()
+
+if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "riscv64")
+    set(VECTRA_CASM_RISCV64_SOURCE ../../../../engine/rmr/interop/rmr_casm_riscv64.S)
+    if(EXISTS ${VECTRA_CASM_RISCV64_SOURCE})
+        list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_RISCV64_SOURCE})
+    endif()
 endif()
 
 add_library(vectra_core_accel SHARED
     vectra_core_accel.c
     lowlevel_bridge.c
+    ../../../../engine/rmr/src/rmr_casm_bridge.c
     ../../../../engine/rmr/src/rmr_unified_kernel.c
     ../../../../engine/rmr/src/rmr_hw_detect.c
     ../../../../engine/rmr/src/rmr_corelib.c
     ../../../../engine/rmr/src/rmr_ll_ops.c
     ../../../../engine/rmr/src/rmr_cycles.c
-    ${VECTRA_LOWLEVEL_SOURCES})
+    ${VECTRA_LOWLEVEL_SOURCES}
+    ${VECTRA_CASM_SOURCES})
+
+if(VECTRA_CASM_SOURCES)
+    target_compile_definitions(vectra_core_accel PRIVATE VECTRA_HAS_CASM_MARKER=1)
+else()
+    target_compile_definitions(vectra_core_accel PRIVATE VECTRA_HAS_CASM_MARKER=0)
+endif()
 
 if(RMR_ENABLE_POLICY_MODULE)
     add_library(rmr_policy_static STATIC

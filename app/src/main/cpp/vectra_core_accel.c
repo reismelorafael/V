@@ -11,10 +11,12 @@
 #include "rmr_policy_kernel.h"
 #endif
 
+#if VECTRA_HAS_CASM_MARKER
 #if defined(__GNUC__)
 extern uint32_t rmr_casm_bridge_marker(void) __attribute__((weak));
 #else
 extern uint32_t rmr_casm_bridge_marker(void);
+#endif
 #endif
 
 // Bridge JNI oficializa retorno via RMR_KERNEL_OK e família RMR_KERNEL_ERR_*.
@@ -49,10 +51,14 @@ JNIEXPORT jint JNICALL
 Java_com_vectras_vm_core_NativeFastPath_nativeAsmBridgeMarker(JNIEnv* env, jclass clazz) {
     (void)env;
     (void)clazz;
+#if VECTRA_HAS_CASM_MARKER
 #if defined(__GNUC__)
     if (rmr_casm_bridge_marker) {
         return (jint)rmr_casm_bridge_marker();
     }
+#else
+    return (jint)rmr_casm_bridge_marker();
+#endif
 #endif
     return (jint)0x4346424Bu; // "CFBK"
 }

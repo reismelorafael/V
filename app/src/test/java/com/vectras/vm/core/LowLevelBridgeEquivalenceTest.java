@@ -117,4 +117,32 @@ public class LowLevelBridgeEquivalenceTest {
             assertEquals(fallback, bridged);
         }
     }
+    @Test
+    public void asmMarkerAndNativePathIntegrationForFoldAndChecksum() {
+        int marker = NativeFastPath.asmBridgeMarker();
+        if (LowLevelBridge.isLoaded()) {
+            assertEquals(0x41534D31, marker);
+        } else {
+            assertEquals(0x4A564D31, marker);
+        }
+
+        int foldOut = LowLevelBridge.fold32(0x10203040, 0x55667788, 0xCAFEBABE, 0x0F1E2D3C);
+        int foldFallback = LowLevelDeterminism.fold32Fallback(0x10203040, 0x55667788, 0xCAFEBABE, 0x0F1E2D3C);
+        assertEquals(foldFallback, foldOut);
+
+        byte[] payload = new byte[]{
+                (byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF,
+                (byte) 0x11, (byte) 0x22, (byte) 0x33, (byte) 0x44
+        };
+        int checksumOut = LowLevelBridge.checksum32(payload, 0, payload.length, 0xA5A5A5A5);
+        int checksumFallback = LowLevelDeterminism.checksum32Fallback(payload, 0, payload.length, 0xA5A5A5A5);
+        assertEquals(checksumFallback, checksumOut);
+
+        if (LowLevelBridge.isLoaded()) {
+            assertTrue(LowLevelBridge.wasLastCallNative());
+        } else {
+            assertFalse(LowLevelBridge.wasLastCallNative());
+        }
+    }
+
 }
