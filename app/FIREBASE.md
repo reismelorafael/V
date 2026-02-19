@@ -53,6 +53,57 @@ Save this as `app/google-services.json` to enable builds without a real Firebase
 
 **Note**: Firebase features (analytics, crashlytics, messaging) will not work with the placeholder configuration.
 
+## Produção / Ambiente Real (Obrigatório para Firebase funcional)
+
+Ao sair do fallback `minimal placeholder`, atualize o arquivo com dados reais do seu projeto Firebase:
+
+1. Substitua `project_id` e `storage_bucket` do exemplo com os valores reais do projeto (não use `vectras-vm-placeholder`).
+2. Use um `google-services.json` baixado do console Firebase para o app Android correto.
+
+### Exemplo real (sem `*-placeholder`)
+
+```json
+{
+  "project_info": {
+    "project_number": "123456789012",
+    "project_id": "vectras-vm-prod",
+    "storage_bucket": "vectras-vm-prod.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123456789012:android:abcdef1234567890abcd12",
+        "android_client_info": {
+          "package_name": "com.vectras.vm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyRealProjectKeyExample123456789"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
+```
+
+### Checklist de validação
+
+- [ ] Arquivo salvo em `app/google-services.json`.
+- [ ] `package_name` no JSON compatível com o package da aplicação (`com.vectras.vm`).
+- [ ] Executar Sync Gradle após substituir o arquivo para aplicar a configuração.
+
+### Aviso de risco funcional
+
+Se `vectras-vm-placeholder` ou qualquer configuração de placeholder for mantida em produção, Firebase Analytics, Crashlytics e Messaging ficam inoperantes.
+
 ## CI/CD
 
 For CI builds, ensure the `google-services.json` file is available via:
