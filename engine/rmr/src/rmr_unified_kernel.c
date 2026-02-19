@@ -214,7 +214,49 @@ rmr_status_t rmr_legacy_kernel_get_capabilities(const rmr_legacy_kernel_t *kerne
 }
 
 static void rmr_unified_caps_from_hw(const RmR_HW_Info *hw, RmR_UnifiedCapabilities *out) {
-  out->signature = hw->arch_hex ^ hw->feature_bits_0;
+  uint32_t arch_signature = 0x0000u;
+
+  switch (hw->arch) {
+    case 4u: /* ARM64 */
+      arch_signature = 0x0100u;
+      break;
+    case 3u: /* ARM32 */
+      arch_signature = 0x0200u;
+      break;
+    case 2u: /* X64 */
+      arch_signature = 0x0300u;
+      break;
+    case 1u: /* X86 */
+      arch_signature = 0x0400u;
+      break;
+    case 5u: /* RISCV64 */
+      arch_signature = 0x0500u;
+      break;
+    default:
+      switch (hw->arch_hex) {
+        case 0xA64u: /* ARM64 */
+          arch_signature = 0x0100u;
+          break;
+        case 0xA32u: /* ARM32 */
+          arch_signature = 0x0200u;
+          break;
+        case 0x8664u: /* X64 */
+          arch_signature = 0x0300u;
+          break;
+        case 0x86u: /* X86 */
+          arch_signature = 0x0400u;
+          break;
+        case 0x52u: /* RISCV64 */
+          arch_signature = 0x0500u;
+          break;
+        default:
+          arch_signature = 0x0000u;
+          break;
+      }
+      break;
+  }
+
+  out->signature = arch_signature;
   out->pointer_bits = hw->ptr_bits;
   out->cache_line_bytes = hw->cacheline_bytes;
   out->page_bytes = hw->page_bytes;
