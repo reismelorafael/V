@@ -328,6 +328,23 @@ public class BitwiseMathTest {
     }
 
     @Test
+    public void branchlessAbs_minValue_returnsMinValue() {
+        assertEquals(Integer.MIN_VALUE, BitwiseMath.branchlessAbs(Integer.MIN_VALUE));
+    }
+
+    @Test
+    public void absSaturating_goldenVectors() {
+        assertEquals(5, BitwiseMath.absSaturating(5));
+        assertEquals(5, BitwiseMath.absSaturating(-5));
+        assertEquals(0, BitwiseMath.absSaturating(0));
+    }
+
+    @Test
+    public void absSaturating_minValue_saturatesToMaxValue() {
+        assertEquals(Integer.MAX_VALUE, BitwiseMath.absSaturating(Integer.MIN_VALUE));
+    }
+
+    @Test
     public void branchlessSign_goldenVectors() {
         assertEquals(1, BitwiseMath.branchlessSign(5));
         assertEquals(-1, BitwiseMath.branchlessSign(-5));
@@ -662,6 +679,11 @@ public class BitwiseMathTest {
     @Test
     public void fastAbs_zero() {
         assertEquals(0, BitwiseMath.fastAbs(0));
+    }
+
+    @Test
+    public void fastAbs_minValue_returnsMinValue() {
+        assertEquals(Integer.MIN_VALUE, BitwiseMath.fastAbs(Integer.MIN_VALUE));
     }
 
     @Test

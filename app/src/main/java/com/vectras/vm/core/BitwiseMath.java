@@ -252,8 +252,8 @@ public final class BitwiseMath {
     public static int fastAtan2Fixed(int y, int x) {
         if (x == 0 && y == 0) return 0;
         
-        int absY = LowLevelAsm.asmAbs(y);
-        int absX = LowLevelAsm.asmAbs(x);
+        int absY = absSaturating(y);
+        int absX = absSaturating(x);
         
         // Use angle = (Pi/4) * (y/x) for small angles
         // with correction for larger angles
@@ -508,13 +508,32 @@ public final class BitwiseMath {
     
     /**
      * Branchless absolute value.
+     *
+     * <p>For {@link Integer#MIN_VALUE}, this method preserves two's-complement overflow behavior
+     * and returns {@link Integer#MIN_VALUE}.</p>
      * 
      * @param x Input value
-     * @return Absolute value of x
+     * @return Absolute value of x, except {@link Integer#MIN_VALUE} returns itself
      */
     public static int branchlessAbs(int x) {
         int mask = x >> 31;
         return (x + mask) ^ mask;
+    }
+
+    /**
+     * Saturating absolute value.
+     *
+     * <p>Returns {@link Integer#MAX_VALUE} for {@link Integer#MIN_VALUE} to guarantee a
+     * non-negative result.</p>
+     *
+     * @param x Input value
+     * @return Absolute value of x saturated to {@link Integer#MAX_VALUE}
+     */
+    public static int absSaturating(int x) {
+        if (x == Integer.MIN_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return branchlessAbs(x);
     }
     
     /**
@@ -853,9 +872,12 @@ public final class BitwiseMath {
     
     /**
      * Fast absolute value without branching.
+     *
+     * <p>For {@link Integer#MIN_VALUE}, this method preserves two's-complement overflow behavior
+     * and returns {@link Integer#MIN_VALUE}.</p>
      * 
      * @param x Input value
-     * @return |x|
+     * @return |x|, except {@link Integer#MIN_VALUE} returns itself
      */
     public static int fastAbs(int x) {
         int mask = x >> 31;
