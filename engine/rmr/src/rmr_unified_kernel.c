@@ -539,6 +539,11 @@ static void rmr_caps_from_unified(const RmR_UnifiedCapabilities *in, rmr_jni_cap
   out->cache_line_bytes = in->cache_line_bytes;
   out->page_bytes = in->page_bytes;
   out->feature_mask = in->feature_mask;
+  out->reg_signature_0 = in->reg_signature_0;
+  out->reg_signature_1 = in->reg_signature_1;
+  out->reg_signature_2 = in->reg_signature_2;
+  out->gpio_word_bits = in->gpio_word_bits;
+  out->gpio_pin_stride = in->gpio_pin_stride;
   out->register_width_bits = in->pointer_bits;
   out->pin_count_hint = in->gpio_word_bits;
   out->feature_bits_hi = in->reg_signature_2;

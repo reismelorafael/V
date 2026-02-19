@@ -140,6 +140,12 @@ typedef struct {
   uint32_t page_bytes;
   /* feature_mask = feature bits only; excludes architecture-identification bits. */
   uint32_t feature_mask;
+  uint32_t reg_signature_0;
+  uint32_t reg_signature_1;
+  uint32_t reg_signature_2;
+  uint32_t gpio_word_bits;
+  uint32_t gpio_pin_stride;
+  /* Legacy aliases retained for existing JNI kernel unit contract callers. */
   uint32_t register_width_bits;
   uint32_t pin_count_hint;
   uint32_t feature_bits_hi;

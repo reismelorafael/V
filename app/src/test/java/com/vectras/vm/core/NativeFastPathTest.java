@@ -2,6 +2,10 @@ package com.vectras.vm.core;
 
 import org.junit.Test;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -127,5 +131,57 @@ public class NativeFastPathTest {
     public void nativeLibraryOptional() {
         boolean available = NativeFastPath.isNativeAvailable();
         assertEquals(available, NativeFastPath.isNativeAvailable());
+    }
+
+
+    @Test
+    public void hardwareContractLayoutMapsExpectedSemantics() throws Exception {
+        Method fromContract = NativeFastPath.HardwareProfile.class.getDeclaredMethod("fromHardwareContract", int[].class);
+        fromContract.setAccessible(true);
+
+        int[] contract = new int[]{
+                NativeFastPath.ARCH_ARM64,
+                64,
+                128,
+                16384,
+                NativeFastPath.FEATURE_NEON,
+                0xA1,
+                0xB2,
+                0xC3,
+                64,
+                4
+        };
+
+        NativeFastPath.HardwareProfile profile =
+                (NativeFastPath.HardwareProfile) fromContract.invoke(null, new Object[]{contract});
+
+        assertEquals(NativeFastPath.ARCH_ARM64, profile.signature);
+        assertEquals(64, profile.pointerBits);
+        assertEquals(128, profile.cacheLineBytes);
+        assertEquals(16384, profile.pageBytes);
+        assertEquals(NativeFastPath.FEATURE_NEON, profile.featureMask);
+        assertEquals(0xA1, profile.regSignature0);
+        assertEquals(0xB2, profile.regSignature1);
+        assertEquals(0xC3, profile.regSignature2);
+        assertEquals(64, profile.gpioWordBits);
+        assertEquals(4, profile.gpioPinStride);
+    }
+
+    @Test
+    public void hardwareContractRejectsZeroedJniPayload() throws Exception {
+        Method fromContract = NativeFastPath.HardwareProfile.class.getDeclaredMethod("fromHardwareContract", int[].class);
+        fromContract.setAccessible(true);
+        Field sizeField = NativeFastPath.class.getDeclaredField("HW_CONTRACT_SIZE");
+        sizeField.setAccessible(true);
+        int size = sizeField.getInt(null);
+
+        int[] contract = new int[size];
+        try {
+            fromContract.invoke(null, new Object[]{contract});
+        } catch (InvocationTargetException ex) {
+            assertTrue(ex.getCause() instanceof IllegalArgumentException);
+            return;
+        }
+        throw new AssertionError("expected IllegalArgumentException for zeroed contract");
     }
 }
