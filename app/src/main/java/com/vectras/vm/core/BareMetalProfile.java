@@ -74,13 +74,25 @@ public final class BareMetalProfile {
     }
 
     private static int mapArch(int signature) {
+        // signature encodes a stable architecture code in the high byte; feature_mask is orthogonal.
         int nativeArch = signature & 0xFF00;
-        if (nativeArch == NativeFastPath.ARCH_ARM64) return ARCH_ARM64;
-        if (nativeArch == NativeFastPath.ARCH_ARM32) return ARCH_ARM32;
-        if (nativeArch == NativeFastPath.ARCH_X64) return ARCH_X86_64;
-        if (nativeArch == NativeFastPath.ARCH_X86) return ARCH_X86;
-        if (nativeArch == NativeFastPath.ARCH_RISCV64) return ARCH_RISCV64;
-        return ARCH_UNKNOWN;
+        if (!NativeFastPath.isStableArchCode(nativeArch)) {
+            return ARCH_UNKNOWN;
+        }
+        switch (nativeArch) {
+            case NativeFastPath.ARCH_ARM64:
+                return ARCH_ARM64;
+            case NativeFastPath.ARCH_ARM32:
+                return ARCH_ARM32;
+            case NativeFastPath.ARCH_X64:
+                return ARCH_X86_64;
+            case NativeFastPath.ARCH_X86:
+                return ARCH_X86;
+            case NativeFastPath.ARCH_RISCV64:
+                return ARCH_RISCV64;
+            default:
+                return ARCH_UNKNOWN;
+        }
     }
 
     private static int detectCapabilitiesInternal(NativeFastPath.HardwareProfile hw, int arch, int cores) {
