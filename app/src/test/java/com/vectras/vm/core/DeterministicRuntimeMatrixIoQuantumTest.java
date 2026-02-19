@@ -56,6 +56,26 @@ public class DeterministicRuntimeMatrixIoQuantumTest {
         }
     }
 
+    @Test
+    public void deriveIoQuantum_extremeHighKernelQuantumAndSimd_clampsWithoutNegativeOverflow() {
+        int features = NativeFastPath.FEATURE_AVX2 | NativeFastPath.FEATURE_NEON | NativeFastPath.FEATURE_SIMD;
+        int value = deriveIoQuantum(4096, 256, 16, features, Integer.MAX_VALUE);
+
+        assertEquals(1024 * 1024, value);
+        assertTrue(value > 0);
+        assertEquals(0, value % 256);
+    }
+
+    @Test
+    public void deriveIoQuantum_extremeHighPageAndSimdFallback_staysAlignedAndNonNegative() {
+        int features = NativeFastPath.FEATURE_AVX2 | NativeFastPath.FEATURE_NEON | NativeFastPath.FEATURE_SIMD;
+        int value = deriveIoQuantum(Integer.MAX_VALUE, 192, 16, features, 0);
+
+        assertEquals(1024 * 1024, value);
+        assertTrue(value > 0);
+        assertEquals(0, value % 192);
+    }
+
     private static int deriveIoQuantum(int page, int line, int cores, int features, int kernelQuantum) {
         try {
             Method method = DeterministicRuntimeMatrix.class.getDeclaredMethod(

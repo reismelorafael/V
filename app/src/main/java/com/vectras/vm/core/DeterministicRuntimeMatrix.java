@@ -121,21 +121,34 @@ public final class DeterministicRuntimeMatrix {
     }
 
     private static int deriveIoQuantum(int page, int line, int cores, int features, int kernelQuantum) {
-        int base = kernelQuantum > 0 ? kernelQuantum : page * Math.max(1, cores >= 8 ? 8 : (cores >= 4 ? 4 : 2));
+        long base;
+        if (kernelQuantum > 0) {
+            base = kernelQuantum;
+        } else {
+            int coreFactor = Math.max(1, cores >= 8 ? 8 : (cores >= 4 ? 4 : 2));
+            base = saturatingMultiply(Math.max(0, page), coreFactor);
+        }
         if ((features & NativeFastPath.FEATURE_AVX2) != 0 || (features & NativeFastPath.FEATURE_NEON) != 0) {
-            base <<= 1;
+            base = saturatingShiftLeft(base, 1);
         }
-        int align = line;
-        if (align <= 0) {
-            align = 32;
-        } else if (align < 32) {
-            align = 32;
+
+        long align = line;
+        if (align <= 0L) {
+            align = 32L;
+        } else if (align < 32L) {
+            align = 32L;
         }
-        int rem = base % align;
-        if (rem != 0) {
+
+        long rem = base % align;
+        if (rem != 0L) {
             base += align - rem;
+            if (base < 0L) {
+                base = Long.MAX_VALUE;
+            }
         }
-        return clamp(base, 4096, 1024 * 1024);
+
+        long clamped = Math.max(4096L, Math.min(1024L * 1024L, base));
+        return (int) clamped;
     }
 
     private static int deriveIrqPeriodMicros(int line, int cores, int features) {
@@ -201,5 +214,29 @@ public final class DeterministicRuntimeMatrix {
         if (left == 0 || right == 0) return 0;
         if (left > Long.MAX_VALUE / right) return Long.MAX_VALUE;
         return left * right;
+    }
+
+    private static long saturatingMultiply(long left, long right) {
+        if (left < 0 || right < 0) {
+            return 0;
+        }
+        return boundedMultiply(left, right);
+    }
+
+    private static long saturatingShiftLeft(long value, int shift) {
+        if (value <= 0) {
+            return 0;
+        }
+        if (shift <= 0) {
+            return value;
+        }
+        if (shift >= Long.SIZE) {
+            return Long.MAX_VALUE;
+        }
+        long maxBeforeShift = Long.MAX_VALUE >> shift;
+        if (value > maxBeforeShift) {
+            return Long.MAX_VALUE;
+        }
+        return value << shift;
     }
 }
