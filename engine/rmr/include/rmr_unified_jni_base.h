@@ -43,12 +43,12 @@ _Static_assert(RMR_UK_ERR_STATE == RMR_KERNEL_ERR_STATE,
 #define RMR_UK_MAX_SLOTS 1024u
 
 typedef struct {
-  /* Stable architecture code compatible with NativeFastPath.ARCH_*. */
+  /* signature = stable architecture code compatible with NativeFastPath.ARCH_*. */
   uint32_t signature;
   uint32_t pointer_bits;
   uint32_t cache_line_bytes;
   uint32_t page_bytes;
-  /* Feature bits only; excludes any architecture-identification bits. */
+  /* feature_mask = feature bits only; excludes architecture-identification bits. */
   uint32_t feature_mask;
   uint32_t reg_signature_0;
   uint32_t reg_signature_1;
