@@ -47,4 +47,51 @@ public final class LowLevelDeterminism {
         }
         return state ^ length;
     }
+
+    public static int xorChecksumCompatFallback(byte[] data, int offset, int length) {
+        if (data == null || length <= 0) {
+            return 0;
+        }
+        if (offset < 0 || offset + length > data.length) {
+            throw new IllegalArgumentException("Invalid checksum range");
+        }
+
+        int x = 0;
+        int i = 0;
+        int end = length & ~7;
+        while (i < end) {
+            x ^= data[offset + i] & 0xFF;
+            x ^= data[offset + i + 1] & 0xFF;
+            x ^= data[offset + i + 2] & 0xFF;
+            x ^= data[offset + i + 3] & 0xFF;
+            x ^= data[offset + i + 4] & 0xFF;
+            x ^= data[offset + i + 5] & 0xFF;
+            x ^= data[offset + i + 6] & 0xFF;
+            x ^= data[offset + i + 7] & 0xFF;
+            i += 8;
+        }
+        while (i < length) {
+            x ^= data[offset + i] & 0xFF;
+            i++;
+        }
+        return x;
+    }
+
+    public static int crc32cCompatFallback(int initial, byte[] data, int offset, int length) {
+        if (data == null || length <= 0) {
+            return initial;
+        }
+        if (offset < 0 || offset + length > data.length) {
+            throw new IllegalArgumentException("Invalid crc range");
+        }
+        int crc = initial;
+        for (int i = offset; i < offset + length; i++) {
+            crc ^= data[i];
+            for (int b = 0; b < 8; b++) {
+                int mask = -(crc & 1);
+                crc = (crc >>> 1) ^ (0x82F63B78 & mask);
+            }
+        }
+        return crc;
+    }
 }

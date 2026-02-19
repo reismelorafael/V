@@ -345,39 +345,13 @@ public final class NativeFastPath {
     public static int xorChecksum(byte[] data, int offset, int length) {
         if (data == null || length <= 0) return 0;
         TELEMETRY_XOR_CALLS.incrementAndGet();
-        if (offset < 0 || offset + length > data.length) {
-            throw new IllegalArgumentException("Invalid checksum range");
+        int value = LowLevelBridge.xorChecksumCompat(data, offset, length);
+        if (LowLevelBridge.wasLastCallNative()) {
+            telemetryNativeHit();
+        } else {
+            telemetryFallbackHit();
         }
-
-        // Explicit fallback path when JNI arena acceleration is not available.
-        if (NATIVE_AVAILABLE) {
-            int value = nativeXorChecksum(data, offset, length);
-            if (value != Integer.MIN_VALUE) {
-                telemetryNativeHit();
-                return value;
-            }
-        }
-        telemetryFallbackHit();
-
-        int x = 0;
-        int i = 0;
-        int end = length & ~7;
-        while (i < end) {
-            x ^= data[offset + i] & 0xFF;
-            x ^= data[offset + i + 1] & 0xFF;
-            x ^= data[offset + i + 2] & 0xFF;
-            x ^= data[offset + i + 3] & 0xFF;
-            x ^= data[offset + i + 4] & 0xFF;
-            x ^= data[offset + i + 5] & 0xFF;
-            x ^= data[offset + i + 6] & 0xFF;
-            x ^= data[offset + i + 7] & 0xFF;
-            i += 8;
-        }
-        while (i < length) {
-            x ^= data[offset + i] & 0xFF;
-            i++;
-        }
-        return x;
+        return value;
     }
 
     public static int allocArena(int bytes) {
@@ -786,24 +760,11 @@ public final class NativeFastPath {
             return initial;
         }
         TELEMETRY_CRC_CALLS.incrementAndGet();
-        if (offset < 0 || offset + length > data.length) {
-            throw new IllegalArgumentException("Invalid crc range");
-        }
-        if (NATIVE_AVAILABLE) {
-            int nativeValue = nativeDeterministicCrc32c(initial, data, offset, length);
-            if (nativeValue != Integer.MIN_VALUE) {
-                telemetryNativeHit();
-                return nativeValue;
-            }
-        }
-        telemetryFallbackHit();
-        int crc = initial;
-        for (int i = offset; i < offset + length; i++) {
-            crc ^= data[i];
-            for (int b = 0; b < 8; b++) {
-                int mask = -(crc & 1);
-                crc = (crc >>> 1) ^ (0x82F63B78 & mask);
-            }
+        int crc = LowLevelBridge.crc32cCompat(initial, data, offset, length);
+        if (LowLevelBridge.wasLastCallNative()) {
+            telemetryNativeHit();
+        } else {
+            telemetryFallbackHit();
         }
         return crc;
     }
