@@ -67,6 +67,11 @@ public class DownloadCoordinator {
         new DownloadStateStore(appContext).updateStatus(romId, DownloadStatus.CANCELED);
     }
 
+    public void pauseRomDownload(@NonNull String romId) {
+        workManager.cancelUniqueWork(DownloadWorker.WORK_NAME_PREFIX + romId);
+        new DownloadStateStore(appContext).updateStatus(romId, DownloadStatus.PAUSED);
+    }
+
     public void cancelById(@NonNull UUID requestId) {
         workManager.cancelWorkById(requestId);
     }

@@ -17,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.lifecycle.ViewModelProvider;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.target.CustomTarget;
@@ -69,6 +70,12 @@ public class RomInfo extends AppCompatActivity {
     private boolean hasRetriedLike;
     private boolean waitingForUpdateLike;
     ExecutorService executor = Executors.newSingleThreadExecutor();
+    private DownloadViewModel downloadViewModel;
+    private String romId = "";
+    private String downloadUrl = "";
+    private String finalName = "";
+    private String expectedHash = "";
+    private String lastDownloadStatus = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -223,31 +230,16 @@ public class RomInfo extends AppCompatActivity {
     private void initialize() {
         binding.toolbar.setNavigationOnClickListener(v -> finish());
 
-        binding.btnDownload.setOnClickListener(v -> {
-            String url = getIntent().getStringExtra("getrom");
-            if (url == null || url.trim().isEmpty()) {
-                return;
-            }
+        downloadViewModel = new ViewModelProvider(this).get(DownloadViewModel.class);
+        downloadUrl = stringOrEmpty(getIntent().getStringExtra("getrom"));
+        romId = resolveRomId(downloadUrl);
+        finalName = stringOrEmpty(getIntent().getStringExtra("filename"));
+        if (finalName.trim().isEmpty()) {
+            finalName = "rom-" + romId + ".bin";
+        }
+        expectedHash = stringOrEmpty(getIntent().getStringExtra("hash"));
 
-            String romId = getIntent().getStringExtra("id");
-            if (romId == null || romId.trim().isEmpty()) {
-                romId = getIntent().getStringExtra("vecid");
-            }
-            if (romId == null || romId.trim().isEmpty()) {
-                romId = String.valueOf(Math.abs(url.hashCode()));
-            }
-
-            String finalName = getIntent().getStringExtra("filename");
-            if (finalName == null || finalName.trim().isEmpty()) {
-                finalName = "rom-" + romId + ".bin";
-            }
-
-            String expectedHash = getIntent().getStringExtra("hash");
-
-            com.vectras.vm.download.DownloadCoordinator coordinator = new com.vectras.vm.download.DownloadCoordinator(this);
-            coordinator.enqueueRomDownload(romId, url, finalName, expectedHash);
-            android.widget.Toast.makeText(this, "Download em andamento", android.widget.Toast.LENGTH_SHORT).show();
-        });
+        binding.btnDownload.setOnClickListener(v -> onDownloadAction());
 
         if (getIntent().hasExtra("isRomInfo") && getIntent().getBooleanExtra("isRomInfo", false)) {
             binding.btnPick.setOnClickListener(v -> {
@@ -258,6 +250,9 @@ public class RomInfo extends AppCompatActivity {
         } else {
             binding.btnPick.setVisibility(View.GONE);
         }
+
+        downloadViewModel.observeState(romId).observe(this, this::renderDownloadState);
+        renderDownloadState(downloadViewModel.getCurrent(romId));
 
         if (getIntent().hasExtra("title")) {
             binding.textName.setText(getIntent().getStringExtra("title"));
@@ -458,6 +453,114 @@ public class RomInfo extends AppCompatActivity {
             net.startRequestNetwork(RequestNetworkController.GET,urlToGetInfo,"contentinfo", _net_request_listener);
             Log.i(TAG, "urlToGetInfo: " + urlToGetInfo);
         }
+    }
+
+
+    private void onDownloadAction() {
+        if (downloadUrl.trim().isEmpty()) {
+            return;
+        }
+        DownloadItemState state = downloadViewModel.getCurrent(romId);
+        if (state == null || DownloadStatus.FAILED.equals(state.status)
+                || DownloadStatus.CANCELED.equals(state.status)
+                || DownloadStatus.PAUSED.equals(state.status)
+                || DownloadStatus.HASH_MISMATCH.equals(state.status)) {
+            downloadViewModel.enqueueOrResume(romId, downloadUrl, finalName, expectedHash);
+            return;
+        }
+
+        if (DownloadStatus.RUNNING.equals(state.status) || DownloadStatus.QUEUED.equals(state.status)) {
+            downloadViewModel.pause(romId);
+            return;
+        }
+
+        if (DownloadStatus.COMPLETED.equals(state.status)) {
+            binding.btnPick.setEnabled(true);
+        }
+    }
+
+    private void renderDownloadState(@Nullable DownloadItemState state) {
+        if (state == null) {
+            lastDownloadStatus = "";
+            binding.btnDownload.setText(R.string.getit);
+            binding.tvDownloadState.setText(DownloadStatus.QUEUED);
+            binding.tvDownloadProgress.setText("0 B / 0 B (0%)");
+            binding.progressDownload.setProgress(0);
+            return;
+        }
+
+        String previousStatus = lastDownloadStatus;
+        lastDownloadStatus = state.status;
+        int percent = state.totalBytes > 0L ? (int) ((state.bytesDownloaded * 100L) / state.totalBytes) : 0;
+        percent = Math.max(0, Math.min(100, percent));
+        binding.progressDownload.setProgress(percent);
+        binding.tvDownloadProgress.setText(formatBytes(state.bytesDownloaded) + " / " + formatBytes(Math.max(state.totalBytes, state.bytesDownloaded)) + " (" + percent + "%)");
+        binding.tvDownloadState.setText(state.status);
+
+        if (DownloadStatus.RUNNING.equals(state.status) || DownloadStatus.QUEUED.equals(state.status)) {
+            binding.btnDownload.setText("Pausar");
+            binding.btnPick.setText(R.string.cancel);
+            binding.btnPick.setEnabled(true);
+        } else if (DownloadStatus.PAUSED.equals(state.status)) {
+            binding.btnDownload.setText("Retomar");
+            binding.btnPick.setText(R.string.cancel);
+            binding.btnPick.setEnabled(true);
+        } else if (DownloadStatus.COMPLETED.equals(state.status)) {
+            binding.btnDownload.setText("Iniciar");
+            binding.btnPick.setText(R.string.import_settings);
+            binding.btnPick.setEnabled(true);
+        } else if (DownloadStatus.HASH_MISMATCH.equals(state.status)) {
+            binding.btnDownload.setText("Retomar");
+            binding.btnPick.setText(R.string.import_settings);
+            binding.btnPick.setEnabled(false);
+            if (!DownloadStatus.HASH_MISMATCH.equals(previousStatus)) {
+                android.widget.Toast.makeText(this, "Hash inválido. Importação bloqueada.", android.widget.Toast.LENGTH_SHORT).show();
+            }
+        } else if (DownloadStatus.FAILED.equals(state.status)) {
+            binding.btnDownload.setText("Retomar");
+            binding.btnPick.setText(R.string.import_settings);
+            binding.btnPick.setEnabled(false);
+            if (!DownloadStatus.FAILED.equals(previousStatus)) {
+                android.widget.Toast.makeText(this, getString(R.string.failed), android.widget.Toast.LENGTH_SHORT).show();
+            }
+        } else {
+            binding.btnDownload.setText("Iniciar");
+            binding.btnPick.setText(R.string.import_settings);
+            binding.btnPick.setEnabled(false);
+        }
+    }
+
+    @NonNull
+    private String resolveRomId(@NonNull String url) {
+        String id = getIntent().getStringExtra("id");
+        if (id == null || id.trim().isEmpty()) {
+            id = getIntent().getStringExtra("vecid");
+        }
+        if (id == null || id.trim().isEmpty()) {
+            id = String.valueOf(Math.abs(url.hashCode()));
+        }
+        return id;
+    }
+
+    @NonNull
+    private static String stringOrEmpty(@Nullable String value) {
+        return value == null ? "" : value;
+    }
+
+    @NonNull
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024L) {
+            return bytes + " B";
+        }
+        double kb = bytes / 1024.0d;
+        if (kb < 1024d) {
+            return String.format(Locale.US, "%.1f KB", kb);
+        }
+        double mb = kb / 1024.0d;
+        if (mb < 1024d) {
+            return String.format(Locale.US, "%.1f MB", mb);
+        }
+        return String.format(Locale.US, "%.2f GB", mb / 1024.0d);
     }
 
     private void sendLikeUpdate(String id) {

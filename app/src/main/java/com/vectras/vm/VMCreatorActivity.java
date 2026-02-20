@@ -29,6 +29,8 @@ import com.vectras.vm.Fragment.CreateImageDialogFragment;
 import com.vectras.vm.main.vms.DataMainRoms;
 import com.vectras.vm.databinding.ActivityVmCreatorBinding;
 import com.vectras.vm.databinding.DialogProgressStyleBinding;
+import com.vectras.vm.download.DownloadStateStore;
+import com.vectras.vm.download.DownloadStatus;
 import com.vectras.vm.main.MainActivity;
 import com.vectras.vm.core.VmFlowState;
 import com.vectras.vm.core.VmFlowTracker;
@@ -44,6 +46,12 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -730,6 +738,138 @@ public class VMCreatorActivity extends AppCompatActivity {
         }
     }
 
+
+    private boolean verifyImportHashBeforeInstall(Uri fileUri, String filePath, String fileName) {
+        String expectedSha256 = getIntent().getStringExtra("expectedSha256");
+        if (expectedSha256 == null || expectedSha256.trim().isEmpty()) {
+            return true;
+        }
+        expectedSha256 = expectedSha256.trim().toLowerCase(Locale.US);
+        if (!isValidSha256(expectedSha256)) {
+            Log.e(TAG, "Expected SHA-256 from intent is invalid: " + expectedSha256);
+            return true;
+        }
+
+        try {
+            String actualSha256;
+            File sourceFile = null;
+            if (filePath != null && !filePath.trim().isEmpty() && FileUtils.isFileExists(filePath)) {
+                sourceFile = new File(filePath);
+                actualSha256 = computeSha256(new FileInputStream(sourceFile));
+            } else if (fileUri != null) {
+                actualSha256 = computeSha256(getContentResolver().openInputStream(fileUri));
+            } else {
+                onImportHashMismatch(filePath, fileName, expectedSha256, "");
+                return false;
+            }
+
+            if (!expectedSha256.equalsIgnoreCase(actualSha256)) {
+                onImportHashMismatch(sourceFile != null ? sourceFile.getAbsolutePath() : filePath, fileName, expectedSha256, actualSha256);
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Unable to verify SHA-256 before import", e);
+            DialogUtils.oneDialog(this,
+                    getString(R.string.problem_has_been_detected),
+                    "Não foi possível validar a integridade do arquivo antes da importação.",
+                    getString(R.string.ok),
+                    true,
+                    R.drawable.warning_48px,
+                    true,
+                    getIntent().hasExtra("addromnow") ? this::finish : null,
+                    getIntent().hasExtra("addromnow") ? this::finish : null);
+            return false;
+        }
+    }
+
+    private void onImportHashMismatch(String filePath, String fileName, String expectedSha256, String actualSha256) {
+        VmFlowTracker.mark(this, vmID, VmFlowState.ERROR, "import_hash_mismatch", "abort");
+
+        String romStateId = getIntent().getStringExtra("romIdForDownloadState");
+        if (romStateId != null && !romStateId.trim().isEmpty()) {
+            new DownloadStateStore(this).updateStatus(romStateId, DownloadStatus.HASH_MISMATCH);
+        }
+
+        quarantineOrDeleteMismatchFile(filePath, fileName);
+
+        Log.e(TAG, "HASH_MISMATCH expected=" + expectedSha256 + " actual=" + actualSha256 + " file=" + filePath);
+
+        DialogUtils.oneDialog(this,
+                getString(R.string.problem_has_been_detected),
+                "Falha de integridade: o SHA-256 do arquivo não confere com o catálogo. A importação foi bloqueada.",
+                getString(R.string.ok),
+                true,
+                R.drawable.error_96px,
+                true,
+                getIntent().hasExtra("addromnow") ? this::finish : null,
+                getIntent().hasExtra("addromnow") ? this::finish : null);
+    }
+
+    private void quarantineOrDeleteMismatchFile(String filePath, String fileName) {
+        if (filePath == null || filePath.trim().isEmpty()) {
+            return;
+        }
+        try {
+            File mismatchFile = new File(filePath);
+            if (!mismatchFile.exists()) {
+                return;
+            }
+            File recycleDir = new File(AppConfig.recyclebin);
+            if (!recycleDir.exists()) {
+                recycleDir.mkdirs();
+            }
+            String safeName = (fileName == null || fileName.trim().isEmpty()) ? mismatchFile.getName() : fileName;
+            File quarantineTarget = new File(recycleDir, "hash_mismatch_" + System.currentTimeMillis() + "_" + safeName);
+            FileUtils.moveAFile(mismatchFile.getAbsolutePath(), quarantineTarget.getAbsolutePath());
+            if (mismatchFile.exists()) {
+                mismatchFile.delete();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to quarantine mismatch file", e);
+        }
+    }
+
+    private String computeSha256(InputStream inputStream) throws IOException, NoSuchAlgorithmException {
+        if (inputStream == null) {
+            throw new IOException("Input stream is null");
+        }
+        try (InputStream in = inputStream) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
+            }
+            byte[] hash = digest.digest();
+            StringBuilder sb = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                sb.append(String.format(Locale.US, "%02x", b));
+            }
+            return sb.toString();
+        }
+    }
+
+    private boolean isValidSha256(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim();
+        if (normalized.length() != 64) {
+            return false;
+        }
+        for (int i = 0; i < normalized.length(); i++) {
+            char c = normalized.charAt(i);
+            boolean digit = c >= '0' && c <= '9';
+            boolean lowerHex = c >= 'a' && c <= 'f';
+            boolean upperHex = c >= 'A' && c <= 'F';
+            if (!(digit || lowerHex || upperHex)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private void changeOnClickCdrom() {
         binding.cdromField.setEndIconOnClickListener(v -> {
             if (!Objects.requireNonNull(binding.cdrom.getText()).toString().isEmpty()) {
@@ -753,6 +893,10 @@ public class VMCreatorActivity extends AppCompatActivity {
                     getIntent().hasExtra("addromnow") ? this::finish : null,
                     getIntent().hasExtra("addromnow") ? this::finish : null
             );
+            return;
+        }
+
+        if (!verifyImportHashBeforeInstall(fileUri, filePath, fileName)) {
             return;
         }
 
