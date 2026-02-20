@@ -67,6 +67,8 @@ import java.io.OutputStreamWriter;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -75,14 +77,16 @@ import java.util.regex.Pattern;
 
 public class SetupWizard2Activity extends AppCompatActivity {
     private static final String TAG = "SetupWizard2Activity";
-    private static final String BOOTSTRAP_PREFIX_ARIA2 = " aria2c -x 4 --async-dns=false --disable-ipv6 --check-certificate=false -o setup.tar.gz ";
+    private static final String BOOTSTRAP_PREFIX_ARIA2 = " aria2c -x 4 --async-dns=false --disable-ipv6 -o setup.tar.gz ";
     private static final String BOOTSTRAP_PREFIX_CURL = " curl -o setup.tar.gz -L ";
     private static final String[] BOOTSTRAP_COMPATIBLE_ABI_PREFIXES = new String[]{"arm64-v8a", "aarch64", "armeabi-v7a", "armhf", "x86_64", "amd64", "x86"};
     private static final Pattern ARIA2_PROGRESS_PATTERN = Pattern.compile("\\((\\d{1,3})%\\)");
     private static final Pattern CURL_PROGRESS_PATTERN = Pattern.compile("^\\s*(\\d{1,3})\\s+\\d");
     private static final Pattern PACKAGE_PROGRESS_PATTERN = Pattern.compile("\\((\\d+)/(\\d+)\\)");
     private static final Pattern BOOTSTRAP_HOST_PATTERN = Pattern.compile("^(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,63}$");
+    private static final Pattern SHA256_PATTERN = Pattern.compile("^[A-Fa-f0-9]{64}$");
     private static final int MAX_LOG_BUFFER_CHARS = 64 * 1024;
+    private static final String BOOTSTRAP_SIGNATURE_PUBLIC_KEY_PEM = "";
 
     private enum SetupSource {
         REMOTE,
@@ -117,6 +121,8 @@ public class SetupWizard2Activity extends AppCompatActivity {
     int currentStep = 0;
     String logs = "";
     String bootstrapFileLink = "";
+    String bootstrapExpectedSha256 = "";
+    String bootstrapExpectedSignature = "";
     String selectedMirrorCommand = "echo ";
     String selectedMirrorLocation = "";
     String downloadBootstrapsCommand = "";
@@ -206,6 +212,8 @@ public class SetupWizard2Activity extends AppCompatActivity {
         String persistedBootstrapLink = MainSettingsManager.getLastSetupBootstrapUrl(this);
         if (isBootstrapLinkValid(persistedBootstrapLink)) {
             bootstrapFileLink = persistedBootstrapLink;
+            bootstrapExpectedSha256 = "";
+            bootstrapExpectedSignature = "";
             downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
         }
 
@@ -583,9 +591,13 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 String setupArchive = stageDir + "/setup.tar.gz";
 
                 String bootstrapAcquireCommand;
+                String expectedSha256ForAudit = bootstrapExpectedSha256;
+                String expectedSignatureForAudit = bootstrapExpectedSignature;
                 if (isCustomSetupMode) {
                     setupArchive = stageDir + "/" + setupArchiveFileName;
                     bootstrapAcquireCommand = "cp " + CommandUtils.shellSingleQuote(tarPath) + " " + CommandUtils.shellSingleQuote(setupArchive);
+                    expectedSha256ForAudit = "";
+                    expectedSignatureForAudit = "";
                 } else {
                     if (FileUtils.isFileExists(getFilesDir().getAbsolutePath() + "/distro/root/setup.tar.gz"))
                         FileUtils.deleteDirectory(getFilesDir().getAbsolutePath() + "/distro/root/setup.tar.gz");
@@ -594,7 +606,13 @@ public class SetupWizard2Activity extends AppCompatActivity {
                     bootstrapAcquireCommand = "cd '" + stageDir + "' && " + downloadBootstrapsCommand;
                 }
 
-                Log.i(TAG, "AUDIT setup command template=mirror;set -e;... | setupTs=" + setupTimestamp + " | customSetup=" + isCustomSetupMode + " | setupArchive=" + setupArchive + " | stageDir=" + stageDir + " | mirrorLocation=" + selectedMirrorLocation + " | bootstrapSource=" + setupSource);
+                String hasExpectedSha256 = !TextUtils.isEmpty(expectedSha256ForAudit) ? "1" : "0";
+                String expectedSha256Quoted = CommandUtils.shellSingleQuote(TextUtils.isEmpty(expectedSha256ForAudit) ? "" : expectedSha256ForAudit.toLowerCase(Locale.ROOT));
+                String hasExpectedSignature = !TextUtils.isEmpty(expectedSignatureForAudit) ? "1" : "0";
+                String expectedSignatureQuoted = CommandUtils.shellSingleQuote(expectedSignatureForAudit == null ? "" : expectedSignatureForAudit);
+                String signatureKeyQuoted = CommandUtils.shellSingleQuote(BOOTSTRAP_SIGNATURE_PUBLIC_KEY_PEM == null ? "" : BOOTSTRAP_SIGNATURE_PUBLIC_KEY_PEM);
+
+                Log.i(TAG, "AUDIT setup command template=mirror;set -e;... | setupTs=" + setupTimestamp + " | customSetup=" + isCustomSetupMode + " | setupArchive=" + setupArchive + " | stageDir=" + stageDir + " | mirrorLocation=" + selectedMirrorLocation + " | bootstrapSource=" + setupSource + " | hasExpectedSha256=" + hasExpectedSha256 + " | hasExpectedSig=" + hasExpectedSignature);
 
                 String cmd = selectedMirrorCommand + ";" +
                         " set -e;" +
@@ -605,6 +623,11 @@ public class SetupWizard2Activity extends AppCompatActivity {
                         " STAGE_DIR='" + stageDir + "';" +
                         " STAGE_ROOT='" + stageRoot + "';" +
                         " SETUP_ARCHIVE='" + setupArchive + "';" +
+                        " EXPECTED_SHA256=" + expectedSha256Quoted + ";" +
+                        " EXPECTED_SIG_B64=" + expectedSignatureQuoted + ";" +
+                        " SIGN_PUBKEY_PEM=" + signatureKeyQuoted + ";" +
+                        " HAS_EXPECTED_SHA256='" + hasExpectedSha256 + "';" +
+                        " HAS_EXPECTED_SIG='" + hasExpectedSignature + "';" +
                         " STATE_FILE='" + stateBase + "/setup_state.json';" +
                         " mkdir -p \"$STAGING_BASE\" \"$BACKUP_BASE\" \"$STATE_BASE\" \"$STAGE_ROOT\";" +
                         " ln -sfn \"$STAGE_DIR\" \"$STAGING_BASE/latest\";" +
@@ -618,6 +641,10 @@ public class SetupWizard2Activity extends AppCompatActivity {
                         " " + installCommand + " || { rollback_setup 'package install failed'; exit 42; };" +
                         " echo \"Downloading Qemu...\";" +
                         " " + bootstrapAcquireCommand + " || { rollback_setup 'bootstrap acquisition failed'; exit 43; };" +
+                        " ARCHIVE_SHA256=\"$(sha256sum \"$SETUP_ARCHIVE\" | awk '{print $1}')\";" +
+                        " echo \"AUDIT bootstrap integrity metadata source=" + setupSource + " expected_sha256=$EXPECTED_SHA256 actual_sha256=$ARCHIVE_SHA256 origin_url=" + CommandUtils.shellSingleQuote(bootstrapFileLink) + "\";" +
+                        " if [ \"$HAS_EXPECTED_SHA256\" = '1' ]; then [ \"$ARCHIVE_SHA256\" = \"$EXPECTED_SHA256\" ] || { rollback_setup \"bootstrap sha256 mismatch expected=$EXPECTED_SHA256 actual=$ARCHIVE_SHA256\"; exit 49; }; else echo 'AUDIT bootstrap sha256 missing in metadata; skipping hash enforcement'; fi;" +
+                        " if [ \"$HAS_EXPECTED_SIG\" = '1' ]; then if [ -n \"$SIGN_PUBKEY_PEM\" ] && command -v openssl >/dev/null 2>&1; then printf '%s' \"$EXPECTED_SIG_B64\" | base64 -d > \"$STAGE_DIR/bootstrap.sig\" || { rollback_setup 'bootstrap signature decode failed'; exit 50; }; printf '%s\n' \"$SIGN_PUBKEY_PEM\" > \"$STAGE_DIR/bootstrap.pub\"; openssl dgst -sha256 -verify \"$STAGE_DIR/bootstrap.pub\" -signature \"$STAGE_DIR/bootstrap.sig\" \"$SETUP_ARCHIVE\" >/dev/null 2>&1 || { rollback_setup 'bootstrap signature verification failed'; exit 51; }; echo 'AUDIT bootstrap signature verification=passed'; else echo 'AUDIT bootstrap signature metadata provided but verifier unavailable; skipping'; fi; fi;" +
                         " echo STATE_TRANSITION:STAGING;" +
                         " echo \"Installing Qemu...\";" +
                         " if gzip -t \"$SETUP_ARCHIVE\" >/dev/null 2>&1; then tar -xzf \"$SETUP_ARCHIVE\" -C \"$STAGE_ROOT\"; else tar -xf \"$SETUP_ARCHIVE\" -C \"$STAGE_ROOT\"; fi || { rollback_setup 'bootstrap extraction failed'; exit 44; };" +
@@ -1280,7 +1307,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
         String template = forceCurl
                 ? "curl -o setup.tar.gz -L <bootstrap-url>"
-                : "aria2c -x 4 --async-dns=false --disable-ipv6 --check-certificate=false -o setup.tar.gz <bootstrap-url>";
+                : "aria2c -x 4 --async-dns=false --disable-ipv6 -o setup.tar.gz <bootstrap-url>";
         Log.i(TAG, "AUDIT bootstrap download template=" + template + " | url=" + sanitizedBootstrapUrl);
 
         String prefix = forceCurl ? BOOTSTRAP_PREFIX_CURL : BOOTSTRAP_PREFIX_ARIA2;
@@ -1336,6 +1363,10 @@ public class SetupWizard2Activity extends AppCompatActivity {
             if (downloadBootstrapsCommand.isEmpty()) {
                 downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, forceCurlDownload);
             }
+            if (TextUtils.isEmpty(downloadBootstrapsCommand)) {
+                bootstrapExpectedSha256 = "";
+                bootstrapExpectedSignature = "";
+            }
             setSetupSource(SetupSource.OFFLINE_FALLBACK, "Using cached bootstrap link already loaded in memory.");
             return !downloadBootstrapsCommand.isEmpty();
         }
@@ -1343,6 +1374,8 @@ public class SetupWizard2Activity extends AppCompatActivity {
         String persistedBootstrapLink = MainSettingsManager.getLastSetupBootstrapUrl(this);
         if (isBootstrapLinkValid(persistedBootstrapLink)) {
             bootstrapFileLink = persistedBootstrapLink;
+            bootstrapExpectedSha256 = "";
+            bootstrapExpectedSignature = "";
             downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, forceCurlDownload);
             setSetupSource(SetupSource.OFFLINE_FALLBACK, "Using persisted bootstrap URL as offline fallback.");
             runOnUiThread(() -> UIUtils.toastShort(this, getString(R.string.this_option_is_temporarily_unavailable_because_the_server_cannot_be_connected)));
@@ -1367,11 +1400,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
     }
 
     private boolean updateBootstrapForCurrentArchitecture(HashMap<String, Object> bootstrapMap) {
-        if (bootstrapMap == null
-                || !bootstrapMap.containsKey("aarch64")
-                || !bootstrapMap.containsKey("armhf")
-                || !bootstrapMap.containsKey("amd64")
-                || !bootstrapMap.containsKey("x86")) {
+        if (bootstrapMap == null) {
             return false;
         }
 
@@ -1382,14 +1411,43 @@ public class SetupWizard2Activity extends AppCompatActivity {
             architectureKey = DeviceUtils.is64bit() ? "amd64" : "x86";
         }
 
-        Object bootstrapUrlObject = bootstrapMap.get(architectureKey);
-        String resolvedBootstrapUrl = bootstrapUrlObject == null ? "" : bootstrapUrlObject.toString().trim();
+        Object architectureConfig = bootstrapMap.get(architectureKey);
+        String resolvedBootstrapUrl;
+        String resolvedSha256 = "";
+        String resolvedSignature = "";
+
+        if (architectureConfig instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> architectureMap = (Map<String, Object>) architectureConfig;
+            Object bootstrapUrlObject = architectureMap.get("url");
+            resolvedBootstrapUrl = bootstrapUrlObject == null ? "" : bootstrapUrlObject.toString().trim();
+            Object sha256Object = architectureMap.get("sha256");
+            if (sha256Object != null) {
+                String candidate = sha256Object.toString().trim();
+                if (SHA256_PATTERN.matcher(candidate).matches()) {
+                    resolvedSha256 = candidate.toLowerCase(Locale.ROOT);
+                } else if (!candidate.isEmpty()) {
+                    Log.w(TAG, "AUDIT bootstrap metadata contains invalid sha256 for architecture=" + architectureKey);
+                }
+            }
+            Object sigObject = architectureMap.get("sig");
+            resolvedSignature = sigObject == null ? "" : sigObject.toString().trim();
+        } else {
+            resolvedBootstrapUrl = architectureConfig == null ? "" : architectureConfig.toString().trim();
+        }
+
         if (!isBootstrapLinkValid(resolvedBootstrapUrl)) {
             return false;
         }
 
         bootstrapFileLink = resolvedBootstrapUrl;
+        bootstrapExpectedSha256 = resolvedSha256;
+        bootstrapExpectedSignature = resolvedSignature;
         downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
+        Log.i(TAG, "AUDIT bootstrap metadata resolved architecture=" + architectureKey
+                + " | hasSha256=" + (!TextUtils.isEmpty(bootstrapExpectedSha256))
+                + " | hasSig=" + (!TextUtils.isEmpty(bootstrapExpectedSignature))
+                + " | origin=" + bootstrapFileLink);
         MainSettingsManager.setLastSetupBootstrapUrl(this, bootstrapFileLink);
         return !downloadBootstrapsCommand.isEmpty();
     }
