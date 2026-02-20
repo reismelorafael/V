@@ -185,6 +185,7 @@ dependencies {
     implementation 'androidx.activity:activity-ktx:1.9.2'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
     implementation "androidx.documentfile:documentfile:1.1.0"
+    implementation "androidx.work:work-runtime:2.9.1"
     compileOnly project(':shell-loader:stub')
     implementation project(":terminal-view")
     
