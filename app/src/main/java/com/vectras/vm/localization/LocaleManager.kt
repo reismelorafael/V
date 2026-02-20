@@ -161,7 +161,14 @@ class LocaleManager private constructor(private val context: Context) {
 
         val langFile = getLangFile(languageCode)
         if (langFile.exists()) {
-            langFile.delete()
+            val deleted = langFile.delete()
+            if (!deleted) {
+                android.util.Log.e(
+                    "LocaleManager",
+                    "Failed to delete language module file: $languageCode (${langFile.absolutePath})"
+                )
+                return false
+            }
         }
 
         val current = getDownloadedLanguages().toMutableSet()
