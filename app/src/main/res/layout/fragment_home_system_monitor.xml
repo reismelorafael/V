@@ -331,15 +331,11 @@
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <LinearLayout
+                    <TextView
+                        style="@style/MaterialAlertDialog.Material3Expressive.Title.Text"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content">
-                        <TextView
-                            style="@style/MaterialAlertDialog.Material3Expressive.Title.Text"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/processes" />
-                    </LinearLayout>
+                        android:layout_height="wrap_content"
+                        android:text="@string/processes" />
 
                     <TextView
                         android:id="@+id/tv_processes"
