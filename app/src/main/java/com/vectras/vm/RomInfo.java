@@ -190,10 +190,29 @@ public class RomInfo extends AppCompatActivity {
         binding.toolbar.setNavigationOnClickListener(v -> finish());
 
         binding.btnDownload.setOnClickListener(v -> {
-            Intent openurl = new Intent();
-            openurl.setAction(Intent.ACTION_VIEW);
-            openurl.setData(Uri.parse(getIntent().getStringExtra("getrom")));
-            startActivity(openurl);
+            String url = getIntent().getStringExtra("getrom");
+            if (url == null || url.trim().isEmpty()) {
+                return;
+            }
+
+            String romId = getIntent().getStringExtra("id");
+            if (romId == null || romId.trim().isEmpty()) {
+                romId = getIntent().getStringExtra("vecid");
+            }
+            if (romId == null || romId.trim().isEmpty()) {
+                romId = String.valueOf(Math.abs(url.hashCode()));
+            }
+
+            String finalName = getIntent().getStringExtra("filename");
+            if (finalName == null || finalName.trim().isEmpty()) {
+                finalName = "rom-" + romId + ".bin";
+            }
+
+            String expectedHash = getIntent().getStringExtra("hash");
+
+            com.vectras.vm.download.DownloadCoordinator coordinator = new com.vectras.vm.download.DownloadCoordinator(this);
+            coordinator.enqueueRomDownload(romId, url, finalName, expectedHash);
+            android.widget.Toast.makeText(this, "Download em andamento", android.widget.Toast.LENGTH_SHORT).show();
         });
 
         if (getIntent().hasExtra("isRomInfo") && getIntent().getBooleanExtra("isRomInfo", false)) {
