@@ -14,12 +14,15 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.Locale;
 
 public class DownloadStateStore {
 
     private static final String PREF_NAME = "download_item_state_store";
     private static final String KEY_IDS = "ids";
     private static final String KEY_PREFIX = "item_";
+    private static final String KEY_RESUME_URL_PREFIX = "resume_url_";
+    private static final String KEY_RESUME_HOST_PREFIX = "resume_host_";
 
     private final SharedPreferences sharedPreferences;
 
@@ -96,6 +99,31 @@ public class DownloadStateStore {
                 .apply();
     }
 
+    public synchronized void setResumeSupported(@NonNull String url, @Nullable String host, boolean supported) {
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putBoolean(KEY_RESUME_URL_PREFIX + normalize(url), supported);
+        if (host != null && !host.trim().isEmpty()) {
+            editor.putBoolean(KEY_RESUME_HOST_PREFIX + normalize(host), supported);
+        }
+        editor.apply();
+    }
+
+    @Nullable
+    public synchronized Boolean getResumeSupported(@NonNull String url, @Nullable String host) {
+        String normalizedUrl = normalize(url);
+        if (sharedPreferences.contains(KEY_RESUME_URL_PREFIX + normalizedUrl)) {
+            return sharedPreferences.getBoolean(KEY_RESUME_URL_PREFIX + normalizedUrl, false);
+        }
+
+        if (host != null && !host.trim().isEmpty()) {
+            String normalizedHost = normalize(host);
+            if (sharedPreferences.contains(KEY_RESUME_HOST_PREFIX + normalizedHost)) {
+                return sharedPreferences.getBoolean(KEY_RESUME_HOST_PREFIX + normalizedHost, false);
+            }
+        }
+        return null;
+    }
+
     @NonNull
     private Set<String> withId(@NonNull String id) {
         Set<String> ids = sharedPreferences.getStringSet(KEY_IDS, new HashSet<>());
@@ -149,5 +177,10 @@ public class DownloadStateStore {
             array.put(toJson(state));
         }
         return array;
+    }
+
+    @NonNull
+    private static String normalize(@NonNull String value) {
+        return value.trim().toLowerCase(Locale.US);
     }
 }
