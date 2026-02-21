@@ -191,7 +191,7 @@ public class MainVNCActivity extends VncCanvasActivity {
     public enum VNCScreenMode {
         Normal,
         FitToScreen,
-        Fullscreen //fullscreen not implemented yet
+        Fullscreen // BUG#21 FIX: Fullscreen mode active — uses WindowInsetsController immersive sticky
     }
 
     public static VNCScreenMode screenMode = VNCScreenMode.FitToScreen;
