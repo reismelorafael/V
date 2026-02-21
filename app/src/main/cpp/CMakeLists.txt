@@ -22,21 +22,20 @@ endif()
 
 if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
     set(VECTRA_CASM_ARM64_SOURCE ../../../../engine/rmr/interop/rmr_casm_arm64.S)
-    if(EXISTS ${VECTRA_CASM_ARM64_SOURCE})
-        list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_ARM64_SOURCE})
-    endif()
+    # BUG FIX: rmr_casm_arm64.S agora existe — sem IF EXISTS
+    list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_ARM64_SOURCE})
 endif()
 
 if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "riscv64")
     set(VECTRA_CASM_RISCV64_SOURCE ../../../../engine/rmr/interop/rmr_casm_riscv64.S)
-    if(EXISTS ${VECTRA_CASM_RISCV64_SOURCE})
-        list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_RISCV64_SOURCE})
-    endif()
+    # BUG FIX: rmr_casm_riscv64.S agora existe — sem IF EXISTS
+    list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_RISCV64_SOURCE})
 endif()
 
 add_library(vectra_core_accel SHARED
     vectra_core_accel.c
     lowlevel_bridge.c
+    ../../../../engine/rmr/src/rmr_baremetal_compat.c
     ../../../../engine/rmr/src/rmr_casm_bridge.c
     ../../../../engine/rmr/src/rmr_unified_kernel.c
     ../../../../engine/rmr/src/rmr_hw_detect.c
@@ -54,6 +53,7 @@ endif()
 
 if(RMR_ENABLE_POLICY_MODULE)
     add_library(rmr_policy_static STATIC
+        ../../../../engine/rmr/src/rmr_baremetal_compat.c
         ../../../../engine/rmr/src/rmr_policy_kernel.c
         ../../../../engine/rmr/src/rmr_math_fabric.c
         ../../../../engine/rmr/src/rmr_ll_tuning.c)
@@ -73,11 +73,11 @@ else()
     set(log-lib "")
 endif()
 
-set(VECTRA_COMMON_COMPILE_OPTIONS -O3 -ffast-math -fvisibility=hidden)
+set(VECTRA_COMMON_COMPILE_OPTIONS -O3 -ffast-math -fvisibility=hidden -DRMR_BAREMETAL=1 -ffreestanding -fno-builtin -DRMR_NO_STDLIB=1)
 set(VECTRA_ARM64_COMPILE_OPTIONS)
 
 if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
-    set(VECTRA_ARM64_COMPILE_OPTIONS -march=armv8-a)
+    set(VECTRA_ARM64_COMPILE_OPTIONS -march=armv8-a+crc -mabi=lp64 -fno-stack-protector)
 endif()
 
 if(TARGET rmr_policy_static)
