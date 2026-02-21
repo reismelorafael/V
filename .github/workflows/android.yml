@@ -12,6 +12,7 @@ on:
       - 'gradle.properties'
       - 'gradle/**'
       - 'local.properties.example'
+      - 'engine/**'
       - 'docs/OPERATIONS.md'
       - 'docs/BUILD_ENV_ALIGNMENT.md'
       - 'docs/DOCUMENTATION_STANDARDS.md'
