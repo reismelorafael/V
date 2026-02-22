@@ -1,1 +1,40 @@
+name: zipdrop-extract
 
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "_incoming/**.zip"
+
+jobs:
+  unzip_and_commit:
+    if: "!contains(github.event.head_commit.message, '[zipdrop]')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Run zipdrop
+        run: |
+          python tools/zipdrop.py
+
+      - name: Commit extracted content
+        run: |
+          if git diff --quiet; then
+            echo "No changes after zipdrop."
+            exit 0
+          fi
+          git config user.name  "zipdrop-bot"
+          git config user.email "zipdrop-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "[zipdrop] extract incoming zip(s)"
+          git push
