@@ -66,3 +66,10 @@ Cada diretório tem:
 
 ## Relatórios e bugfix
 - Relatório consolidado de correções: [`docs/BUGFIX_REPORT.md`](docs/BUGFIX_REPORT.md).
+
+## RAFAELIA — 8 Caminhos Metodológicos (v1.8)
+- Manifesto de estabilidade: [`VERSION_STABILITY.md`](VERSION_STABILITY.md) — checklist completo, 8 blocos.
+- 8 Esferas Metodológicas: [`docs/ESFERAS_METODOLOGICAS_RAFAELIA.md`](docs/ESFERAS_METODOLOGICAS_RAFAELIA.md) — expandido de 5→8.
+- Constantes de caminhos: [`app/src/main/java/com/vectras/vm/rafaelia/RafaeliaMethodPaths.java`](app/src/main/java/com/vectras/vm/rafaelia/RafaeliaMethodPaths.java).
+- Validador runtime: [`app/src/main/java/com/vectras/vm/rafaelia/RafaeliaPathValidator.java`](app/src/main/java/com/vectras/vm/rafaelia/RafaeliaPathValidator.java).
+- Testes unitários: [`app/src/test/java/com/vectras/vm/rafaelia/RafaeliaPathValidatorTest.java`](app/src/test/java/com/vectras/vm/rafaelia/RafaeliaPathValidatorTest.java).
