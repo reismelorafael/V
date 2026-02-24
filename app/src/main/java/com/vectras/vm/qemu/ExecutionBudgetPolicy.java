@@ -2,6 +2,11 @@ package com.vectras.vm.qemu;
 
 import androidx.annotation.Nullable;
 
+
+/**
+ * Package scope: QEMU-only CPU argument tuning ("-cpu max" and "-smp" heuristics).
+ * Expected call sites: com.vectras.vm.qemu launch argument builders and related QEMU profile glue.
+ */
 public final class ExecutionBudgetPolicy {
     private static final int THROUGHPUT_MIN_CPUS = 10;
     private static final int THROUGHPUT_MAX_CPUS = 23;

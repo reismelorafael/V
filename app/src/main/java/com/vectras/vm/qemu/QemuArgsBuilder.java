@@ -4,7 +4,7 @@ import android.app.Activity;
 
 import com.vectras.qemu.MainSettingsManager;
 import com.vectras.vm.core.ExecutionBudget;
-import com.vectras.vm.core.ExecutionBudgetPolicy;
+import com.vectras.vm.core.CoreExecutionBudgetPolicy;
 
 import java.util.ArrayList;
 
@@ -58,7 +58,7 @@ public final class QemuArgsBuilder {
             availableProcessors = 1;
         }
 
-        ExecutionBudget budget = ExecutionBudgetPolicy.resolve(profile, availableProcessors, arch);
+        ExecutionBudget budget = CoreExecutionBudgetPolicy.resolve(profile, availableProcessors, arch);
 
         if (budget.getQemuCpuBudget().getMaxVcpus() > 0) {
             params.add("-cpu");

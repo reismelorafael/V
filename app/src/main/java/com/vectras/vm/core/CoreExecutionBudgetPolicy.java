@@ -3,15 +3,16 @@ package com.vectras.vm.core;
 import com.vectras.vm.qemu.VmProfile;
 
 /**
- * Resolve orçamento determinístico para execução da VM e pools auxiliares.
+ * Package scope: deterministic core execution budgeting for VM runtime domains (QEMU + thread pools).
+ * Expected call sites: core orchestration and QEMU argument assembly via CoreExecutionBudgetPolicy.resolve(...).
  */
-public final class ExecutionBudgetPolicy {
+public final class CoreExecutionBudgetPolicy {
 
     private static final int MIN_CPU = 1;
     private static final int MAX_CPU = 64;
 
-    private ExecutionBudgetPolicy() {
-        throw new AssertionError("ExecutionBudgetPolicy is a utility class and cannot be instantiated");
+    private CoreExecutionBudgetPolicy() {
+        throw new AssertionError("CoreExecutionBudgetPolicy is a utility class and cannot be instantiated");
     }
 
     public static ExecutionBudget resolve(VmProfile profile, int availableProcessors, String architecture) {

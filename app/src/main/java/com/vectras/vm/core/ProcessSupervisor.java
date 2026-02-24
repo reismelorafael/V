@@ -326,7 +326,7 @@ public class ProcessSupervisor {
     }
 
     static int getQmpExecutorMaxThreadsForTests() {
-        return ExecutionBudgetPolicy.defaults().processSupervisorQmp().maxThreads;
+        return CoreExecutionBudgetPolicy.defaults().processSupervisorQmp().maxThreads;
     }
 
     public static ExecutionExecutors.Snapshot getQmpExecutorSnapshot() {
