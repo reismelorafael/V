@@ -93,5 +93,100 @@ Classes de alto impacto para ciclo de vida de VM e parada determinística:
 - compatibilidade com cenário sem QMP (fallback direto para TERM/KILL).
 
 
+## API de Rede e Governança de Endpoints
+
+Camada para composição e proteção de endpoints HTTP(S) usados no app, com validações em duas fases: sintática e por política de allowlist.
+
+### `com.vectras.vm.network.EndpointFeature`
+- **Responsabilidade:** definir capacidades de rede por feature com host(s) e padrão de path permitidos.
+- **Contrato:**
+  - `isAllowedHost(String normalizedHost)` retorna `true` apenas para host já normalizado e presente no conjunto da feature.
+  - `isAllowedPath(String path)` aplica regex da feature (ou aceita qualquer path se regex for `null`).
+  - `getAllowedHosts()` expõe conjunto imutável dos hosts aceitos.
+  - `getAllowedPathPatternDescription()` retorna regex textual (ou `<any>`).
+
+### `com.vectras.vm.network.NetworkEndpoints`
+- **Responsabilidade:** compor URLs canônicas dos fluxos suportados (ROM API, GitHub API/Web, módulos de idioma).
+- **Contrato:**
+  - gera endpoints com `https://` e hosts constantes (`go.anbui.ovh`, `api.github.com`, `github.com`, `raw.githubusercontent.com`);
+  - `languageModuleRaw(languageCode)` normaliza `languageCode` para minúsculas.
+
+### `com.vectras.vm.network.EndpointValidator`
+- **Responsabilidade:** validar sintaxe e superfície mínima de segurança de URL.
+- **Contrato:**
+  - aceita somente `https`;
+  - exige host não vazio e presente na allowlist (`DEFAULT_ALLOWLIST` ou lista customizada);
+  - rejeita `userinfo` e porta fora de `443`;
+  - retorna `false` para URL vazia/malformada.
+
+### `com.vectras.vm.network.EndpointPolicy`
+- **Responsabilidade:** aplicar governança por contexto funcional (`Feature`) usando prefixos permitidos.
+- **Contrato:**
+  - `isAllowedApi` e `isAllowedActionView` retornam `true` quando endpoint começa com prefixo autorizado para a feature;
+  - `requireAllowedApi` e `requireAllowedActionView` lançam `IllegalArgumentException` quando endpoint for bloqueado;
+  - features sem prefixos registrados são bloqueadas por padrão.
+
+### `com.vectras.vm.localization.NetworkEndpoints`
+- **Responsabilidade:** compor endpoint de módulo de idioma na camada de localização (Kotlin).
+- **Contrato:** `languageModule(languageCode)` retorna `https://raw.githubusercontent.com/.../resources/lang/<languageCode>.json`.
+
+### `com.vectras.vm.localization.EndpointValidator`
+- **Responsabilidade:** validação rápida para endpoints de módulos de idioma na camada de localização.
+- **Contrato:**
+  - valida protocolo `https`, host preenchido e path com sufixo `.json`;
+  - retorna URL normalizada (`String`) quando válida;
+  - retorna `null` para entrada inválida ou erro de parse.
+
+### Fluxo recomendado de uso
+1. **Composição do endpoint:** usar `NetworkEndpoints` (Java ou Kotlin) para evitar string literal solta.
+2. **Validação sintática:** aplicar `EndpointValidator` da camada correspondente.
+3. **Validação por política (allowlist):** aplicar `EndpointPolicy`/`EndpointFeature` para o contexto de consumo.
+4. **Consumo:** só executar request ou `ACTION_VIEW` após passar nas etapas anteriores.
+
+### Exemplos curtos (permitido / bloqueado)
+
+#### Java — cenário permitido
+```java
+String endpoint = com.vectras.vm.network.NetworkEndpoints.githubUserApi("octocat");
+if (com.vectras.vm.network.EndpointValidator.isAllowed(endpoint)
+        && com.vectras.vm.network.EndpointPolicy.isAllowedApi(
+                com.vectras.vm.network.EndpointPolicy.Feature.GITHUB_API,
+                endpoint)) {
+    // consumir endpoint
+}
+```
+
+#### Java — cenário bloqueado (erro esperado)
+```java
+String blocked = "https://evil.example/users/octocat";
+com.vectras.vm.network.EndpointPolicy.requireAllowedApi(
+        com.vectras.vm.network.EndpointPolicy.Feature.GITHUB_API,
+        blocked);
+// Esperado: IllegalArgumentException("Endpoint blocked by API policy: ...")
+```
+
+#### Kotlin — cenário permitido
+```kotlin
+val endpoint = com.vectras.vm.localization.NetworkEndpoints.languageModule("pt-BR")
+val validated = com.vectras.vm.localization.EndpointValidator
+    .validateLanguageModuleEndpoint(endpoint)
+if (validated != null) {
+    // consumir endpoint
+}
+```
+
+#### Kotlin — cenário bloqueado/erro esperado de validação
+```kotlin
+val blocked = "http://raw.githubusercontent.com/repo/lang/pt-BR.txt"
+val validated = com.vectras.vm.localization.EndpointValidator
+    .validateLanguageModuleEndpoint(blocked)
+// Esperado: validated == null (protocolo/path inválido)
+```
+
+### Rastreabilidade
+- Mapa dos arquivos e localização das classes: [`app/FILES_MAP.md`](../app/FILES_MAP.md).
+- Diretrizes e controles de segurança operacional: [`docs/SECURITY.md`](SECURITY.md).
+
+
 ## Roadmap imediato
 - Ver sequência de execução técnica: `docs/VM_SUPERVISION_NEXT_5_STEPS.md`.
