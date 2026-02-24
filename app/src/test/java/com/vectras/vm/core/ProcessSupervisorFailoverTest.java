@@ -225,6 +225,45 @@ public class ProcessSupervisorFailoverTest {
 
 
     @Test
+    public void stopGracefully_killTimeout_keepsBoundProcessWhenStillAlive() {
+        RecordingTransitionSink sink = new RecordingTransitionSink();
+        FakeProcess process = new FakeProcess(false, false);
+        ProcessSupervisor supervisor = new ProcessSupervisor(
+                null,
+                "vm-kill-timeout",
+                () -> null,
+                sink,
+                new ProcessSupervisor.Clock() {
+                    private long mono = 1000L;
+                    private long wall = 1_700_000_000_000L;
+
+                    @Override
+                    public long monoMs() {
+                        return mono++;
+                    }
+
+                    @Override
+                    public long wallMs() {
+                        return wall++;
+                    }
+                }
+        );
+
+        supervisor.bindProcess(process);
+        boolean stopped = supervisor.stopGracefully(false);
+
+        Assert.assertFalse(stopped);
+        Assert.assertEquals(ProcessSupervisor.State.STOP, supervisor.getState());
+        Assert.assertEquals(1, process.destroyCount);
+        Assert.assertEquals(1, process.destroyForciblyCount);
+        Assert.assertTrue(supervisor.isBoundTo(process));
+        Assert.assertTrue(supervisor.isProcessAlive());
+        Assert.assertTrue(sink.containsPrefix("RUN->FAILOVER:no_qmp:term_kill"));
+        Assert.assertTrue(sink.containsPrefix("FAILOVER->STOP:kill_timeout:kill"));
+    }
+
+
+    @Test
     public void bindProcess_allowsIdempotentRebindSameInstance() {
         RecordingTransitionSink sink = new RecordingTransitionSink();
         ProcessSupervisor supervisor = new ProcessSupervisor(

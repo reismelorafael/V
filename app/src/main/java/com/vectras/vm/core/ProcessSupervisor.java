@@ -255,7 +255,7 @@ public class ProcessSupervisor {
             return killed;
         } finally {
             synchronized (this) {
-                if (process == running || stopped || (process != null && !process.isAlive())) {
+                if (stopped || (process != null && !process.isAlive())) {
                     process = null;
                 }
             }
