@@ -221,7 +221,7 @@ jobs:
           exit 1
         fi
 
-    - name: Build Release APK (signed via CI secrets)
+    - name: Build Release APK (signed or unsigned)
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
@@ -230,17 +230,20 @@ jobs:
         VECTRAS_RELEASE_KEY_ALIAS: ${{ secrets.VECTRAS_RELEASE_KEY_ALIAS }}
         VECTRAS_RELEASE_KEY_PASSWORD: ${{ secrets.VECTRAS_RELEASE_KEY_PASSWORD }}
       run: |
-        if [[ -z "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" ]]; then
-          echo "Missing VECTRAS_RELEASE_KEYSTORE_B64 secret for release signing" >&2
-          exit 1
+        if [[ -n "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" ]]; then
+          echo "Building release APK in signed mode (CI keystore secret detected)."
+          echo "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" | base64 --decode > "$VECTRAS_RELEASE_STORE_FILE"
+          ./gradlew assembleRelease \
+            -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018 \
+            -Pandroid.injected.signing.store.file="$VECTRAS_RELEASE_STORE_FILE" \
+            -Pandroid.injected.signing.store.password="$VECTRAS_RELEASE_STORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$VECTRAS_RELEASE_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$VECTRAS_RELEASE_KEY_PASSWORD"
+        else
+          echo "Building release APK in unsigned mode (VECTRAS_RELEASE_KEYSTORE_B64 secret not provided)."
+          ./gradlew assembleRelease \
+            -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
         fi
-        echo "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" | base64 --decode > "$VECTRAS_RELEASE_STORE_FILE"
-        ./gradlew assembleRelease \
-          -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018 \
-          -Pandroid.injected.signing.store.file="$VECTRAS_RELEASE_STORE_FILE" \
-          -Pandroid.injected.signing.store.password="$VECTRAS_RELEASE_STORE_PASSWORD" \
-          -Pandroid.injected.signing.key.alias="$VECTRAS_RELEASE_KEY_ALIAS" \
-          -Pandroid.injected.signing.key.password="$VECTRAS_RELEASE_KEY_PASSWORD"
 
     - name: Upload Debug APK as artifact
       uses: actions/upload-artifact@v4
@@ -249,10 +252,12 @@ jobs:
         path: app/build/outputs/apk/debug/app-debug.apk
 
     - name: Upload Release APK as artifact
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: android-release-apk
         path: app/build/outputs/apk/release/app-release.apk
+        if-no-files-found: warn
 
     - name: Upload to Telegram
       run: |
