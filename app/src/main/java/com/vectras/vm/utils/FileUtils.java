@@ -35,6 +35,7 @@ import android.os.ParcelFileDescriptor;
 import androidx.annotation.NonNull;
 import androidx.core.content.FileProvider;
 
+import com.vectras.qemu.Config;
 import com.vectras.vm.R;
 
 import java.io.BufferedReader;
@@ -45,7 +46,9 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.InputStreamReader;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * 
@@ -516,6 +519,7 @@ public class FileUtils {
 	}
 
 	public static HashMap<Integer, ParcelFileDescriptor> fds = new HashMap<Integer, ParcelFileDescriptor>();
+	private static final HashMap<Integer, String> fdOwners = new HashMap<Integer, String>();
 
 	public static int get_fd(final Context context, String path) {
 		return get_fd(context, path, null);
@@ -533,7 +537,7 @@ public class FileUtils {
 				String mode = resolveContentOpenMode(path, backendMode);
 				ParcelFileDescriptor pfd = context.getContentResolver().openFileDescriptor(Uri.parse(path), mode);
 				fd = pfd.getFd();
-				fds.put(fd, pfd);
+				registerFd(fd, pfd);
 			} catch (final FileNotFoundException e) {
 				Log.e(TAG, "Failed to open content URI: " + path, e);
 				new Handler(Looper.getMainLooper()).post(new Runnable() {
@@ -551,6 +555,7 @@ public class FileUtils {
 					file.createNewFile();
 				ParcelFileDescriptor pfd = ParcelFileDescriptor.open(file, mode);
 				fd = pfd.getFd();
+				registerFd(fd, pfd);
 			} catch (Exception e) {
 				Log.e(TAG, "Failed to open file: " + path, e);
 			}
@@ -602,6 +607,7 @@ public class FileUtils {
 			try {
 				pfd.close();
 				FileUtils.fds.remove(fd);
+				fdOwners.remove(fd);
 				return 0; // success for Native side
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -609,6 +615,41 @@ public class FileUtils {
 
 		}
 		return -1;
+	}
+
+	public static synchronized void closeFdsForVm(String vmId) {
+		if (vmId == null || vmId.trim().isEmpty()) {
+			return;
+		}
+
+		Set<Integer> ownedFds = new HashSet<Integer>();
+		for (Integer fd : fdOwners.keySet()) {
+			if (vmId.equals(fdOwners.get(fd))) {
+				ownedFds.add(fd);
+			}
+		}
+
+		for (Integer fd : ownedFds) {
+			close_fd(fd);
+		}
+	}
+
+	public static synchronized void closeAllFds() {
+		Integer[] fdKeys = fds.keySet().toArray(new Integer[0]);
+		for (Integer fd : fdKeys) {
+			close_fd(fd);
+		}
+	}
+
+	private static synchronized void registerFd(int fd, ParcelFileDescriptor pfd) {
+		if (fd <= 0 || pfd == null) {
+			return;
+		}
+		fds.put(fd, pfd);
+		String vmId = Config.vmID == null ? "" : Config.vmID.trim();
+		if (!vmId.isEmpty()) {
+			fdOwners.put(fd, vmId);
+		}
 	}
 
 	public static void writeToFile(String data, File file, Context context) {

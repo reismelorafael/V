@@ -241,6 +241,7 @@ public class Terminal {
                 errors.append(Log.getStackTraceString(e));
             } finally {
                 safeUnregisterVmProcess(vmId, launchedProcess);
+                com.vectras.vm.utils.FileUtils.closeFdsForVm(vmId);
                 VMManager.clearVmStarting(vmId);
                 new Handler(Looper.getMainLooper()).post(() -> {
                     dismissProgressDialogSafely(progressDialog);
@@ -298,6 +299,7 @@ public class Terminal {
                 NotificationUtils.clearAll(VectrasApp.getContext());
             } finally {
                 safeUnregisterVmProcess(vmId, launchedProcess);
+                com.vectras.vm.utils.FileUtils.closeFdsForVm(vmId);
                 VMManager.clearVmStarting(vmId);
                 // Switch to main thread after execution
                 new Handler(Looper.getMainLooper()).post(() -> {
@@ -353,6 +355,7 @@ public class Terminal {
             errors.append(Log.getStackTraceString(e));
         } finally {
             safeUnregisterVmProcess(vmId, launchedProcess);
+            com.vectras.vm.utils.FileUtils.closeFdsForVm(vmId);
             VMManager.clearVmStarting(vmId);
         }
         return output.toString();
@@ -414,6 +417,7 @@ public class Terminal {
                 errors.append(Log.getStackTraceString(e));
             } finally {
                 safeUnregisterVmProcess(vmId, launchedProcess);
+                com.vectras.vm.utils.FileUtils.closeFdsForVm(vmId);
                 VMManager.clearVmStarting(vmId);
                 dismissProgressDialogSafely(progressDialog);
 

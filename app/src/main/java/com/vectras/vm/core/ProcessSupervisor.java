@@ -199,40 +199,62 @@ public class ProcessSupervisor {
      * @param tryQmp quando true, tenta desligamento limpo via QMP antes de TERM/KILL
      * @return true se o processo foi finalizado durante a janela de timeout
      */
-    public synchronized boolean stopGracefully(boolean tryQmp) {
-        Process running = process;
-        if (running == null) {
-            transition(state, State.STOP, "missing_process", 0, 0, 0, "no_op");
-            return true;
+    public boolean stopGracefully(boolean tryQmp) {
+        Process running;
+        State currentState;
+        long stallMs;
+        synchronized (this) {
+            running = process;
+            currentState = state;
+            stallMs = Math.max(0L, clock.monoMs() - startMonoMs);
+            if (running == null) {
+                transition(currentState, State.STOP, "missing_process", 0, 0, 0, "no_op");
+                return true;
+            }
         }
 
+        boolean stopped = false;
+        boolean qmpRequested = false;
+        boolean qmpTimedOut = false;
         try {
-            long stallMs = Math.max(0L, clock.monoMs() - startMonoMs);
-            boolean qmpRequested = false;
-            boolean qmpTimedOut = false;
             if (tryQmp) {
                 qmpRequested = true;
                 String result = sendPowerdownWithTimeout(EXECUTORS.qmpGraceTimeoutMs());
                 qmpTimedOut = result == null;
                 if (ProcessRuntimeOps.isQmpAck(result) && awaitExit(running, 3_000)) {
-                    transition(state, State.STOP, "qmp_shutdown", 0, 0, stallMs, "qmp");
+                    synchronized (this) {
+                        transition(state, State.STOP, "qmp_shutdown", 0, 0, stallMs, "qmp");
+                    }
+                    stopped = true;
                     return true;
                 }
             }
 
-            transition(state, State.FAILOVER, qmpRequested ? (qmpTimedOut ? "qmp_timeout" : "qmp_reject") : "no_qmp", 0, 0, stallMs, "term_kill");
+            synchronized (this) {
+                transition(state, State.FAILOVER, qmpRequested ? (qmpTimedOut ? "qmp_timeout" : "qmp_reject") : "no_qmp", 0, 0, stallMs, "term_kill");
+            }
             running.destroy();
             if (awaitExit(running, 3_000)) {
-                transition(State.FAILOVER, State.STOP, "term_success", 0, 0, stallMs, "term");
+                synchronized (this) {
+                    transition(State.FAILOVER, State.STOP, "term_success", 0, 0, stallMs, "term");
+                }
+                stopped = true;
                 return true;
             }
 
             running.destroyForcibly();
             boolean killed = awaitExit(running, 2_000);
-            transition(State.FAILOVER, State.STOP, killed ? "kill_success" : "kill_timeout", 0, 0, stallMs, "kill");
+            synchronized (this) {
+                transition(State.FAILOVER, State.STOP, killed ? "kill_success" : "kill_timeout", 0, 0, stallMs, "kill");
+            }
+            stopped = killed;
             return killed;
         } finally {
-            this.process = null;
+            synchronized (this) {
+                if (process == running || stopped || (process != null && !process.isAlive())) {
+                    process = null;
+                }
+            }
         }
     }
 

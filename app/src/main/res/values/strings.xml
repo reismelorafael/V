@@ -451,6 +451,7 @@
     <string name="the_vnc_port_you_need_to_connect_to_is">The VNC port you need to connect to is</string>
     <string name="need_to_set_smaller_screen_number">Need to set smaller screen number</string>
     <string name="leave_password_blank_hint">Leave password blank if you do not want to set a password.</string>
+    <string name="external_vnc_opt_in_warning">External exposure is disabled by default. Enable only if you explicitly need remote access and have configured credentials.</string>
     <string name="the_vnc_server_port_you_set_is_currently_in_use_by_other">The VNC Server port you set is currently in use by another virtual machine, app, or service. You can change the settings and run the virtual machine again.</string>
     <string name="go_to_settings">Go to settings</string>
     <string name="you_need_to_set_a_number_for_the_display">You need to set a number for the display.</string>

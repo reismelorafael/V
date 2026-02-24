@@ -210,7 +210,22 @@ public class TermuxDocumentsProvider extends DocumentsProvider {
 
     @Override
     public boolean isChildDocument(String parentDocumentId, String documentId) {
-        return documentId.startsWith(parentDocumentId);
+        try {
+            final String parentCanonicalPath = new File(parentDocumentId).getCanonicalPath();
+            final String documentCanonicalPath = new File(documentId).getCanonicalPath();
+
+            if (documentCanonicalPath.equals(parentCanonicalPath)) {
+                return true;
+            }
+
+            final String parentPathWithSeparator = parentCanonicalPath.endsWith(File.separator)
+                ? parentCanonicalPath
+                : parentCanonicalPath + File.separator;
+
+            return documentCanonicalPath.startsWith(parentPathWithSeparator);
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /**

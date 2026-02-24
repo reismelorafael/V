@@ -20,11 +20,70 @@ public class Loader {
                 0);
     }
 
-    private static boolean isTrustedSignature(android.content.pm.PackageInfo targetInfo) {
-        int[] expected = new int[]{BuildConfig.SIGNATURE};
-        java.util.Arrays.sort(expected);
+    private static java.util.List<String> expectedSignatureDigests() {
+        if (BuildConfig.SIGNATURE_DIGESTS_SHA256 == null || BuildConfig.SIGNATURE_DIGESTS_SHA256.trim().isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
 
-        int[] actual;
+        java.util.List<String> digests = new java.util.ArrayList<>();
+        String[] split = BuildConfig.SIGNATURE_DIGESTS_SHA256.split(",");
+        for (String digest : split) {
+            if (digest == null) {
+                continue;
+            }
+            String normalized = digest.trim().toLowerCase(java.util.Locale.ROOT);
+            if (!normalized.isEmpty()) {
+                digests.add(normalized);
+            }
+        }
+        java.util.Collections.sort(digests);
+        return java.util.Collections.unmodifiableList(digests);
+    }
+
+    private static String sha256Hex(byte[] input) {
+        try {
+            java.security.MessageDigest messageDigest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] digest = messageDigest.digest(input);
+            char[] out = new char[digest.length * 2];
+            final char[] hex = "0123456789abcdef".toCharArray();
+            for (int i = 0; i < digest.length; i++) {
+                int v = digest[i] & 0xFF;
+                out[i * 2] = hex[v >>> 4];
+                out[i * 2 + 1] = hex[v & 0x0F];
+            }
+            return new String(out);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    private static java.util.List<String> normalizeSignatureDigests(android.content.pm.Signature[] signatures) {
+        if (signatures == null || signatures.length == 0) {
+            return java.util.Collections.emptyList();
+        }
+
+        java.util.List<String> digests = new java.util.ArrayList<>(signatures.length);
+        for (android.content.pm.Signature signature : signatures) {
+            if (signature == null) {
+                return java.util.Collections.emptyList();
+            }
+            digests.add(sha256Hex(signature.toByteArray()));
+        }
+
+        java.util.Collections.sort(digests);
+        return digests;
+    }
+
+    static boolean isTrustedSignature(android.content.pm.PackageInfo targetInfo) {
+        return isTrustedSignature(targetInfo, expectedSignatureDigests());
+    }
+
+    static boolean isTrustedSignature(android.content.pm.PackageInfo targetInfo, java.util.List<String> expected) {
+        if (expected == null || expected.isEmpty()) {
+            return false;
+        }
+
+        java.util.List<String> actual;
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             if (targetInfo.signingInfo == null) {
                 return false;
@@ -32,31 +91,12 @@ public class Loader {
             android.content.pm.Signature[] signatures = targetInfo.signingInfo.hasMultipleSigners()
                     ? targetInfo.signingInfo.getApkContentsSigners()
                     : targetInfo.signingInfo.getSigningCertificateHistory();
-            if (signatures == null || signatures.length == 0) {
-                return false;
-            }
-            actual = new int[signatures.length];
-            for (int i = 0; i < signatures.length; i++) {
-                if (signatures[i] == null) {
-                    return false;
-                }
-                actual[i] = signatures[i].hashCode();
-            }
+            actual = normalizeSignatureDigests(signatures);
         } else {
-            if (targetInfo.signatures == null || targetInfo.signatures.length == 0) {
-                return false;
-            }
-            actual = new int[targetInfo.signatures.length];
-            for (int i = 0; i < targetInfo.signatures.length; i++) {
-                if (targetInfo.signatures[i] == null) {
-                    return false;
-                }
-                actual[i] = targetInfo.signatures[i].hashCode();
-            }
+            actual = normalizeSignatureDigests(targetInfo.signatures);
         }
 
-        java.util.Arrays.sort(actual);
-        return java.util.Arrays.equals(expected, actual);
+        return !actual.isEmpty() && expected.equals(actual);
     }
 
     /**

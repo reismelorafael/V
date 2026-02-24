@@ -10,19 +10,21 @@ android.namespace 'com.vectras.vm'
 android.defaultConfig.minSdkVersion rootProject.ext.minApi
 android.buildTypes.debug.signingConfig null
 android.buildFeatures.buildConfig true
+android.testOptions.unitTests.includeAndroidResources = true
 android.compileOptions.sourceCompatibility JavaVersion.toVersion(rootProject.ext.javaLanguageVersion)
 android.compileOptions.targetCompatibility JavaVersion.toVersion(rootProject.ext.javaLanguageVersion)
 dependencies.compileOnly project(':shell-loader:stub')
 android.applicationVariants.configureEach { outputs.configureEach { outputFileName = "loader.apk" } }
 
 def signingConfig = project(':app').android.signingConfigs.debug
-def signatureHash = 0
+def signatureDigestsSha256 = []
 if (signingConfig?.storeFile?.exists()) {
     def keyStore = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType())
     keyStore.load(new FileInputStream(signingConfig.storeFile), signingConfig.keyPassword.toCharArray())
     def cert = keyStore.getCertificate(signingConfig.keyAlias)
     if (cert != null) {
-        signatureHash = Arrays.hashCode(cert.getEncoded())
+        def md = java.security.MessageDigest.getInstance("SHA-256")
+        signatureDigestsSha256 = [md.digest(cert.getEncoded()).collect { String.format("%02x", it & 0xff) }.join("")]
     }
 }
 
@@ -40,10 +42,15 @@ try {
 }
 
 android.defaultConfig.buildConfigField "String", "logTag", "\"Termux:X11 loader\""
-android.defaultConfig.buildConfigField "int", "SIGNATURE", String.valueOf(signatureHash)
+android.defaultConfig.buildConfigField "String", "SIGNATURE_DIGESTS_SHA256", "\"" + signatureDigestsSha256.join(",") + "\""
 android.defaultConfig.buildConfigField "String", "CLASS_ID", "\"com.vectras.vm.x11.CmdEntryPoint\""
 def packageNotInstalledErrorText = "Termux:X11 application is not found. You should choose latest successful workflow here: https://github.com/termux/termux-x11/actions/workflows/debug_build.yml After this you should download termux-x11-ARCH-debug or termux-x11-universal-debug artifact and install apk contained in this zip file."
 android.defaultConfig.buildConfigField "String", "packageNotInstalledErrorText", "\"${packageNotInstalledErrorText}\""
 android.defaultConfig.buildConfigField "String", "packageSignatureMismatchErrorText",
         "\"Signature verification of target application " + android.namespace + " failed.\\nPlease, reinstall both termux-x11 package and Termux:X11 application from the same source\""
 android.defaultConfig.buildConfigField "String", "COMMIT", "\"" + commitHash + "\""
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}

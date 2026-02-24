@@ -257,11 +257,7 @@ public class FileUtils {
 
     @Deprecated
     public static void close_fds() {
-        Integer[] fdKeys = com.vectras.vm.utils.FileUtils.fds.keySet().toArray(
-                new Integer[com.vectras.vm.utils.FileUtils.fds.keySet().size()]);
-        for (int i = 0; i < fdKeys.length; i++) {
-            com.vectras.vm.utils.FileUtils.close_fd(fdKeys[i]);
-        }
+        com.vectras.vm.utils.FileUtils.closeAllFds();
     }
 
     @Deprecated
