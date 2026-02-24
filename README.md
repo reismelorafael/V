@@ -75,6 +75,21 @@ find . -maxdepth 2 -type d | sort
 - [docs/README.md](docs/README.md)
 - [docs/navigation/BIGTECH_REVOLUTION_ANNOUNCE.md](docs/navigation/BIGTECH_REVOLUTION_ANNOUNCE.md)
 
+## Como rodar manualmente
+- Acesse **Actions > Android CI > Run workflow** e selecione os inputs do `workflow_dispatch`.
+- Inputs booleanos:
+  - `build_debug` (`true`/`false`): executa `assembleDebug`.
+  - `build_release` (`true`/`false`): executa `assembleRelease`.
+  - `sign_release` (`true`/`false`): assina release com segredos `VECTRAS_RELEASE_*` (use com `build_release=true`).
+  - `upload_telegram` (`true`/`false`): habilita notificação/upload no Telegram.
+- Inputs de versão (string):
+  - `compile_api` (padrão `35`)
+  - `tools_version` (padrão `35.0.0`)
+  - `ndk_version` (padrão `27.2.12479018`)
+  - `cmake_version` (padrão `3.22.1`)
+  - `java_version` (padrão `17`)
+- Para manter valores padrão por repositório em CI, configure variáveis em **Settings > Secrets and variables > Actions > Variables** (ex.: `COMPILE_API`, `TOOLS_VERSION`, `NDK_VERSION`, `CMAKE_VERSION`, `JAVA_VERSION`).
+
 ## Setup rápido de build
 - Copie `local.properties.example` para `local.properties` e ajuste `sdk.dir`.
 - Ajuste versões via `gradle.properties` (`COMPILE_API`, `TOOLS_VERSION`, `JAVA_LANGUAGE_VERSION`, `CMAKE_VERSION`, `NDK_VERSION`).

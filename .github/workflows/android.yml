@@ -35,6 +35,52 @@ on:
       - 'README.md'
       - '.github/workflows/android.yml'
   workflow_dispatch:
+    inputs:
+      build_debug:
+        description: 'Build debug APK (assembleDebug)'
+        required: false
+        type: boolean
+        default: true
+      build_release:
+        description: 'Build release APK (assembleRelease)'
+        required: false
+        type: boolean
+        default: true
+      sign_release:
+        description: 'Sign release APK with CI keystore secrets (requires build_release=true)'
+        required: false
+        type: boolean
+        default: false
+      upload_telegram:
+        description: 'Send Telegram notifications and upload release artifacts to Telegram'
+        required: false
+        type: boolean
+        default: false
+      compile_api:
+        description: 'Android compileSdk/targetSdk API level (e.g. 35)'
+        required: false
+        type: string
+        default: '35'
+      tools_version:
+        description: 'Android Build Tools version (e.g. 35.0.0)'
+        required: false
+        type: string
+        default: '35.0.0'
+      ndk_version:
+        description: 'Android NDK version (e.g. 27.2.12479018)'
+        required: false
+        type: string
+        default: '27.2.12479018'
+      cmake_version:
+        description: 'CMake version from SDK manager (e.g. 3.22.1)'
+        required: false
+        type: string
+        default: '3.22.1'
+      java_version:
+        description: 'Java version used by setup-java and Gradle toolchain property'
+        required: false
+        type: string
+        default: '17'
 
 permissions:
   contents: read
@@ -49,9 +95,28 @@ jobs:
 
     runs-on: ubuntu-latest
     environment: BuildAPK
+    env:
+      COMPILE_API: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.compile_api || vars.COMPILE_API || '35' }}
+      TOOLS_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tools_version || vars.TOOLS_VERSION || '35.0.0' }}
+      NDK_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ndk_version || vars.NDK_VERSION || '27.2.12479018' }}
+      CMAKE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.cmake_version || vars.CMAKE_VERSION || '3.22.1' }}
+      JAVA_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.java_version || vars.JAVA_VERSION || '17' }}
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Print selected inputs
+      run: |
+        echo "event_name=${GITHUB_EVENT_NAME}"
+        echo "build_debug=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_debug || 'true' }}"
+        echo "build_release=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_release || 'true' }}"
+        echo "sign_release=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sign_release || 'true' }}"
+        echo "upload_telegram=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram || 'true' }}"
+        echo "compile_api=${COMPILE_API}"
+        echo "tools_version=${TOOLS_VERSION}"
+        echo "ndk_version=${NDK_VERSION}"
+        echo "cmake_version=${CMAKE_VERSION}"
+        echo "java_version=${JAVA_VERSION}"
 
     - name: Block sensitive artifacts in repository (warn only)
       continue-on-error: true
@@ -60,7 +125,7 @@ jobs:
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
+        java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
         cache: gradle
 
@@ -71,12 +136,12 @@ jobs:
       run: |
         sdkmanager --install \
           'platform-tools' \
-          'platforms;android-35' \
-          'build-tools;35.0.0' \
+          'platforms;android-${{ env.COMPILE_API }}' \
+          'build-tools;${{ env.TOOLS_VERSION }}' \
           'platforms;android-34' \
           'build-tools;34.0.0' \
-          'ndk;27.2.12479018' \
-          'cmake;3.22.1'
+          'ndk;${{ env.NDK_VERSION }}' \
+          'cmake;${{ env.CMAKE_VERSION }}'
 
     - name: Generate local.properties
       run: |
@@ -94,16 +159,16 @@ jobs:
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew :app:testDebugUnitTest --tests com.vectras.vm.core.ProotCommandBuilderTest -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
+      run: ./gradlew :app:testDebugUnitTest --tests com.vectras.vm.core.ProotCommandBuilderTest -PCOMPILE_API=${COMPILE_API} -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION}
 
     - name: Verify repository file dependencies
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew verifyRepoFileDependencies -PCOMPILE_API=35 -PTARGET_API=35 -PRELEASE_MIN_TARGET_API=34 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
+      run: ./gradlew verifyRepoFileDependencies -PCOMPILE_API=${COMPILE_API} -PTARGET_API=${COMPILE_API} -PRELEASE_MIN_TARGET_API=34 -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION}
 
     - name: Verify arm64 native toolchain compatibility
-      run: ./gradlew verifyArm64ToolchainCompatibility -PNDK_VERSION=27.2.12479018
+      run: ./gradlew verifyArm64ToolchainCompatibility -PNDK_VERSION=${NDK_VERSION}
 
     - name: Validate release version metadata consistency
       run: |
@@ -164,6 +229,7 @@ jobs:
         PY
 
     - name: Send notification to Telegram
+      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.upload_telegram == 'true' }}
       run: |
         set -euo pipefail
         if [[ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]]; then
@@ -180,16 +246,17 @@ jobs:
         fi
 
     - name: Build Debug APK
+      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_debug == 'true' }}
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew assembleDebug -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
+      run: ./gradlew assembleDebug -PCOMPILE_API=${COMPILE_API} -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION}
 
     - name: Validate native binaries are arm64-v8a
+      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_debug == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
-        NDK_VERSION="27.2.12479018"
         NDK_ROOT="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
         READELF="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
         if [[ ! -x "${READELF}" ]]; then
@@ -221,7 +288,15 @@ jobs:
           exit 1
         fi
 
+    - name: Build Release APK (unsigned)
+      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_release == 'true' && github.event.inputs.sign_release != 'true' }}
+      env:
+        ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+      run: ./gradlew assembleRelease -PCOMPILE_API=${COMPILE_API} -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION}
+
     - name: Build Release APK (signed via CI secrets)
+      if: ${{ github.event_name != 'workflow_dispatch' || (github.event.inputs.build_release == 'true' && github.event.inputs.sign_release == 'true') }}
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
@@ -236,25 +311,28 @@ jobs:
         fi
         echo "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" | base64 --decode > "$VECTRAS_RELEASE_STORE_FILE"
         ./gradlew assembleRelease \
-          -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018 \
+          -PCOMPILE_API=${COMPILE_API} -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION} \
           -Pandroid.injected.signing.store.file="$VECTRAS_RELEASE_STORE_FILE" \
           -Pandroid.injected.signing.store.password="$VECTRAS_RELEASE_STORE_PASSWORD" \
           -Pandroid.injected.signing.key.alias="$VECTRAS_RELEASE_KEY_ALIAS" \
           -Pandroid.injected.signing.key.password="$VECTRAS_RELEASE_KEY_PASSWORD"
 
     - name: Upload Debug APK as artifact
+      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_debug == 'true' }}
       uses: actions/upload-artifact@v4
       with:
         name: android-debug-apk
         path: app/build/outputs/apk/debug/app-debug.apk
 
     - name: Upload Release APK as artifact
+      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true' }}
       uses: actions/upload-artifact@v4
       with:
         name: android-release-apk
         path: app/build/outputs/apk/release/app-release.apk
 
     - name: Upload to Telegram
+      if: ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.upload_telegram == 'true') && (github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true') }}
       run: |
           set -euo pipefail
           if [[ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]]; then
