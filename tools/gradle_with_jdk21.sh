@@ -21,7 +21,7 @@ find_java_home() {
     fi
   fi
 
-  local mise_root="/root/.local/share/mise/installs/java"
+  local mise_root="${MISE_DATA_DIR:-$HOME/.local/share/mise}/installs/java"
   if [[ -d "$mise_root" ]]; then
     for candidate in "$mise_root"/21* "$mise_root"/17*; do
       if [[ -x "$candidate/bin/java" ]]; then
