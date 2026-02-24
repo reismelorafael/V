@@ -73,6 +73,7 @@ Este nível consolida a operação contínua com foco em previsibilidade: pipeli
 
 ### Operação contínua
 - Workflows para Android e engine com trilha de execução em CI.
+- Pipeline Android unificada no workflow `Android CI` (`.github/workflows/android.yml`), sem duplicação de gatilhos de build.
 - Verificação de runtime Java e scripts de padronização de build.
 - Segurança documental para artefatos sensíveis e conformidade de release.
 
