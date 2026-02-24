@@ -2,10 +2,12 @@ package com.vectras.vm;
 
 import android.annotation.SuppressLint;
 import android.content.ComponentName;
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.Editable;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -19,6 +21,10 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.work.Data;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkInfo;
+import androidx.work.WorkManager;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
@@ -34,6 +40,8 @@ import com.vectras.vm.download.DownloadStatus;
 import com.vectras.vm.main.MainActivity;
 import com.vectras.vm.core.VmFlowState;
 import com.vectras.vm.core.VmFlowTracker;
+import com.vectras.vm.importer.ImportSessionWorker;
+import com.vectras.vm.importer.ImportStateStore;
 import com.vectras.vm.rafaelia.RafaeliaQemuProfile;
 import com.vectras.vm.utils.DeviceUtils;
 import com.vectras.vm.utils.DialogUtils;
@@ -53,6 +61,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -75,6 +84,8 @@ public class VMCreatorActivity extends AppCompatActivity {
     boolean modify;
     public static DataMainRoms current;
     private boolean isImportingCVBI = false;
+    private AlertDialog importProgressDialog;
+    private String importSessionId;
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
@@ -296,7 +307,13 @@ public class VMCreatorActivity extends AppCompatActivity {
 
             } else if (getIntent().hasExtra("importcvbinow")) {
                 setDefault();
-                cvbiPicker.launch("*/*");
+                cvbiPicker.launch(new String[]{
+                        "application/octet-stream",
+                        "application/zip",
+                        "application/x-iso9660-image",
+                        "application/x-qemu-disk",
+                        "*/*"
+                });
             } else {
                 setDefault();
                 if (MainSettingsManager.autoCreateDisk(this)) {
@@ -457,24 +474,196 @@ public class VMCreatorActivity extends AppCompatActivity {
                 }
             });
 
-    private final ActivityResultLauncher<String> cvbiPicker =
-            registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
-                if (uri == null)
+    private final ActivityResultLauncher<String[]> cvbiPicker =
+            registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(), uris -> {
+                if (uris == null || uris.isEmpty()) {
                     return;
-
-                executor.execute(() -> {
-                    String filePath;
-                    try {
-                        File selectedFilePath = new File(getPath(uri));
-                        filePath = selectedFilePath.getPath();
-                    } catch (Exception e) {
-                        filePath = "";
-                    }
-
-                    String finalFilePath = filePath;
-                    runOnUiThread(() -> importRom(uri, finalFilePath, FileUtils.getFileNameFromUri(this, uri)));
-                });
+                }
+                startMultiImport(uris);
             });
+
+    private void startMultiImport(java.util.List<Uri> uris) {
+        java.util.ArrayList<Uri> filteredUris = new java.util.ArrayList<>();
+        ContentResolver resolver = getContentResolver();
+
+        for (Uri uri : uris) {
+            if (uri == null) {
+                continue;
+            }
+            if (!isAllowedImportUri(uri, resolver)) {
+                continue;
+            }
+
+            takeUriPermissionSafely(uri);
+            filteredUris.add(uri);
+        }
+
+        if (filteredUris.isEmpty()) {
+            DialogUtils.oneDialog(this,
+                    getString(R.string.problem_has_been_detected),
+                    "Nenhum arquivo compatível foi selecionado. Use: .rom/.iso/.qcow2/.img/.zip/.cvbi",
+                    getString(R.string.ok),
+                    true,
+                    R.drawable.warning_48px,
+                    true,
+                    null,
+                    null);
+            return;
+        }
+
+        importSessionId = UUID.randomUUID().toString();
+        showImportProgressDialog();
+        enqueueImportWorker(filteredUris, importSessionId);
+    }
+
+    private boolean isAllowedImportUri(Uri uri, ContentResolver resolver) {
+        String fileName = FileUtils.getFileNameFromUri(this, uri);
+        String lowerName = fileName == null ? "" : fileName.toLowerCase(Locale.ROOT);
+        if (lowerName.endsWith(".rom")
+                || lowerName.endsWith(".iso")
+                || lowerName.endsWith(".qcow2")
+                || lowerName.endsWith(".img")
+                || lowerName.endsWith(".zip")
+                || lowerName.endsWith(".cvbi")) {
+            return true;
+        }
+
+        String mime = resolver.getType(uri);
+        if (TextUtils.isEmpty(mime)) {
+            return false;
+        }
+        return "application/octet-stream".equalsIgnoreCase(mime)
+                || "application/zip".equalsIgnoreCase(mime)
+                || "application/x-iso9660-image".equalsIgnoreCase(mime)
+                || "application/x-qemu-disk".equalsIgnoreCase(mime)
+                || "application/x-cd-image".equalsIgnoreCase(mime)
+                || "application/x-cvbi".equalsIgnoreCase(mime)
+                || "application/vnd.vectras.cvbi".equalsIgnoreCase(mime);
+    }
+
+    private void takeUriPermissionSafely(Uri uri) {
+        final int readFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION;
+        final int writeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+        try {
+            getContentResolver().takePersistableUriPermission(uri, writeFlags);
+            return;
+        } catch (SecurityException ignored) {
+        }
+        try {
+            getContentResolver().takePersistableUriPermission(uri, readFlags);
+        } catch (SecurityException ignored) {
+        }
+    }
+
+    private void showImportProgressDialog() {
+        DialogProgressStyleBinding progressBinding = DialogProgressStyleBinding.inflate(getLayoutInflater());
+        progressBinding.progressBar.setIndeterminate(false);
+        progressBinding.progressBar.setMax(100);
+        progressBinding.progressBar.setProgress(0);
+        progressBinding.progressText.setText("Preparando importação...");
+
+        importProgressDialog = new MaterialAlertDialogBuilder(this, R.style.CenteredDialogTheme)
+                .setTitle("Importando arquivos")
+                .setView(progressBinding.getRoot())
+                .setCancelable(false)
+                .setNegativeButton(getString(R.string.cancel), (dialog, which) -> {
+                    if (!TextUtils.isEmpty(importSessionId)) {
+                        WorkManager.getInstance(this).cancelUniqueWork(importSessionId);
+                    }
+                })
+                .create();
+
+        importProgressDialog.show();
+        observeImportProgress(progressBinding);
+    }
+
+    private void enqueueImportWorker(java.util.ArrayList<Uri> uris, String sessionId) {
+        String[] serialized = new String[uris.size()];
+        for (int i = 0; i < uris.size(); i++) {
+            serialized[i] = uris.get(i).toString();
+        }
+
+        Data input = new Data.Builder()
+                .putStringArray(ImportSessionWorker.KEY_URIS, serialized)
+                .putString(ImportSessionWorker.KEY_SESSION_ID, sessionId)
+                .build();
+
+        OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(ImportSessionWorker.class)
+                .setInputData(input)
+                .build();
+
+        WorkManager.getInstance(this).enqueueUniqueWork(sessionId, androidx.work.ExistingWorkPolicy.REPLACE, request);
+    }
+
+    private void observeImportProgress(DialogProgressStyleBinding progressBinding) {
+        if (TextUtils.isEmpty(importSessionId)) {
+            return;
+        }
+        WorkManager.getInstance(this)
+                .getWorkInfosForUniqueWorkLiveData(importSessionId)
+                .observe(this, workInfos -> {
+                    if (workInfos == null || workInfos.isEmpty()) {
+                        return;
+                    }
+                    WorkInfo info = workInfos.get(0);
+                    Data progress = info.getProgress();
+                    int fileIndex = progress.getInt(ImportSessionWorker.PROGRESS_FILE_INDEX, 0);
+                    int totalFiles = progress.getInt(ImportSessionWorker.PROGRESS_TOTAL_FILES, 0);
+                    String currentFile = progress.getString(ImportSessionWorker.PROGRESS_CURRENT_FILE);
+                    int filePercent = progress.getInt(ImportSessionWorker.PROGRESS_FILE_PERCENT, 0);
+                    int totalPercent = progress.getInt(ImportSessionWorker.PROGRESS_TOTAL_PERCENT, 0);
+
+                    progressBinding.progressBar.setProgress(totalPercent);
+                    progressBinding.progressText.setText(
+                            "Arquivo " + fileIndex + "/" + totalFiles
+                                    + "\n" + (currentFile == null ? "" : currentFile)
+                                    + "\nProgresso arquivo: " + filePercent + "%"
+                                    + "\nProgresso total: " + totalPercent + "%");
+
+                    if (info.getState().isFinished()) {
+                        if (importProgressDialog != null && importProgressDialog.isShowing()) {
+                            importProgressDialog.dismiss();
+                        }
+                        showImportReport(importSessionId);
+                    }
+                });
+    }
+
+    private void showImportReport(String sessionId) {
+        ImportStateStore stateStore = new ImportStateStore(this);
+        org.json.JSONArray report = stateStore.getSessionResult(sessionId);
+        int success = 0;
+        int failed = 0;
+        StringBuilder details = new StringBuilder();
+        for (int i = 0; i < report.length(); i++) {
+            try {
+                org.json.JSONObject item = report.getJSONObject(i);
+                boolean itemSuccess = item.optBoolean("success", false);
+                if (itemSuccess) {
+                    success++;
+                } else {
+                    failed++;
+                }
+                details.append(item.optString("name", "arquivo"))
+                        .append(" -> ")
+                        .append(itemSuccess ? "sucesso" : "falha")
+                        .append(" (")
+                        .append(item.optString("reason", "unknown"))
+                        .append(")\n");
+            } catch (Exception ignored) {
+            }
+        }
+
+        DialogUtils.oneDialog(this,
+                "Relatório de importação",
+                "Sucesso: " + success + "\nFalha: " + failed + "\n\n" + details,
+                getString(R.string.ok),
+                true,
+                failed == 0 ? R.drawable.verified_user_24px : R.drawable.warning_48px,
+                true,
+                null,
+                null);
+    }
 
     private void setDefault() {
         String defQemuParams = RafaeliaQemuProfile.defaultParams(
