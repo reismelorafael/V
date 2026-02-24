@@ -23,6 +23,7 @@ import android.widget.BaseAdapter;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
@@ -46,7 +47,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Objects;
 
 public class Minitools extends AppCompatActivity {
     private final String TAG = "Minitools";
@@ -70,8 +70,11 @@ public class Minitools extends AppCompatActivity {
 
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-        Objects.requireNonNull(getSupportActionBar()).setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setDisplayShowHomeEnabled(true);
+        ActionBar supportBar = getSupportActionBar();
+        if (supportBar != null) {
+            supportBar.setDisplayHomeAsUpEnabled(true);
+            supportBar.setDisplayShowHomeEnabled(true);
+        }
         toolbar.setTitle(getString(R.string.mini_tools));
 
         setupsoundfortermux = findViewById(R.id.setupsoundfortermux);

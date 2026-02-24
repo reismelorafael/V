@@ -104,9 +104,10 @@ public class DataExplorerActivity extends AppCompatActivity {
         loadingPb = findViewById(R.id.loadingPb);
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-        if (getActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            getSupportActionBar().setDisplayShowHomeEnabled(true);
+        ActionBar supportBar = getSupportActionBar();
+        if (supportBar != null) {
+            supportBar.setDisplayHomeAsUpEnabled(true);
+            supportBar.setDisplayShowHomeEnabled(true);
         }
 
         lv = findViewById(R.id.listview1);

@@ -15,6 +15,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
@@ -25,7 +26,6 @@ import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.TextView;
 
-import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -46,8 +46,11 @@ public class AboutActivity extends AppCompatActivity implements View.OnClickList
 //        UIUtils.setOnApplyWindowInsetsListener(findViewById(R.id.main));
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-        Objects.requireNonNull(getSupportActionBar()).setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setDisplayShowHomeEnabled(true);
+        ActionBar supportBar = getSupportActionBar();
+        if (supportBar != null) {
+            supportBar.setDisplayHomeAsUpEnabled(true);
+            supportBar.setDisplayShowHomeEnabled(true);
+        }
         toolbar.setTitle(getResources().getString(R.string.about));
         //btn
         btn_youtube = findViewById(R.id.btn_youtube);
