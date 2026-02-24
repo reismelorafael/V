@@ -43,272 +43,396 @@ concurrency:
   group: android-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  build:
-    timeout-minutes: 90
+env:
+  JAVA_VERSION: '17'
+  COMPILE_API: '35'
+  TARGET_API: '35'
+  RELEASE_MIN_TARGET_API: '34'
+  TOOLS_VERSION: '35.0.0'
+  CMAKE_VERSION: '3.22.1'
+  NDK_VERSION: '27.2.12479018'
+  GRADLE_ARGS: >-
+    -PCOMPILE_API=35 -PTARGET_API=35 -PRELEASE_MIN_TARGET_API=34
+    -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17
+    -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
 
+jobs:
+  preflight:
+    name: '01 • Preflight Checks'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      has_signing_secrets: ${{ steps.release_mode.outputs.has_signing_secrets }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Block sensitive artifacts in repository (warn only)
+        continue-on-error: true
+        run: bash tools/security/block_sensitive_artifacts.sh
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install \
+            'platform-tools' \
+            'platforms;android-35' \
+            'build-tools;35.0.0' \
+            'platforms;android-34' \
+            'build-tools;34.0.0' \
+            'ndk;27.2.12479018' \
+            'cmake;3.22.1'
+
+      - name: Generate local.properties
+        run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Print Java and Gradle runtime versions
+        run: |
+          java -version
+          ./gradlew --version
+
+      - name: Detect release signing mode
+        id: release_mode
+        run: |
+          if [[ -n "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" \
+            && -n "${{ secrets.VECTRAS_RELEASE_STORE_PASSWORD }}" \
+            && -n "${{ secrets.VECTRAS_RELEASE_KEY_ALIAS }}" \
+            && -n "${{ secrets.VECTRAS_RELEASE_KEY_PASSWORD }}" ]]; then
+            echo "has_signing_secrets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_signing_secrets=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate release version metadata consistency
+        run: |
+          set -euo pipefail
+          changelog_version="$(sed -n 's/^## \[\([^]]*\)\].*/\1/p' CHANGELOG.md | grep -v '^Unreleased$' | head -n1)"
+          gradle_version="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' app/build.gradle | head -n1)"
+
+          if [[ -z "${changelog_version}" || -z "${gradle_version}" ]]; then
+            echo "Unable to extract version from CHANGELOG.md or app/build.gradle" >&2
+            exit 1
+          fi
+
+          echo "CHANGELOG version: ${changelog_version}"
+          echo "Gradle versionName: ${gradle_version}"
+
+          if [[ "${changelog_version}" != "${gradle_version}" ]]; then
+            echo "Version mismatch: CHANGELOG.md (${changelog_version}) != app/build.gradle (${gradle_version})" >&2
+            exit 1
+          fi
+
+      - name: Enforce release target API baseline
+        run: ./tools/check_target_api_baseline.sh gradle.properties
+
+      - name: Validate local markdown links (optional)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          md_files = [Path('README.md'), *Path('docs').rglob('*.md')]
+          link_pattern = re.compile(r'\[[^\]]+\]\(([^)]+)\)')
+          failures = []
+
+          for md_file in md_files:
+            content = md_file.read_text(encoding='utf-8')
+            for raw_target in link_pattern.findall(content):
+              target = raw_target.strip()
+              if not target or target.startswith(('http://', 'https://', 'mailto:', '#')):
+                continue
+              target = target.split('#', 1)[0]
+              if not target:
+                continue
+              if target.startswith('/'):
+                resolved = Path(target.lstrip('/'))
+              else:
+                resolved = (md_file.parent / target).resolve().relative_to(Path.cwd().resolve())
+              if not Path(resolved).exists():
+                failures.append(f"{md_file}: missing -> {raw_target}")
+
+          if failures:
+            print('Local markdown link validation failures:')
+            for failure in failures:
+              print(f' - {failure}')
+            raise SystemExit(1)
+
+          print(f'Validated local markdown links in {len(md_files)} files.')
+          PY
+
+  test_and_verify:
+    name: '02 • Test and Verify'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: preflight
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install \
+            'platform-tools' \
+            'platforms;android-35' \
+            'build-tools;35.0.0' \
+            'platforms;android-34' \
+            'build-tools;34.0.0' \
+            'ndk;27.2.12479018' \
+            'cmake;3.22.1'
+
+      - name: Generate local.properties
+        run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run ProotCommandBuilder unit tests
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: ./gradlew :app:testDebugUnitTest --tests com.vectras.vm.core.ProotCommandBuilderTest ${{ env.GRADLE_ARGS }}
+
+      - name: Verify repository file dependencies
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: ./gradlew verifyRepoFileDependencies ${{ env.GRADLE_ARGS }}
+
+      - name: Verify arm64 native toolchain compatibility
+        run: ./gradlew verifyArm64ToolchainCompatibility -PNDK_VERSION=${{ env.NDK_VERSION }}
+
+  build_debug:
+    name: '03 • Build Debug APK'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: test_and_verify
     environment: BuildAPK
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Block sensitive artifacts in repository (warn only)
-      continue-on-error: true
-      run: bash tools/security/block_sensitive_artifacts.sh
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: gradle
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-    - name: Set up Android SDK
-      uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install \
+            'platform-tools' \
+            'platforms;android-35' \
+            'build-tools;35.0.0' \
+            'platforms;android-34' \
+            'build-tools;34.0.0' \
+            'ndk;27.2.12479018' \
+            'cmake;3.22.1'
 
-    - name: Install Android SDK packages
-      run: |
-        sdkmanager --install \
-          'platform-tools' \
-          'platforms;android-35' \
-          'build-tools;35.0.0' \
-          'platforms;android-34' \
-          'build-tools;34.0.0' \
-          'ndk;27.2.12479018' \
-          'cmake;3.22.1'
+      - name: Generate local.properties
+        run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
 
-    - name: Generate local.properties
-      run: |
-        echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+      - name: Build Debug APK
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: ./gradlew assembleDebug ${{ env.GRADLE_ARGS }}
 
-    - name: Print Java and Gradle runtime versions
-      run: |
-        java -version
-        ./gradlew --version
-
-    - name: Run ProotCommandBuilder unit tests
-      env:
-        ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
-        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew :app:testDebugUnitTest --tests com.vectras.vm.core.ProotCommandBuilderTest -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
-
-    - name: Verify repository file dependencies
-      env:
-        ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
-        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew verifyRepoFileDependencies -PCOMPILE_API=35 -PTARGET_API=35 -PRELEASE_MIN_TARGET_API=34 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
-
-    - name: Verify arm64 native toolchain compatibility
-      run: ./gradlew verifyArm64ToolchainCompatibility -PNDK_VERSION=27.2.12479018
-
-    - name: Validate release version metadata consistency
-      run: |
-        set -euo pipefail
-        changelog_version="$(sed -n 's/^## \[\([^]]*\)\].*/\1/p' CHANGELOG.md | grep -v '^Unreleased$' | head -n1)"
-        gradle_version="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' app/build.gradle | head -n1)"
-
-        if [[ -z "${changelog_version}" || -z "${gradle_version}" ]]; then
-          echo "Unable to extract version from CHANGELOG.md or app/build.gradle" >&2
-          exit 1
-        fi
-
-        echo "CHANGELOG version: ${changelog_version}"
-        echo "Gradle versionName: ${gradle_version}"
-
-        if [[ "${changelog_version}" != "${gradle_version}" ]]; then
-          echo "Version mismatch: CHANGELOG.md (${changelog_version}) != app/build.gradle (${gradle_version})" >&2
-          exit 1
-        fi
-
-    - name: Enforce release target API baseline
-      run: ./tools/check_target_api_baseline.sh gradle.properties
-
-    - name: Validate local markdown links (optional)
-      continue-on-error: true
-      run: |
-        python3 - <<'PY'
-        from pathlib import Path
-        import re
-
-        md_files = [Path('README.md'), *Path('docs').rglob('*.md')]
-        link_pattern = re.compile(r'\[[^\]]+\]\(([^)]+)\)')
-        failures = []
-
-        for md_file in md_files:
-          content = md_file.read_text(encoding='utf-8')
-          for raw_target in link_pattern.findall(content):
-            target = raw_target.strip()
-            if not target or target.startswith(('http://', 'https://', 'mailto:', '#')):
-              continue
-            target = target.split('#', 1)[0]
-            if not target:
-              continue
-            if target.startswith('/'):
-              resolved = Path(target.lstrip('/'))
-            else:
-              resolved = (md_file.parent / target).resolve().relative_to(Path.cwd().resolve())
-            if not Path(resolved).exists():
-              failures.append(f"{md_file}: missing -> {raw_target}")
-
-        if failures:
-          print('Local markdown link validation failures:')
-          for failure in failures:
-            print(f' - {failure}')
-          raise SystemExit(1)
-
-        print(f'Validated local markdown links in {len(md_files)} files.')
-        PY
-
-    - name: Send notification to Telegram
-      run: |
-        set -euo pipefail
-        if [[ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]]; then
-          message=$'New update available on GitHub repository and building APK.\nPlease wait about 5 minutes.\nRun ID: '${GITHUB_RUN_ID}
-
-          curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-               -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-               -d "message_thread_id=8" \
-               -d "text=${message}"
-
-          curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-               -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID_VEC }}" \
-               -d "text=${message}"
-        fi
-
-    - name: Build Debug APK
-      env:
-        ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
-        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew assembleDebug -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
-
-    - name: Validate native binaries are arm64-v8a
-      shell: bash
-      run: |
-        set -euo pipefail
-        NDK_VERSION="27.2.12479018"
-        NDK_ROOT="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
-        READELF="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
-        if [[ ! -x "${READELF}" ]]; then
-          READELF="$(command -v readelf || true)"
-        fi
-        if [[ -z "${READELF}" ]]; then
-          echo "No readelf implementation found for ELF validation." >&2
-          exit 1
-        fi
-
-        mapfile -t native_libs < <(find app/build -type f -path '*/obj/arm64-v8a/*.so' | sort)
-        if [[ ${#native_libs[@]} -eq 0 ]]; then
-          echo "No arm64-v8a native binaries found under app/build/**/obj/arm64-v8a/*.so" >&2
-          exit 1
-        fi
-
-        for lib in "${native_libs[@]}"; do
-          echo "Validating ELF machine for ${lib}"
-          "${READELF}" -h "${lib}" | tee /tmp/elf_header.txt
-          grep -q 'Machine:.*AArch64' /tmp/elf_header.txt || {
-            echo "Unexpected ELF machine for ${lib}; expected AArch64." >&2
-            exit 1
-          }
-        done
-
-        if find app/build -type f -path '*/obj/*/*.so' | grep -qv '/obj/arm64-v8a/'; then
-          echo "Unexpected non-arm64 native output detected in obj directory." >&2
-          find app/build -type f -path '*/obj/*/*.so' | grep -v '/obj/arm64-v8a/' >&2
-          exit 1
-        fi
-
-    - name: Build Release APK (signed via CI secrets)
-      env:
-        ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
-        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-        VECTRAS_RELEASE_STORE_FILE: ${{ runner.temp }}/vectras-release.jks
-        VECTRAS_RELEASE_STORE_PASSWORD: ${{ secrets.VECTRAS_RELEASE_STORE_PASSWORD }}
-        VECTRAS_RELEASE_KEY_ALIAS: ${{ secrets.VECTRAS_RELEASE_KEY_ALIAS }}
-        VECTRAS_RELEASE_KEY_PASSWORD: ${{ secrets.VECTRAS_RELEASE_KEY_PASSWORD }}
-      run: |
-        if [[ -z "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" ]]; then
-          echo "Missing VECTRAS_RELEASE_KEYSTORE_B64 secret for release signing" >&2
-          exit 1
-        fi
-        echo "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" | base64 --decode > "$VECTRAS_RELEASE_STORE_FILE"
-        ./gradlew assembleRelease \
-          -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018 \
-          -Pandroid.injected.signing.store.file="$VECTRAS_RELEASE_STORE_FILE" \
-          -Pandroid.injected.signing.store.password="$VECTRAS_RELEASE_STORE_PASSWORD" \
-          -Pandroid.injected.signing.key.alias="$VECTRAS_RELEASE_KEY_ALIAS" \
-          -Pandroid.injected.signing.key.password="$VECTRAS_RELEASE_KEY_PASSWORD"
-
-    - name: Upload Debug APK as artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: android-debug-apk
-        path: app/build/outputs/apk/debug/app-debug.apk
-
-    - name: Upload Release APK as artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: android-release-apk
-        path: app/build/outputs/apk/release/app-release.apk
-
-    - name: Upload to Telegram
-      run: |
+      - name: Validate native binaries are arm64-v8a
+        shell: bash
+        run: |
           set -euo pipefail
-          if [[ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]]; then
-            shopt -s nullglob
-            success=true
-            caption=$'Done! Note that this is a version that is automatically built when there are changes in the GitHub repository, not the official version. Please only install it if you really want to see what is new.\nExplore beta releases here: https://github.com/AnBui2004/Vectras-VM-Emu-Android/releases\nRun ID: '${GITHUB_RUN_ID}
-
-            release_apks=(app/build/outputs/apk/release/*.apk)
-            if [ ${#release_apks[@]} -eq 0 ]; then
-              echo "No release APK found to upload" >&2
-              success=false
-            fi
-
-            for file in "${release_apks[@]}"; do
-              echo "Uploading $(basename "$file")"
-              tries=0
-              success_file=false
-              until [ $tries -ge 5 ]; do
-                if curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null \
-                        -F "document=@${file}" \
-                        -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-                        -F "message_thread_id=8" \
-                        -F "caption=${caption}" \
-                        "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-                  && curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null \
-                        -F "document=@${file}" \
-                        -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID_VEC }}" \
-                        -F "caption=${caption}" \
-                        "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"; then
-                  success_file=true
-                  break
-                fi
-
-                tries=$((tries + 1))
-                echo "Retrying upload for $file (attempt ${tries}/5)..."
-                sleep 2
-              done
-
-              if ! $success_file; then
-                echo "Upload failed for $file"
-                success=false
-              fi
-            done
-
-            if [ "$success" = false ]; then
-              error_message=$'Something went wrong and the APK file could not be uploaded.\nExplore beta releases here: https://github.com/AnBui2004/Vectras-VM-Emu-Android/releases\nRun ID: '${GITHUB_RUN_ID}
-
-              curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-                   -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-                   -d "message_thread_id=8" \
-                   -d "text=${error_message}"
-
-              curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-                   -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID_VEC }}" \
-                   -d "text=${error_message}"
-            fi
+          NDK_ROOT="${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}"
+          READELF="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          if [[ ! -x "${READELF}" ]]; then
+            READELF="$(command -v readelf || true)"
           fi
+          if [[ -z "${READELF}" ]]; then
+            echo "No readelf implementation found for ELF validation." >&2
+            exit 1
+          fi
+
+          mapfile -t native_libs < <(find app/build -type f -path '*/obj/arm64-v8a/*.so' | sort)
+          if [[ ${#native_libs[@]} -eq 0 ]]; then
+            echo "No arm64-v8a native binaries found under app/build/**/obj/arm64-v8a/*.so" >&2
+            exit 1
+          fi
+
+          for lib in "${native_libs[@]}"; do
+            echo "Validating ELF machine for ${lib}"
+            "${READELF}" -h "${lib}" | tee /tmp/elf_header.txt
+            grep -q 'Machine:.*AArch64' /tmp/elf_header.txt || {
+              echo "Unexpected ELF machine for ${lib}; expected AArch64." >&2
+              exit 1
+            }
+          done
+
+          if find app/build -type f -path '*/obj/*/*.so' | grep -qv '/obj/arm64-v8a/'; then
+            echo "Unexpected non-arm64 native output detected in obj directory." >&2
+            find app/build -type f -path '*/obj/*/*.so' | grep -v '/obj/arm64-v8a/' >&2
+            exit 1
+          fi
+
+      - name: Upload Debug APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+  build_release:
+    name: '04 • Build Release APK'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs:
+      - preflight
+      - test_and_verify
+    environment: BuildAPK
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install \
+            'platform-tools' \
+            'platforms;android-35' \
+            'build-tools;35.0.0' \
+            'platforms;android-34' \
+            'build-tools;34.0.0' \
+            'ndk;27.2.12479018' \
+            'cmake;3.22.1'
+
+      - name: Generate local.properties
+        run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Release APK (signed/unsigned conditional)
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+          VECTRAS_RELEASE_STORE_FILE: ${{ runner.temp }}/vectras-release.jks
+          VECTRAS_RELEASE_STORE_PASSWORD: ${{ secrets.VECTRAS_RELEASE_STORE_PASSWORD }}
+          VECTRAS_RELEASE_KEY_ALIAS: ${{ secrets.VECTRAS_RELEASE_KEY_ALIAS }}
+          VECTRAS_RELEASE_KEY_PASSWORD: ${{ secrets.VECTRAS_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ needs.preflight.outputs.has_signing_secrets }}" == 'true' ]]; then
+            echo "Signed release build enabled by CI secrets."
+            echo "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" | base64 --decode > "$VECTRAS_RELEASE_STORE_FILE"
+            ./gradlew assembleRelease \
+              ${{ env.GRADLE_ARGS }} \
+              -Pandroid.injected.signing.store.file="$VECTRAS_RELEASE_STORE_FILE" \
+              -Pandroid.injected.signing.store.password="$VECTRAS_RELEASE_STORE_PASSWORD" \
+              -Pandroid.injected.signing.key.alias="$VECTRAS_RELEASE_KEY_ALIAS" \
+              -Pandroid.injected.signing.key.password="$VECTRAS_RELEASE_KEY_PASSWORD"
+          else
+            echo "Signing secrets not available, running unsigned release build."
+            ./gradlew assembleRelease ${{ env.GRADLE_ARGS }}
+          fi
+
+      - name: Upload Release APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-apk
+          path: app/build/outputs/apk/release/*.apk
+
+  notify:
+    name: '05 • Notify and Publish Status'
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - build_debug
+      - build_release
+
+    steps:
+      - name: Download release artifact
+        if: needs.build_release.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: android-release-apk
+          path: artifacts/release
+
+      - name: Send build summary to Telegram
+        if: always() && secrets.TELEGRAM_BOT_TOKEN != ''
+        run: |
+          set -euo pipefail
+          summary="Debug=${{ needs.build_debug.result }}, Release=${{ needs.build_release.result }}"
+          message=$'Android CI finished.\n'"${summary}"$'\nRun ID: '${GITHUB_RUN_ID}
+
+          curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+              -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+              -d "message_thread_id=8" \
+              -d "text=${message}"
+
+          curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+              -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID_VEC }}" \
+              -d "text=${message}"
+
+      - name: Upload release APK to Telegram
+        if: always() && needs.build_release.result == 'success' && secrets.TELEGRAM_BOT_TOKEN != ''
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          release_apks=(artifacts/release/*.apk)
+          if [ ${#release_apks[@]} -eq 0 ]; then
+            echo "No release APK found to upload." >&2
+            exit 1
+          fi
+
+          caption=$'Done! Note that this is a version that is automatically built when there are changes in the GitHub repository, not the official version. Please only install it if you really want to see what is new.\nExplore beta releases here: https://github.com/AnBui2004/Vectras-VM-Emu-Android/releases\nRun ID: '${GITHUB_RUN_ID}
+
+          for file in "${release_apks[@]}"; do
+            curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null \
+              -F "document=@${file}" \
+              -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+              -F "message_thread_id=8" \
+              -F "caption=${caption}" \
+              "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
+
+            curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null \
+              -F "document=@${file}" \
+              -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID_VEC }}" \
+              -F "caption=${caption}" \
+              "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
+          done
