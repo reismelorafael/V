@@ -54,6 +54,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class MainStartVM {
     public static final String TAG = "HomeStartVM";
@@ -245,6 +246,12 @@ public class MainStartVM {
             return;
         }
 
+        env = reserveSpicePortIfNeeded(context, finalvmID, env);
+        if (env != null && env.contains(StartVM.SPICE_PORT_PLACEHOLDER)) {
+            VmFlowTracker.mark(context, finalvmID, VmFlowState.ERROR, "spice_port_reservation_failed", "abort");
+            stopLaunchPoller();
+            return;
+        }
         VMManager.lastQemuCommand = env;
 
         if (VMManager.isVMRunning(context, finalvmID)) {
@@ -283,7 +290,7 @@ public class MainStartVM {
         if (MainSettingsManager.getVncExternal(context) &&
                 NetworkUtils.isPortOpen("localhost", Config.defaultVNCPort, 500)) {
             DialogUtils.twoDialog(context, context.getString(R.string.problem_has_been_detected),
-                    context.getString(R.string.the_vnc_server_port_you_set_is_currently_in_use_by_other),
+                    "Unable to reserve a local SPICE port.",
                     context.getString(R.string.go_to_settings),
                     context.getString(R.string.close),
                     true, R.drawable.warning_48px, true,
@@ -436,6 +443,56 @@ public class MainStartVM {
         }
     }
 
+
+    private static String reserveSpicePortIfNeeded(Context context, String vmId, String env) {
+        releaseReservedSpicePort();
+        reservedSpiceVmId = "";
+
+        if (!MainSettingsManager.getVmUi(context).equals("SPICE")) {
+            return env;
+        }
+        if (env == null || !env.contains(StartVM.SPICE_PORT_PLACEHOLDER)) {
+            return env;
+        }
+
+        ServerSocket reservedPort = VMManager.reserveRandomPort();
+        if (reservedPort == null) {
+            DialogUtils.oneDialog(
+                    context,
+                    context.getString(R.string.problem_has_been_detected),
+                    "Unable to reserve a local SPICE port.",
+                    R.drawable.warning_48px
+            );
+            return env;
+        }
+
+        RESERVED_SPICE_PORT.set(reservedPort);
+        reservedSpiceVmId = vmId;
+        return env.replace(StartVM.SPICE_PORT_PLACEHOLDER, String.valueOf(reservedPort.getLocalPort()));
+    }
+
+    private static void releaseReservedSpicePort() {
+        ServerSocket reserved = RESERVED_SPICE_PORT.getAndSet(null);
+        VMManager.releaseReservedPort(reserved);
+        reservedSpiceVmId = "";
+    }
+
+    private static synchronized void submitVncPasswordTask(String password) {
+        if (vncPasswordTask != null) {
+            vncPasswordTask.cancel(true);
+        }
+        vncPasswordTask = VNC_PASSWORD_EXECUTOR.submit(() ->
+                QmpClient.sendCommand(QmpClient.setVncPassword(password), 3, 500)
+        );
+    }
+
+    private static synchronized void cancelVncPasswordTask() {
+        if (vncPasswordTask != null) {
+            vncPasswordTask.cancel(true);
+            vncPasswordTask = null;
+        }
+    }
+
     private static void applyVncPasswordOverQmpIfNeeded(Context context) {
         if (!MainSettingsManager.getVmUi(context).equals("VNC")) {
             return;
@@ -488,7 +545,9 @@ public class MainStartVM {
                             Log.i(TAG, "engine-only launch completed without frontend attach");
                         } else if (MainSettingsManager.getVmUi(launchContext).equals("VNC")) {
                             applyVncPasswordOverQmpIfNeeded(launchContext);
-                            if (MainSettingsManager.getVncExternal(launchContext)) {
+                            String externalPassword = MainSettingsManager.getVncExternalPassword(launchContext);
+                            boolean hasExternalPassword = externalPassword != null && !externalPassword.isEmpty();
+                            if (MainSettingsManager.getVncExternal(launchContext) && hasExternalPassword) {
                                 Config.currentVNCServervmID = vmId;
                                 DialogUtils.oneDialog(launchContext,
                                         launchContext.getString(R.string.vnc_server),
@@ -507,6 +566,9 @@ public class MainStartVM {
                             DisplaySystem.launch(launchContext);
                         }
 
+                        if (vmId != null && vmId.equals(reservedSpiceVmId)) {
+                            releaseReservedSpicePort();
+                        }
                         VmFlowTracker.mark(launchContext, vmId, VmFlowState.RUNNING, "launch_ready", "running");
                         Log.i(TAG, "Virtual machine running.");
                     }

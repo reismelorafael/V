@@ -84,7 +84,7 @@ import java.util.regex.Pattern;
 public class VMManager {
 
     public static final String TAG = "VMManager";
-    public static String finalJson = "";
+    private static volatile String finalJson = "";
     public static String pendingDeviceID = "";
     public static String generatedVMId = "";
     public static int restoredVMs = 0;
@@ -97,6 +97,14 @@ public class VMManager {
     private static final ConcurrentHashMap<String, VmRuntimeState> VM_STATES = new ConcurrentHashMap<>();
     private static final AtomicLong UNKNOWN_VM_SEQUENCE = new AtomicLong(1L);
     private static final Pattern SAFE_COMMAND_CHARS = Pattern.compile("^[a-zA-Z0-9_./,:=+\\-\"' ]+$");
+
+    public static String getFinalJson() {
+        return finalJson;
+    }
+
+    private static synchronized void setFinalJson(String value) {
+        finalJson = value == null ? "" : value;
+    }
 
     private enum VmRuntimeState {
         STOPPED,
@@ -653,6 +661,48 @@ public class VMManager {
         return result.toString();
     }
 
+
+    public static ServerSocket reserveRandomPort() {
+        final Random random = new Random();
+        final int min = 10_000;
+        final int max = 65_535;
+        final int attempts = 128;
+        Set<Integer> reservedPorts = readReservedPortsFromVmDb();
+
+        for (int attempt = 0; attempt < attempts; attempt++) {
+            int candidate = random.nextInt(max - min + 1) + min;
+            if (reservedPorts.contains(candidate)) {
+                continue;
+            }
+            try {
+                ServerSocket socket = new ServerSocket(candidate);
+                socket.setReuseAddress(false);
+                return socket;
+            } catch (IOException ignored) {
+                // Busy port, keep searching.
+            }
+        }
+
+        try {
+            ServerSocket socket = new ServerSocket(0);
+            socket.setReuseAddress(false);
+            return socket;
+        } catch (IOException ioException) {
+            return null;
+        }
+    }
+
+    public static void releaseReservedPort(ServerSocket socket) {
+        if (socket == null) {
+            return;
+        }
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+            // Best effort release.
+        }
+    }
+
     //This can be removed because QMP currently uses sockets instead of open ports.
     @Deprecated
     public static int startRandomPort() {
@@ -704,13 +754,32 @@ public class VMManager {
         }
     }
 
+    static ArrayList<HashMap<String, Object>> parseVmListJson(String json) {
+        if (json == null || json.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        try {
+            ArrayList<HashMap<String, Object>> vmList = new Gson().fromJson(json, new TypeToken<ArrayList<HashMap<String, Object>>>() {
+            }.getType());
+            return vmList != null ? vmList : new ArrayList<>();
+        } catch (RuntimeException parseError) {
+            Log.w(TAG, "parseVmListJson: invalid JSON, using empty list", parseError);
+            return new ArrayList<>();
+        }
+    }
+
+    static boolean isValidVmPosition(ArrayList<HashMap<String, Object>> vmList, int position) {
+        return vmList != null && position >= 0 && position < vmList.size();
+    }
+
     public static void deleteVM(int position) {
         String vmId;
-        ArrayList<HashMap<String, Object>> vmList;
-        vmList = new Gson().fromJson(FileUtils.readAFile(AppConfig.maindirpath + "roms-data.json"), new TypeToken<ArrayList<HashMap<String, Object>>>() {
-        }.getType());
+        ArrayList<HashMap<String, Object>> vmList = parseVmListJson(
+                FileUtils.readAFile(AppConfig.maindirpath + "roms-data.json"));
 
-        if (position > vmList.size() - 1) return;
+        if (!isValidVmPosition(vmList, position)) {
+            return;
+        }
 
         if (vmList.get(position).containsKey("vmID")) {
             vmId = Objects.requireNonNull(vmList.get(position).get("vmID")).toString();
@@ -723,7 +792,7 @@ public class VMManager {
             return;
         }
         vmList.remove(position);
-        finalJson = new Gson().toJson(vmList);
+        setFinalJson(new Gson().toJson(vmList));
         if (!vmId.isEmpty()) {
             int _startRepeat = 0;
             String _currentVMIDToScan;
@@ -736,7 +805,7 @@ public class VMManager {
                             _currentVMIDToScan = FileUtils.readAFile(_filelist.get(_startRepeat) + "/vmID.txt").replace("\n", "");
                             if (!_currentVMIDToScan.isEmpty()) {
                                 if (_currentVMIDToScan.equals(vmId)) {
-                                    if (!finalJson.contains(_filelist.get(_startRepeat))) {
+                                    if (!getFinalJson().contains(_filelist.get(_startRepeat))) {
                                         FileUtils.deleteDirectory(_filelist.get(_startRepeat));
                                     } else {
                                         isKeptSomeFiles = true;
@@ -813,8 +882,9 @@ public class VMManager {
     }
 
     public static void cleanUp() {
-        finalJson = FileUtils.readAFile(AppConfig.romsdatajson);
-        if (!finalJson.isEmpty()) {
+        setFinalJson(FileUtils.readAFile(AppConfig.romsdatajson));
+        String snapshot = getFinalJson();
+        if (!snapshot.isEmpty()) {
             int _startRepeat = 0;
             ArrayList<String> _filelist = new ArrayList<>();
             FileUtils.getAListOfAllFilesAndFoldersInADirectory(AppConfig.vmFolder, _filelist);
@@ -822,7 +892,7 @@ public class VMManager {
                 for (int _repeat = 0; _repeat < _filelist.size(); _repeat++) {
                     if (_startRepeat < _filelist.size()) {
                         if (!isFileExists(_filelist.get(_startRepeat) + "/vmID.txt")) {
-                            if (!finalJson.contains(_filelist.get(_startRepeat))) {
+                            if (!snapshot.contains(_filelist.get(_startRepeat))) {
                                 FileUtils.deleteDirectory(_filelist.get(_startRepeat));
                             }
                         }
@@ -975,15 +1045,16 @@ public class VMManager {
                 return;
             }
         }
-        finalJson = FileUtils.readAFile(AppConfig.romsdatajson);
-        if (!finalJson.isEmpty()) {
+        setFinalJson(FileUtils.readAFile(AppConfig.romsdatajson));
+        String snapshot = getFinalJson();
+        if (!snapshot.isEmpty()) {
             int _startRepeat = 0;
             ArrayList<String> _filelist = new ArrayList<>();
             FileUtils.getAListOfAllFilesAndFoldersInADirectory(AppConfig.vmFolder, _filelist);
             if (!_filelist.isEmpty()) {
                 for (int _repeat = 0; _repeat < _filelist.size(); _repeat++) {
                     if (_startRepeat < _filelist.size()) {
-                        if (!finalJson.contains(Objects.requireNonNull(Uri.parse(_filelist.get(_startRepeat)).getLastPathSegment()))) {
+                        if (!snapshot.contains(Objects.requireNonNull(Uri.parse(_filelist.get(_startRepeat)).getLastPathSegment()))) {
                             FileUtils.moveAFile(_filelist.get(_startRepeat), AppConfig.recyclebin + Uri.parse(_filelist.get(_startRepeat)).getLastPathSegment());
                         }
                     }

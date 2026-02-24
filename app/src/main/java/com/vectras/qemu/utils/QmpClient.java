@@ -14,6 +14,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class QmpClient {
 
@@ -27,16 +28,29 @@ public class QmpClient {
 	private static final int STOP_RETRIES = 1;
 	private static final int STOP_RETRY_DELAY_MS = 150;
 	public static boolean allow_external = false;
+	private static final ConcurrentHashMap<String, Object> VM_SOCKET_LOCKS = new ConcurrentHashMap<>();
 
-	public synchronized static String sendCommand(String command) {
+	private static Object lockForCurrentSocket() {
+		String key;
+		if (allow_external) {
+			key = "tcp:" + Config.QMPServer + ":" + Config.QMPPort;
+		} else {
+			key = "unix:" + Config.getLocalQMPSocketPath();
+		}
+		return VM_SOCKET_LOCKS.computeIfAbsent(key, ignored -> new Object());
+	}
+
+	public static String sendCommand(String command) {
 		return sendCommand(command, DEFAULT_RETRIES, DEFAULT_RETRY_DELAY_MS);
 	}
 
-	public synchronized static String sendCommandForStopPath(String command) {
+	public static String sendCommandForStopPath(String command) {
 		return sendCommand(command, STOP_RETRIES, STOP_RETRY_DELAY_MS);
 	}
 
-	public synchronized static String sendCommand(String command, int maxRetries, int retryDelayMs) {
+	public static String sendCommand(String command, int maxRetries, int retryDelayMs) {
+		Object vmLock = lockForCurrentSocket();
+		synchronized (vmLock) {
 		String response = null;
 		boolean isQueryMigrateCommand = isQueryMigrateCommand(command);
 		int trial=0;
@@ -110,6 +124,7 @@ public class QmpClient {
 		}
 
 		return response;
+		}
 	}
 
 	private static boolean isQueryMigrateCommand(String command) {
