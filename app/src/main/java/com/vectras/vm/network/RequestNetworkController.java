@@ -47,6 +47,7 @@ public class RequestNetworkController {
             HttpURLConnection connection = null;
             try {
                 String finalUrl = buildFinalUrl(url, requestNetwork, method);
+                EndpointValidator.requireValidHttpUrl(finalUrl, "request url");
                 URL target = new URL(finalUrl);
                 connection = (HttpURLConnection) target.openConnection();
                 connection.setConnectTimeout(SOCKET_TIMEOUT);

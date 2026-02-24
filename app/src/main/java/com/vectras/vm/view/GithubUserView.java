@@ -14,6 +14,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.vectras.vm.R;
+import com.vectras.vm.network.EndpointValidator;
+import com.vectras.vm.network.NetworkEndpoints;
 
 import org.json.JSONObject;
 
@@ -28,7 +30,6 @@ public class GithubUserView extends LinearLayout {
     private ImageView profileImage;
     private TextView userName;
     private TextView userDescription;
-    private static final String BASE_URL = "https://api.github.com/users/";
     private String thisUserNameGitHub = "";
     private final ExecutorService io = Executors.newSingleThreadExecutor();
 
@@ -68,7 +69,9 @@ public class GithubUserView extends LinearLayout {
         io.execute(() -> {
             HttpURLConnection connection = null;
             try {
-                URL url = new URL(BASE_URL + username);
+                String profileApiUrl = NetworkEndpoints.githubApiUser(username);
+                EndpointValidator.requireValidHttpUrl(profileApiUrl, "github api user");
+                URL url = new URL(profileApiUrl);
                 connection = (HttpURLConnection) url.openConnection();
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(25000);
@@ -86,7 +89,7 @@ public class GithubUserView extends LinearLayout {
                 String avatar = json.optString("avatar_url", "");
 
                 Bitmap avatarBitmap = null;
-                if (!avatar.isEmpty()) {
+                if (EndpointValidator.isValidHttpUrl(avatar)) {
                     avatarBitmap = downloadBitmap(avatar);
                 }
 
@@ -146,7 +149,10 @@ public class GithubUserView extends LinearLayout {
         if (context instanceof Activity activity && (activity.isFinishing() || activity.isDestroyed())) {
             return;
         }
-        String url = "https://github.com/" + thisUserNameGitHub;
+        String url = NetworkEndpoints.githubProfile(thisUserNameGitHub);
+        if (!EndpointValidator.isValidHttpUrl(url)) {
+            return;
+        }
         context.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
     }
 }

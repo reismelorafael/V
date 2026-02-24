@@ -29,6 +29,7 @@ import com.vectras.vm.databinding.ActivityRomInfoBinding;
 import com.vectras.vm.download.DownloadItemState;
 import com.vectras.vm.download.DownloadStateStore;
 import com.vectras.vm.download.DownloadStatus;
+import com.vectras.vm.network.NetworkEndpoints;
 import com.vectras.vm.network.RequestNetwork;
 import com.vectras.vm.network.RequestNetworkController;
 import com.vectras.vm.utils.DialogUtils;
@@ -449,7 +450,7 @@ public class RomInfo extends AppCompatActivity {
                 }
             };
 
-            urlToGetInfo = "https://go.anbui.ovh/egg/contentinfo?id=" + contentID + (isAnBuiID ? "" : "&app=vectrasvm");
+            urlToGetInfo = NetworkEndpoints.romContentInfo(contentID, isAnBuiID);
             net.startRequestNetwork(RequestNetworkController.GET,urlToGetInfo,"contentinfo", _net_request_listener);
             Log.i(TAG, "urlToGetInfo: " + urlToGetInfo);
         }
@@ -593,7 +594,7 @@ public class RomInfo extends AppCompatActivity {
         );
 
         Request request = new Request.Builder()
-                .url("https://go.anbui.ovh/egg/updatelike?app=verctrasvm")
+                .url(NetworkEndpoints.romUpdateLike())
                 .post(body)
                 .build();
 
@@ -665,7 +666,7 @@ public class RomInfo extends AppCompatActivity {
         );
 
         Request request = new Request.Builder()
-                .url("https://go.anbui.ovh/egg/updateview?app=vectrasvm")
+                .url(NetworkEndpoints.romUpdateView())
                 .post(body)
                 .build();
 
