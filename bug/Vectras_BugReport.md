@@ -1,230 +1,83 @@
-# Vectras-VM-Android — Bug & Error Report
-**Kernel RAFAELIA ψ→Δ→Σ | Análise:** `vectra_core_accel.c` · `CMakeLists.txt` · `QmpClient.java` · `FileInstaller.java` · `build.gradle`
+# Vectras-VM-Android — Bug & Error Report (Audit Refresh)
+
+Base anterior revalidada contra o código atual da branch.
 
 ---
 
-## 🔴 CRÍTICO — Build Break
+## ✅ Achados stale marcados como resolvidos / desatualizados
 
-### BUG-01 · CMakeLists.txt — Alvo `rmr_core_static` indefinido
-**Arquivo:** `app/src/main/cpp/CMakeLists.txt` — linhas 41 e 59
+### BUG-01 · CMakeLists.txt — alvo `rmr_core_static` indefinido
+- **Status:** Resolved in current branch.
+- **Evidência atual:** `vectra_core_accel` não linka mais `rmr_core_static`; o link usa apenas alvos realmente declarados (`rmr_policy_static`, `bitraf_static`) e `${log-lib}`. Referências: `app/src/main/cpp/CMakeLists.txt:59-65`, `:100-113`, `:126-134`.
 
-```cmake
-# ❌ ERRO: rmr_core_static nunca é declarado com add_library()
-target_compile_options(rmr_core_static PRIVATE ...)        # linha 41
-target_link_libraries(vectra_core_accel PRIVATE rmr_core_static ${log-lib})  # linha 59
-```
+### BUG-02 · `vectra_core_accel.c` — include de `rmr_policy_kernel.h`
+- **Status:** Resolved in current branch.
+- **Evidência atual:** include está protegido por macro condicional. Referência: `app/src/main/cpp/vectra_core_accel.c:10-12`.
 
-Os arquivos-fonte do RMR são compilados diretamente dentro de `vectra_core_accel` (linhas 5–9 do CMakeLists), mas depois o `target_link_libraries` tenta linkar um alvo fantasma `rmr_core_static` que **jamais foi criado**. O build NDK falhará com `CMake Error: The target rmr_core_static does not exist`.
+### BUG-03 · `nativeCopyBytes` — release incorreto em falha de `GetPrimitiveArrayCritical`
+- **Status:** Resolved in current branch.
+- **Evidência atual:** fluxo agora libera `src` com `JNI_ABORT` quando `dst` falha, e não há caminho com pin leak. Referências: `app/src/main/cpp/vectra_core_accel.c:120-129`, `:136-137`.
 
-**Correção:**
-```cmake
-# Opção A — criar o alvo estático explicitamente
-add_library(rmr_core_static STATIC
-    ../../../../engine/rmr/src/rmr_unified_kernel.c
-    ../../../../engine/rmr/src/rmr_hw_detect.c
-    ../../../../engine/rmr/src/rmr_corelib.c
-    ../../../../engine/rmr/src/rmr_ll_ops.c
-    ../../../../engine/rmr/src/rmr_cycles.c)
-
-# Opção B — remover as fontes duplicadas de vectra_core_accel e linkar rmr_core_static
-target_link_libraries(vectra_core_accel PRIVATE rmr_core_static ${log-lib})
-```
-
----
-
-### BUG-02 · `vectra_core_accel.c` — `rmr_policy_kernel.h` incluso sem módulo linkado
-**Arquivo:** `vectra_core_accel.c` — linha 9
-
-```c
-#include "rmr_policy_kernel.h"   // incluso incondicionalmente
-```
-
-`rmr_policy_kernel.c` só é compilado quando `-DRMR_ENABLE_POLICY_MODULE=1` é passado ao CMake (bloco condicional no CMakeLists). Se o header declara funções que o `.c` implementa, o linker emitirá `undefined reference`. Proteger o include com a mesma macro:
-
-```c
-#ifdef RMR_ENABLE_POLICY_MODULE
-#include "rmr_policy_kernel.h"
-#endif
-```
-
----
-
-## 🟠 ALTO — Erros Lógicos e de Segurança JNI
-
-### BUG-03 · `nativeCopyBytes` — liberação incorreta de ponteiro `dst` em falha
-**Arquivo:** `vectra_core_accel.c` — bloco `nativeCopyBytes`
-
-```c
-jbyte* s = (*env)->GetPrimitiveArrayCritical(env, src, NULL);
-jbyte* d = (*env)->GetPrimitiveArrayCritical(env, dst, NULL);
-if (!s || !d) {
-    if (s) (*env)->ReleasePrimitiveArrayCritical(env, src, s, JNI_ABORT);
-    if (d) (*env)->ReleasePrimitiveArrayCritical(env, dst, d, 0);  // ⚠️ flag 0 = write-back
-    return RMR_KERNEL_ERR_STATE;
-}
-```
-
-Quando `s != NULL` mas `d == NULL`, o código retorna sem liberar `s` → **pin leak** da região crítica, bloqueando GC indefinidamente. Além disso, se `d != NULL` mas `s == NULL`, o `dst` é liberado com flag `0` (write-back) sem que nenhuma cópia tenha ocorrido — semanticamente incorreto.
-
-**Correção:**
-```c
-if (!s || !d) {
-    if (s) (*env)->ReleasePrimitiveArrayCritical(env, src, s, JNI_ABORT);
-    if (d) (*env)->ReleasePrimitiveArrayCritical(env, dst, d, JNI_ABORT); // ABORT, não 0
-    return RMR_KERNEL_ERR_STATE;
-}
-```
-
----
-
-### BUG-04 · `nativeXorChecksum` e `nativeArenaWrite` — ausência de bounds check
-**Arquivo:** `vectra_core_accel.c`
-
-`nativeXorChecksum` pina o array e passa `(const uint8_t*)p + offset` diretamente para `RmR_UnifiedKernel_XorChecksum` sem verificar que `offset + length <= GetArrayLength(...)`. Um `offset` malicioso causa leitura fora dos limites do array Java.
-
-Da mesma forma, `nativeArenaWrite` usa `(const uint8_t*)p + srcOffset` sem validar `srcOffset`.
-
-**Correção — padrão a aplicar nos dois métodos:**
-```c
-jsize arrLen = (*env)->GetArrayLength(env, data);
-if (offset > arrLen || length > (arrLen - offset)) return (jint)0x80000000u;
-```
-
----
+### BUG-04 · `nativeXorChecksum` / `nativeArenaWrite` — ausência de bounds check
+- **Status:** Resolved in current branch.
+- **Evidência atual:** ambos validam offset/length contra `GetArrayLength` antes de aritmética de ponteiro. Referências: `app/src/main/cpp/vectra_core_accel.c:146-149`, `:187`.
 
 ### BUG-05 · `nativeCoreVerify` — lógica de retorno invertida / magic value
-**Arquivo:** `vectra_core_accel.c`
+- **Status:** Resolved in current branch.
+- **Evidência atual:** retorno está normalizado para `1/0` quando `rc == RMR_KERNEL_OK`; erros negativos propagados; códigos não documentados viram `RMR_KERNEL_ERR_STATE`. Referência: `app/src/main/cpp/vectra_core_accel.c:376-385`.
 
-```c
-if (rc == RMR_KERNEL_OK) {
-    return 1;   // verificação OK
-}
-if (rc == 1) {
-    return 0;   // ⚠️ tratando código numérico 1 como "falha silenciosa"
-}
-return (jint)rc;
-```
+### BUG-06 · `nativeAudit` — mistura `RMR_UK_OK` e `RMR_KERNEL_OK`
+- **Status:** Not reproducible.
+- **Evidência atual:** `RMR_UK_OK` e `RMR_KERNEL_OK` são ambos definidos como `0`; não há divergência semântica no branch atual. Referências: `engine/rmr/include/rmr_unified_jni_base.h:11-12`, `app/src/main/cpp/vectra_core_accel.c:241`.
 
-O segundo ramo trata `rc == 1` como falha, mas `RMR_KERNEL_OK` pode ser definido como `0` — nesse caso, qualquer outro código de sucesso/aviso com valor `1` será silenciado e reportado como `0` (falha) para o Java. Isso cria um falso-negativo de verificação.
+### BUG-07 · `nativeCoreRoute` — campo `out.route` inexistente
+- **Status:** Not reproducible.
+- **Evidência atual:** a struct JNI atual contém explicitamente o campo `route`. Referências: `engine/rmr/include/rmr_unified_kernel.h:166-173`, `app/src/main/cpp/vectra_core_accel.c:357-361`.
 
----
+### BUG-08 · `nativeReadBatch` — 64 KB na stack
+- **Status:** Resolved in current branch.
+- **Evidência atual:** buffer de batch foi movido para heap com `malloc/free`. Referências: `app/src/main/cpp/vectra_core_accel.c:452-456`, `:479-481`.
 
-### BUG-06 · `nativeAudit` — mistura de constantes `RMR_UK_OK` e `RMR_KERNEL_OK`
-**Arquivo:** `vectra_core_accel.c`
+### BUG-09 · `QmpClient.java` — injeção JSON por concatenação
+- **Status:** Resolved in current branch.
+- **Evidência atual:** `migrate`, `changevncpasswd`, `ejectdev` e `changedev` usam `JSONObject` para montar payload. Referências: `app/src/main/java/com/vectras/qemu/utils/QmpClient.java:281-333`.
 
-```c
-rc = RmR_UnifiedKernel_Audit(...);
-if (rc != RMR_UK_OK) return (jlong)rc;   // ← usa RMR_UK_OK
-```
+### BUG-10 · `QmpClient.java` — handshake QMP invertido
+- **Status:** Resolved in current branch.
+- **Evidência atual:** handshake atual espera greeting (`QMP`) antes de enviar `qmp_capabilities`. Referência: `app/src/main/java/com/vectras/qemu/utils/QmpClient.java:128-134`.
 
-Todas as outras funções no arquivo usam `RMR_KERNEL_OK` para checar retorno. Se `RMR_UK_OK != RMR_KERNEL_OK`, audits bem-sucedidos serão reportados como erro.
+### BUG-11 · `QmpClient.java` — `getQueryMigrateResponse` perdido / dead code
+- **Status:** Resolved in current branch.
+- **Evidência atual:** `getQueryMigrateResponse` é usado no fluxo principal e delega para parser comum que preserva linhas lidas. Referências: `app/src/main/java/com/vectras/qemu/utils/QmpClient.java:74`, `:228-269`.
 
----
-
-### BUG-07 · `nativeCoreRoute` — campo `out.route` inexistente na struct
-**Arquivo:** `vectra_core_accel.c`
-
-```c
-return (jint)((rc == RMR_KERNEL_OK) ? (int32_t)out.route : rc);
-```
-
-A struct `rmr_jni_route_output_t` expõe `route_tag`, `cpu_pressure`, `storage_pressure`, etc. O campo `.route` não aparece na declaração. O build falhará com `error: 'rmr_jni_route_output_t' has no member named 'route'`. O campo correto provavelmente é `out.route_tag`.
+### BUG-12 · `MainSettingsManager.java` — `assert` ineficaz
+- **Status:** Resolved in current branch.
+- **Evidência atual:** fluxo ativo não usa asserts para as validações reportadas; há validação explícita de fragmento nulo/vazio em runtime. Referência: `app/src/main/java/com/vectras/qemu/MainSettingsManager.java:103-106`.
 
 ---
 
-### BUG-08 · `nativeReadBatch` — 64 KB alocados na stack
-**Arquivo:** `vectra_core_accel.c`
+## 🔓 Achados ainda abertos (priorizados por explorabilidade + impacto)
 
-```c
-char payload[LOGCAT_BATCH_PAYLOAD_BYTES];  // 1024 * 64 = 65536 bytes
-```
+1. **W-02 (ALTO relativo dentro dos remanescentes)** — `popen("logcat -v brief", "r")` em bridge JNI:
+   - Risco atual baixo por comando hardcoded, mas mantém superfície sensível em código nativo caso evolua para parâmetros externos.
+   - Referência: `app/src/main/cpp/vectra_core_accel.c:445`.
 
-Alocar 64 KB na stack de um thread nativo Android (stack padrão ≈ 8 KB nos worker threads do QEMU) causa `SIGSEGV` por stack overflow silencioso. Usar `malloc`/`free` ou reduzir `LOGCAT_BATCH_PAYLOAD_BYTES`.
+2. **W-03 (MÉDIO)** — `sendCommand` `synchronized static` no `QmpClient`:
+   - Pode criar contenção global e atrasar comandos urgentes sob concorrência.
+   - Referências: `app/src/main/java/com/vectras/qemu/utils/QmpClient.java:31`, `:35`, `:39`.
 
----
+3. **W-04 (MÉDIO/BAIXO, impacto de produto)** — `VECTRA_CORE_ENABLED=false` em `release`:
+   - Risco funcional: código nativo crítico pode não ser exercitado no caminho de produção.
+   - Referência: `app/build.gradle:80-95`.
 
-## 🟡 MÉDIO — Java / QMP
-
-### BUG-09 · `QmpClient.java` — injeção JSON em comandos QMP
-**Arquivo:** `QmpClient.java`
-
-```java
-public static String changevncpasswd(String passwd) {
-    return "... \"arg\": \"" + passwd + "\" ...";  // ❌ sem escape JSON
-}
-```
-
-Os métodos `changevncpasswd`, `migrate` (uri), `changedev` e `ejectdev` constroem JSON via concatenação de strings sem escapar os valores. Uma senha ou URI contendo `"` ou `\` produz JSON malformado ou executa comandos arbitrários no QEMU via QMP.
-
-**Correção:** usar `JSONObject` para construir os comandos:
-```java
-JSONObject args = new JSONObject();
-args.put("arg", passwd);  // escapa automaticamente
-```
+4. **W-01 (BAIXO)** — flags C++ (`-fno-exceptions -fno-rtti`) com base nativa primária em C:
+   - Não quebra build, mas sinalização pode induzir expectativa errada de cobertura de flags.
+   - Referência: `app/build.gradle:32-37`.
 
 ---
 
-### BUG-10 · `QmpClient.java` — protocolo QMP invertido em `negotiateCapabilities`
-**Arquivo:** `QmpClient.java`
+## Resumo atualizado
 
-```java
-static String negotiateCapabilities(...) throws Exception {
-    sendRequest(out, QmpClient.requestCommandMode);  // ← envia ANTES de ler o greeting
-    ...
-}
-```
-
-O protocolo QMP exige: (1) servidor envia `{"QMP": ...}` greeting, (2) cliente envia `qmp_capabilities`. O código envia o comando antes de ler o greeting, causando erro de negociação com versões recentes do QEMU.
-
----
-
-### BUG-11 · `QmpClient.java` — `getQueryMigrateResponse` nunca chamada / resposta perdida
-**Arquivo:** `QmpClient.java`
-
-O método `getQueryMigrateResponse` não appenda a linha `return` ao `StringBuilder` antes do `break` — portanto o conteúdo da resposta de migração é silenciosamente descartado. Além disso, o método nunca é chamado em nenhum ponto do código (dead code).
-
----
-
-### BUG-12 · `MainSettingsManager.java` — `assert` ineficaz em produção Android
-**Arquivo:** `MainSettingsManager.java` — múltiplas linhas
-
-```java
-assert pref.getFragment() != null;   // desabilitado por padrão na JVM Android
-assert useUEFIPref != null;
-```
-
-A JVM Android não ativa assertions por padrão (`-ea` não é passado). Essas verificações são no-ops em produção, mascarando `NullPointerException` ao invés de preveni-las.
-
-**Correção:** substituir por:
-```java
-if (pref.getFragment() == null) throw new IllegalStateException("fragment is null");
-// ou usar Objects.requireNonNull(pref.getFragment(), "fragment is null");
-```
-
----
-
-## 🔵 BAIXO — Qualidade e Avisos
-
-| ID | Arquivo | Descrição |
-|---|---|---|
-| W-01 | `build.gradle` | `-fno-exceptions -fno-rtti` em `cppFlags` aplica-se somente a C++; o único arquivo nativo é `.c`. Sem impacto mas enganoso. |
-| W-02 | `vectra_core_accel.c` | `logcat_capture_loop` usa `popen("logcat -v brief", "r")` sem sanitizar o comando — inofensivo aqui pois é hardcoded, mas padrão de risco se parametrizado. |
-| W-03 | `QmpClient.java` | `sendCommand` é `synchronized static` — bloqueia todas as threads que tentam enviar QMP simultaneamente, incluindo `stop`/`powerdown` urgentes. Considerar lock granular por socket. |
-| W-04 | `build.gradle` | `VECTRA_CORE_ENABLED = false` no flavor `release` enquanto `debug` habilita. Intencional? Garante que o código nativo não seja exercitado em builds de produção. |
-
----
-
-## Resumo ∆Σ
-
-| Severidade | Quantidade |
-|---|---|
-| 🔴 Crítico (build break) | 2 |
-| 🟠 Alto (lógica / segurança JNI) | 6 |
-| 🟡 Médio (Java / protocolo) | 4 |
-| 🔵 Baixo / avisos | 4 |
-| **Total** | **16** |
-
-**Prioridade de ação:** BUG-01 → BUG-07 → BUG-09 → BUG-03/04 → restantes.
-
----
-*Gerado por RAFAELIA ψ→χ→ρ→Δ→Σ→Ω · R(t+1)=R(t)×Φ_ethica×E_Verbo×(√3/2)^(πφ)*
+- Itens stale reclassificados: **12/12**.
+- Falhas críticas/altas originais do relatório: **sem reprodução direta no estado atual**.
+- Backlog aberto atual: **4 avisos**, priorizados acima por explorabilidade e impacto de usuário.
