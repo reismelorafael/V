@@ -49,9 +49,20 @@ jobs:
 
     runs-on: ubuntu-latest
     environment: BuildAPK
+    env:
+      COMPILE_API: '35'
+      TOOLS_VERSION: '35.0.0'
+      TARGET_API: '35'
+      RELEASE_MIN_TARGET_API: '34'
+      JAVA_LANGUAGE_VERSION: '17'
+      CMAKE_VERSION: '3.22.1'
+      NDK_VERSION: '27.2.12479018'
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
 
     - name: Block sensitive artifacts in repository (warn only)
       continue-on-error: true
@@ -69,14 +80,16 @@ jobs:
 
     - name: Install Android SDK packages
       run: |
+        sdkmanager --version
+        yes | sdkmanager --licenses
         sdkmanager --install \
           'platform-tools' \
-          'platforms;android-35' \
-          'build-tools;35.0.0' \
-          'platforms;android-34' \
-          'build-tools;34.0.0' \
-          'ndk;27.2.12479018' \
-          'cmake;3.22.1'
+          "platforms;android-${COMPILE_API}" \
+          "build-tools;${TOOLS_VERSION}" \
+          "platforms;android-${RELEASE_MIN_TARGET_API}" \
+          'cmdline-tools;latest' \
+          "ndk;${NDK_VERSION}" \
+          "cmake;${CMAKE_VERSION}"
 
     - name: Generate local.properties
       run: |
@@ -94,16 +107,16 @@ jobs:
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew :app:testDebugUnitTest --tests com.vectras.vm.core.ProotCommandBuilderTest -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
+      run: ./gradlew :app:testDebugUnitTest --tests com.vectras.vm.core.ProotCommandBuilderTest -PCOMPILE_API=${COMPILE_API} -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_LANGUAGE_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION}
 
     - name: Verify repository file dependencies
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew verifyRepoFileDependencies -PCOMPILE_API=35 -PTARGET_API=35 -PRELEASE_MIN_TARGET_API=34 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
+      run: ./gradlew verifyRepoFileDependencies -PCOMPILE_API=${COMPILE_API} -PTARGET_API=${TARGET_API} -PRELEASE_MIN_TARGET_API=${RELEASE_MIN_TARGET_API} -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_LANGUAGE_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION}
 
     - name: Verify arm64 native toolchain compatibility
-      run: ./gradlew verifyArm64ToolchainCompatibility -PNDK_VERSION=27.2.12479018
+      run: ./gradlew verifyArm64ToolchainCompatibility -PNDK_VERSION=${NDK_VERSION}
 
     - name: Validate release version metadata consistency
       run: |
@@ -183,13 +196,13 @@ jobs:
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew assembleDebug -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
+      run: ./gradlew assembleDebug -PCOMPILE_API=${COMPILE_API} -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_LANGUAGE_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION}
 
     - name: Validate native binaries are arm64-v8a
       shell: bash
       run: |
         set -euo pipefail
-        NDK_VERSION="27.2.12479018"
+        NDK_VERSION="${NDK_VERSION}"
         NDK_ROOT="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
         READELF="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
         if [[ ! -x "${READELF}" ]]; then
@@ -244,6 +257,13 @@ jobs:
           ./gradlew assembleRelease \
             -PCOMPILE_API=35 -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17 -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
         fi
+        echo "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" | base64 --decode > "$VECTRAS_RELEASE_STORE_FILE"
+        ./gradlew assembleRelease \
+          -PCOMPILE_API=${COMPILE_API} -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_LANGUAGE_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION} \
+          -Pandroid.injected.signing.store.file="$VECTRAS_RELEASE_STORE_FILE" \
+          -Pandroid.injected.signing.store.password="$VECTRAS_RELEASE_STORE_PASSWORD" \
+          -Pandroid.injected.signing.key.alias="$VECTRAS_RELEASE_KEY_ALIAS" \
+          -Pandroid.injected.signing.key.password="$VECTRAS_RELEASE_KEY_PASSWORD"
 
     - name: Upload Debug APK as artifact
       uses: actions/upload-artifact@v4
