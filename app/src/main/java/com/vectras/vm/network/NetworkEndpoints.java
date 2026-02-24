@@ -12,21 +12,22 @@ public final class NetworkEndpoints {
     public static final String HOST_GITHUB_RAW = "raw.githubusercontent.com";
 
     private static final String SCHEME = "https://";
+    private static final String APP_ID = "vectrasvm";
 
     private NetworkEndpoints() {
     }
 
     public static String romContentInfo(@NonNull String contentId, boolean isAnBuiId) {
-        String appQuery = isAnBuiId ? "" : "&app=vectrasvm";
+        String appQuery = isAnBuiId ? "" : "&app=" + APP_ID;
         return SCHEME + HOST_ANBUI + "/egg/contentinfo?id=" + contentId + appQuery;
     }
 
     public static String romUpdateLike() {
-        return SCHEME + HOST_ANBUI + "/egg/updatelike?app=verctrasvm";
+        return SCHEME + HOST_ANBUI + "/egg/updatelike?app=" + APP_ID;
     }
 
     public static String romUpdateView() {
-        return SCHEME + HOST_ANBUI + "/egg/updateview?app=vectrasvm";
+        return SCHEME + HOST_ANBUI + "/egg/updateview?app=" + APP_ID;
     }
 
     public static String githubUserApi(@NonNull String username) {
