@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Objects;
 
 public class StartVM {
+    public static final String SPICE_PORT_PLACEHOLDER = "__VECTRAS_SPICE_PORT__";
     public static String cdrompath = "";
     public static volatile String lastResolvedProfile = "BALANCED";
     public static volatile boolean lastKvmEnabled = false;
@@ -300,10 +301,12 @@ public class StartVM {
             params.add(vncStr);
             // Allow connections only from localhost using localsocket without a password
             if (MainSettingsManager.getVncExternal(activity)) {
+                String externalPassword = MainSettingsManager.getVncExternalPassword(activity);
+                boolean hasPassword = externalPassword != null && !externalPassword.isEmpty();
+                String vncHost = hasPassword ? "0.0.0.0" : Config.defaultVNCHost;
+                String vncParams = vncHost + ":" + Config.defaultVNCPort;
 
-                String vncParams = Config.defaultVNCHost + ":" + Config.defaultVNCPort;
-
-                if (!MainSettingsManager.getVncExternalPassword(activity).isEmpty()) {
+                if (hasPassword) {
                     vncParams += ",password=on";
                 }
 
@@ -319,9 +322,8 @@ public class StartVM {
             params.add("vc");
             //}
         } else if (MainSettingsManager.getVmUi(activity).equals("SPICE")) {
-            String spiceStr = "-spice ";
-            spiceStr += "port=6999,disable-ticketing=on";
-            params.add(spiceStr);
+            params.add("-spice");
+            params.add("addr=127.0.0.1,port=" + SPICE_PORT_PLACEHOLDER);
         } else if (MainSettingsManager.getVmUi(activity).equals("X11")) {
             params.add("-display");
             params.add(MainSettingsManager.getUseSdl(activity) ? "sdl" : "gtk" + ",gl=on");

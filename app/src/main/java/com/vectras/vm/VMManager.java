@@ -653,6 +653,48 @@ public class VMManager {
         return result.toString();
     }
 
+
+    public static ServerSocket reserveRandomPort() {
+        final Random random = new Random();
+        final int min = 10_000;
+        final int max = 65_535;
+        final int attempts = 128;
+        Set<Integer> reservedPorts = readReservedPortsFromVmDb();
+
+        for (int attempt = 0; attempt < attempts; attempt++) {
+            int candidate = random.nextInt(max - min + 1) + min;
+            if (reservedPorts.contains(candidate)) {
+                continue;
+            }
+            try {
+                ServerSocket socket = new ServerSocket(candidate);
+                socket.setReuseAddress(false);
+                return socket;
+            } catch (IOException ignored) {
+                // Busy port, keep searching.
+            }
+        }
+
+        try {
+            ServerSocket socket = new ServerSocket(0);
+            socket.setReuseAddress(false);
+            return socket;
+        } catch (IOException ioException) {
+            return null;
+        }
+    }
+
+    public static void releaseReservedPort(ServerSocket socket) {
+        if (socket == null) {
+            return;
+        }
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+            // Best effort release.
+        }
+    }
+
     //This can be removed because QMP currently uses sockets instead of open ports.
     @Deprecated
     public static int startRandomPort() {

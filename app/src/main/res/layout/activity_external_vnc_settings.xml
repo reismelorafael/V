@@ -46,6 +46,13 @@
             android:paddingHorizontal="16dp"
             android:animateLayoutChanges="true">
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="8dp"
+                android:text="@string/external_vnc_opt_in_warning"
+                android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/til_display"
                 android:layout_width="match_parent"
