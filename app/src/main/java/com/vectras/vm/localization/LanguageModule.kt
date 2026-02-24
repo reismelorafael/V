@@ -8,7 +8,6 @@ data class LanguageModule(
     val languageCode: String,
     val languageName: String,
     val nativeName: String,
-    val downloadUrl: String,
     val version: Int,
     val sizeBytes: Long,
     val isBuiltIn: Boolean = false,
@@ -26,7 +25,6 @@ data class LanguageModule(
                 languageCode = "en",
                 languageName = "English",
                 nativeName = "English",
-                downloadUrl = "",
                 version = 1,
                 sizeBytes = 0,
                 isBuiltIn = true,
@@ -36,7 +34,6 @@ data class LanguageModule(
                 languageCode = "pt",
                 languageName = "Portuguese",
                 nativeName = "Português",
-                downloadUrl = "https://raw.githubusercontent.com/rafaelmeloreisnovo/Vectras-VM-Android/main/resources/lang/pt.json",
                 version = 1,
                 sizeBytes = 50000,
                 isBuiltIn = false
@@ -45,7 +42,6 @@ data class LanguageModule(
                 languageCode = "es",
                 languageName = "Spanish",
                 nativeName = "Español",
-                downloadUrl = "https://raw.githubusercontent.com/rafaelmeloreisnovo/Vectras-VM-Android/main/resources/lang/es.json",
                 version = 1,
                 sizeBytes = 50000,
                 isBuiltIn = false
@@ -54,7 +50,6 @@ data class LanguageModule(
                 languageCode = "fr",
                 languageName = "French",
                 nativeName = "Français",
-                downloadUrl = "https://raw.githubusercontent.com/rafaelmeloreisnovo/Vectras-VM-Android/main/resources/lang/fr.json",
                 version = 1,
                 sizeBytes = 50000,
                 isBuiltIn = false
@@ -63,7 +58,6 @@ data class LanguageModule(
                 languageCode = "de",
                 languageName = "German",
                 nativeName = "Deutsch",
-                downloadUrl = "https://raw.githubusercontent.com/rafaelmeloreisnovo/Vectras-VM-Android/main/resources/lang/de.json",
                 version = 1,
                 sizeBytes = 50000,
                 isBuiltIn = false

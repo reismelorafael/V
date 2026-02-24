@@ -79,7 +79,13 @@ class LocaleManager private constructor(private val context: Context) {
     ): Boolean = withContext(Dispatchers.IO) {
         val module = LanguageModule.getByCode(languageCode) ?: return@withContext false
 
-        if (!isValidModuleDownloadUrl(module.downloadUrl)) {
+        if (module.isBuiltIn) {
+            return@withContext true
+        }
+
+        val endpoint = NetworkEndpoints.languageModule(module.languageCode)
+        val validatedUrl = EndpointValidator.validateLanguageModuleEndpoint(endpoint)
+        if (validatedUrl == null) {
             android.util.Log.e(
                 "LocaleManager",
                 "Invalid module download URL for language module: $languageCode"
@@ -87,14 +93,10 @@ class LocaleManager private constructor(private val context: Context) {
             return@withContext false
         }
 
-        if (module.isBuiltIn) {
-            return@withContext true
-        }
-
         var connection: HttpURLConnection? = null
         try {
             onProgress?.invoke(0)
-            connection = (URL(module.downloadUrl).openConnection() as HttpURLConnection).apply {
+            connection = (URL(validatedUrl).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 30000
                 readTimeout = 30000
@@ -270,17 +272,5 @@ class LocaleManager private constructor(private val context: Context) {
             out[key] = json.optString(key, "")
         }
         return out
-    }
-
-    private fun isValidModuleDownloadUrl(downloadUrl: String): Boolean {
-        return try {
-            val url = URL(downloadUrl)
-            val isHttps = url.protocol.equals("https", ignoreCase = true)
-            val hasHost = !url.host.isNullOrBlank()
-            val hasExpectedPath = url.path?.endsWith(".json", ignoreCase = true) == true
-            isHttps && hasHost && hasExpectedPath
-        } catch (_: Exception) {
-            false
-        }
     }
 }
