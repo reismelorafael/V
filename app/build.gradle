@@ -1,5 +1,3 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
@@ -29,12 +27,12 @@ android {
                 def nativeMcpu = providers.gradleProperty("NATIVE_MCPU").orNull
                 def rmrEnablePolicyModule = providers.gradleProperty("RMR_ENABLE_POLICY_MODULE").orElse("ON").get()
                 def rmrEnableBitrafModule = providers.gradleProperty("RMR_ENABLE_BITRAF_MODULE").orElse("ON").get()
-                def arm64CppFlags = ["-O3", "-ffast-math", "-fno-exceptions", "-fno-rtti", "-march=armv8-a+crc", "-DRMR_BAREMETAL=1", "-DRMR_JNI_BUILD=1"]
+                def arm64CppFlags = ["-O3", "-ffast-math", "-fno-exceptions", "-fno-rtti", "-DRMR_JNI_BUILD=1"]
                 if (nativeMcpu) {
                     arm64CppFlags += "-mcpu=${nativeMcpu}"
                 }
                 cppFlags arm64CppFlags.join(" ")
-                cFlags "-O3 -ffast-math -DRMR_BAREMETAL=1 -DRMR_JNI_BUILD=1"
+                cFlags "-O3 -ffast-math -DRMR_JNI_BUILD=1"
                 arguments "-DRMR_ENABLE_POLICY_MODULE=${rmrEnablePolicyModule}", "-DRMR_ENABLE_BITRAF_MODULE=${rmrEnableBitrafModule}"
             }
         }
@@ -132,10 +130,8 @@ android {
         }
     }
 
-    kotlin {
-        compilerOptions {
-            jvmTarget = JvmTarget.fromTarget(String.valueOf(rootProject.ext.javaLanguageVersion))
-        }
+    kotlinOptions {
+        jvmTarget = String.valueOf(rootProject.ext.javaLanguageVersion)
     }
 }
 
@@ -186,8 +182,6 @@ dependencies {
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
     implementation "androidx.documentfile:documentfile:1.1.0"
     implementation "androidx.work:work-runtime:2.9.1"
-    compileOnly project(':shell-loader:stub')
-    implementation project(":terminal-view")
     
     // Retrofit
 

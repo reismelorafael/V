@@ -1,5 +1,4 @@
 apply plugin: 'com.android.library'
-apply plugin: 'maven-publish'
 
 android {
     namespace "com.termux.view"
@@ -33,27 +32,4 @@ android {
 
 dependencies {
     testImplementation 'junit:junit:4.13.2'
-}
-
-publishing {
-    publications {
-        bar(MavenPublication) {
-            groupId 'com.termux'
-            artifactId 'terminal-view'
-            version '0.106.1'
-            artifact("$buildDir/outputs/aar/terminal-view-release.aar")
-        }
-    }
- 
-    repositories {
-        maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/termux/termux-app")
-
-            credentials {
-                username = System.getenv("GH_USERNAME")
-                password = System.getenv("GH_TOKEN")
-            }
-        }
-    }
 }
