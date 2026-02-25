@@ -2189,17 +2189,17 @@ public class VncCanvas extends AppCompatImageView {
                             if(Config.processMouseHistoricalEvents) {
                                 final int historySize = event.getHistorySize();
                                 for (int h = 0; h < historySize; h++) {
-                                    float ex = event.getHistoricalX(h);
-                                    float ey = event.getHistoricalY(h);
-                                    float ep = event.getHistoricalPressure(h);
-                                    processHoverMouse(event, ex, ey, ep, action);
+                                    float hx = event.getHistoricalX(h);
+                                    float hy = event.getHistoricalY(h);
+                                    float hp = event.getHistoricalPressure(h);
+                                    processHoverMouse(event, hx, hy, hp, action);
                                 }
                             }
 
-                            float ex = event.getX();
-                            float ey = event.getY();
-                            float ep = event.getPressure();
-                            processHoverMouse(event, ex, ey, ep, action);
+                            float currentX = event.getX();
+                            float currentY = event.getY();
+                            float currentPressure = event.getPressure();
+                            processHoverMouse(event, currentX, currentY, currentPressure, action);
                             return true;
 
                         case MotionEvent.ACTION_UP:
@@ -2232,7 +2232,8 @@ public class VncCanvas extends AppCompatImageView {
 
                 //TODO:
                 //SDLActivity.onSDLNativeMouse(0, action, x, y);
-                processPointerEvent(event, false, false);
+                processPointerEvent((int) x, (int) y, action, event.getMetaState(), false,
+                        false, false, false);
             }
 //            else if (Config.mouseMode == Config.MouseMode.External_Alt){
 //                processHoverMouseAlt(x, y, p, action);
