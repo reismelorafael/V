@@ -15,12 +15,15 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.util.Log;
 
 /**
  * @author Michael A. MacDonald
  *
  */
 class LargeBitmapData extends AbstractBitmapData {
+	private static final String TAG = "LargeBitmapData";
+	private static final int FRAMEBUFFER_UPDATE_MAX_BACKOFF_MS = 4000;
 	
 	/**
 	 * Multiply this times total number of pixels to get estimate of process size with all buffers plus
@@ -36,6 +39,9 @@ class LargeBitmapData extends AbstractBitmapData {
 	private Paint defaultPaint;
 	private RectList invalidList;
 	private RectList pendingList;
+	private int framebufferUpdateFailureCount;
+	private long nextFramebufferUpdateRetryAtMs;
+	private boolean forceFullRefreshOnNextSync;
 	
 	/**
 	 * Pool of temporary rectangle objects.  Need to synchronize externally access from
@@ -265,6 +271,26 @@ class LargeBitmapData extends AbstractBitmapData {
 	 */
 	@Override
 	synchronized void syncScroll() {
+		if (isFramebufferUpdateBackoffActive()) {
+			return;
+		}
+
+		if (forceFullRefreshOnNextSync)
+		{
+			try
+			{
+				mbitmap.eraseColor(Color.GREEN);
+				writeFullUpdateRequest(false);
+				forceFullRefreshOnNextSync = false;
+				resetFramebufferUpdateFailureTracking();
+			}
+			catch (IOException ioe)
+			{
+				handleFramebufferUpdateFailure("full-refresh-retry", null, ioe);
+				waitingForInput = true;
+				return;
+			}
+		}
 		
 		int deltaX = xoffset - scrolledToX;
 		int deltaY = yoffset - scrolledToY;
@@ -324,7 +350,9 @@ class LargeBitmapData extends AbstractBitmapData {
 				}
 				catch ( IOException ioe)
 				{
-					// TODO log this
+					handleFramebufferUpdateFailure("full-refresh", null, ioe);
+					waitingForInput = true;
+					return;
 				}
 			}
 		}
@@ -333,6 +361,7 @@ class LargeBitmapData extends AbstractBitmapData {
 			invalidList.subtract(pendingList.get(i));
 		}
 		size = invalidList.getSize();
+		boolean hadFramebufferUpdateFailure = false;
 		for (int i=0; i<size; i++) {
 			Rect invalidRect = invalidList.get(i);
 			try
@@ -342,10 +371,51 @@ class LargeBitmapData extends AbstractBitmapData {
 			}
 			catch (IOException ioe)
 			{
-				//TODO Log this
+				handleFramebufferUpdateFailure("invalid-rect", invalidRect, ioe);
+				hadFramebufferUpdateFailure = true;
+				break;
 			}
+		}
+		if (!hadFramebufferUpdateFailure) {
+			resetFramebufferUpdateFailureTracking();
 		}
 		waitingForInput=true;
 		//android.util.Log.i("LBM", "pending "+pendingList.toString() + "invalid "+invalidList.toString());
+	}
+
+	private boolean isFramebufferUpdateBackoffActive() {
+		return nextFramebufferUpdateRetryAtMs > currentTimeMs();
+	}
+
+	private long currentTimeMs() {
+		return System.currentTimeMillis();
+	}
+
+	private void resetFramebufferUpdateFailureTracking() {
+		framebufferUpdateFailureCount = 0;
+		nextFramebufferUpdateRetryAtMs = 0;
+	}
+
+	private void handleFramebufferUpdateFailure(String operation, Rect rect, IOException ioe) {
+		framebufferUpdateFailureCount++;
+		int exponentialStep = Math.min(framebufferUpdateFailureCount - 1, 4);
+		long backoffMs = Math.min(FRAMEBUFFER_UPDATE_MAX_BACKOFF_MS, 250L << exponentialStep);
+		nextFramebufferUpdateRetryAtMs = currentTimeMs() + backoffMs;
+		forceFullRefreshOnNextSync = true;
+		String rectLog = rect == null ? "none" : rect.toShortString();
+		Log.e(TAG,
+				"writeFramebufferUpdateRequest failed"
+						+ " op=" + operation
+						+ " rect=" + rectLog
+						+ " state={xoffset=" + xoffset
+						+ ",yoffset=" + yoffset
+						+ ",scrolledToX=" + scrolledToX
+						+ ",scrolledToY=" + scrolledToY
+						+ ",pending=" + pendingList.getSize()
+						+ ",invalid=" + invalidList.getSize()
+						+ ",failureCount=" + framebufferUpdateFailureCount
+						+ ",nextRetryAtMs=" + nextFramebufferUpdateRetryAtMs
+						+ "}",
+				ioe);
 	}
 }
