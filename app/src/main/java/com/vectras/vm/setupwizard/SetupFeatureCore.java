@@ -10,6 +10,7 @@ import android.util.Log;
 import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
 import com.vectras.vm.VMManager;
+import com.vectras.vm.core.ProotCommandBuilder;
 import com.vectras.vm.core.ProcessRuntimeOps;
 import com.vectras.vm.utils.DeviceUtils;
 import com.vectras.vm.utils.DialogUtils;
@@ -34,9 +35,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -154,6 +158,48 @@ public class SetupFeatureCore {
         }
     }
 
+    public static final class ProotSelfCheckResult {
+        public final boolean ok;
+        public final boolean validatorOk;
+        public final boolean commandBuilt;
+        public final boolean executed;
+        public final int exitCode;
+        public final String summary;
+        public final List<String> details;
+
+        private ProotSelfCheckResult(
+                boolean ok,
+                boolean validatorOk,
+                boolean commandBuilt,
+                boolean executed,
+                int exitCode,
+                String summary,
+                List<String> details
+        ) {
+            this.ok = ok;
+            this.validatorOk = validatorOk;
+            this.commandBuilt = commandBuilt;
+            this.executed = executed;
+            this.exitCode = exitCode;
+            this.summary = summary;
+            this.details = Collections.unmodifiableList(new ArrayList<>(details));
+        }
+
+        public String toStructuredText() {
+            StringBuilder out = new StringBuilder();
+            out.append("ok=").append(ok).append("\n");
+            out.append("validatorOk=").append(validatorOk).append("\n");
+            out.append("commandBuilt=").append(commandBuilt).append("\n");
+            out.append("executed=").append(executed).append("\n");
+            out.append("exitCode=").append(exitCode).append("\n");
+            out.append("summary=").append(summary == null ? "" : summary);
+            for (String detail : details) {
+                out.append("\n").append(detail);
+            }
+            return out.toString();
+        }
+    }
+
     public static String formatPostCheckFailure(List<String> failedItems) {
         StringJoiner joiner = new StringJoiner(",");
         if (failedItems != null) {
@@ -233,6 +279,268 @@ public class SetupFeatureCore {
         Intent intent = new Intent(context, SetupWizard2Activity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         context.startActivity(intent);
+    }
+
+    public static ProotSelfCheckResult runProotSelfCheck(Context context) {
+        LinkedHashMap<String, String> detailMap = new LinkedHashMap<>();
+        detailMap.put("check", "proot-self-check");
+
+        if (context == null) {
+            detailMap.put("error", "context-null");
+            return buildProotSelfCheckResult(false, false, false, false, -1,
+                    "Proot self-check failed: context is null.", detailMap);
+        }
+
+        String filesDir = context.getFilesDir().getAbsolutePath();
+        String rootfsPath = filesDir + "/distro";
+        String workDir = "/root";
+        String requiredQemuBinary = "qemu-system-x86_64";
+
+        detailMap.put("filesDir", filesDir);
+        detailMap.put("rootfsPath", rootfsPath);
+        detailMap.put("workDir", workDir);
+
+        ProotPrerequisiteResult prerequisiteResult = validateProotPrerequisites(context, rootfsPath, workDir);
+        if (!prerequisiteResult.ok) {
+            detailMap.putAll(prerequisiteResult.details);
+            return buildProotSelfCheckResult(false, false, false, false, -1,
+                    "Proot self-check failed prerequisites: " + prerequisiteResult.summary,
+                    detailMap);
+        }
+
+        PreflightResult vmPreflight = runVmStartPreflight(
+                context,
+                requiredQemuBinary,
+                new VmStartPreflightOptions("", false, false)
+        );
+        detailMap.put("vmPreflight", vmPreflight.shortSummary());
+        if (!vmPreflight.ok) {
+            detailMap.put("vmPreflightMissingBins", joinListForDetails(vmPreflight.missingBinaries));
+            detailMap.put("vmPreflightMissingPkgs", joinListForDetails(vmPreflight.missingPackages));
+            return buildProotSelfCheckResult(false, false, false, false, -1,
+                    "Proot self-check blocked by VM preflight: " + vmPreflight.shortSummary(),
+                    detailMap);
+        }
+
+        ProotCommandBuilder commandBuilder = new ProotCommandBuilder(context, rootfsPath, workDir)
+                .setPath("/bin:/usr/bin:/sbin:/usr/sbin")
+                .setTmpDir(filesDir + "/usr/tmp");
+
+        List<String> baselineCommand = commandBuilder.buildCommand();
+        detailMap.put("baselineCommand", formatCommand(baselineCommand.toArray(new String[0])));
+
+        ProotExecAttempt versionAttempt = executeProotVersion(context, filesDir);
+        detailMap.putAll(versionAttempt.details);
+        if (versionAttempt.result != null && versionAttempt.result.ok) {
+            return versionAttempt.result;
+        }
+
+        ProotExecAttempt fallbackAttempt = executeProotFallback(commandBuilder, detailMap);
+        return fallbackAttempt.result;
+    }
+
+    private static ProotExecAttempt executeProotVersion(Context context, String filesDir) {
+        LinkedHashMap<String, String> detailMap = new LinkedHashMap<>();
+        String prootBin = filesDir + "/usr/bin/proot";
+        detailMap.put("preferredExec", prootBin + " --version");
+
+        Process process = null;
+        try {
+            ProcessBuilder processBuilder = new ProcessBuilder(prootBin, "--version");
+            processBuilder.redirectErrorStream(true);
+            process = processBuilder.start();
+            ProcessRuntimeOps.TimeoutExecutionResult waitResult = ProcessRuntimeOps.waitForByCategory(
+                    process,
+                    ProcessRuntimeOps.ExecutionCategory.QUICK_QUERY
+            );
+
+            detailMap.put("preferredWaitStatus", waitResult.status.name());
+            detailMap.put("preferredWaitMessage", waitResult.message);
+            detailMap.put("preferredTimedOut", Boolean.toString(waitResult.timedOut));
+            detailMap.put("preferredExitCode", Integer.toString(waitResult.exitCode));
+            detailMap.put("preferredOutput", readProcessOutput(process));
+
+            boolean ok = waitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.SUCCESS && waitResult.exitCode == 0;
+            String summary = ok
+                    ? "Proot self-check succeeded via preferred version probe."
+                    : "Preferred proot version probe failed, falling back to dry-run.";
+
+            ProotSelfCheckResult result = buildProotSelfCheckResult(
+                    ok,
+                    true,
+                    true,
+                    true,
+                    waitResult.exitCode,
+                    summary,
+                    detailMap
+            );
+            return new ProotExecAttempt(result, detailMap);
+        } catch (IOException ioException) {
+            detailMap.put("preferredExecError", ioException.toString());
+            ProotSelfCheckResult result = buildProotSelfCheckResult(
+                    false,
+                    true,
+                    true,
+                    false,
+                    -1,
+                    "Preferred proot version probe failed to start, falling back to dry-run.",
+                    detailMap
+            );
+            return new ProotExecAttempt(result, detailMap);
+        } finally {
+            if (process != null && process.isAlive()) {
+                process.destroy();
+            }
+        }
+    }
+
+    private static ProotExecAttempt executeProotFallback(ProotCommandBuilder commandBuilder,
+                                                          LinkedHashMap<String, String> inheritedDetails) {
+        LinkedHashMap<String, String> detailMap = new LinkedHashMap<>(inheritedDetails);
+        List<String> fallbackCommand = new ArrayList<>(commandBuilder.buildCommand());
+        fallbackCommand.add("-c");
+        fallbackCommand.add("true");
+        detailMap.put("fallbackExec", formatCommand(fallbackCommand.toArray(new String[0])));
+
+        Process process = null;
+        try {
+            ProcessBuilder processBuilder = new ProcessBuilder(fallbackCommand);
+            commandBuilder.applyEnvironment(processBuilder.environment());
+            processBuilder.redirectErrorStream(true);
+            process = processBuilder.start();
+
+            ProcessRuntimeOps.TimeoutExecutionResult waitResult = ProcessRuntimeOps.waitForByCategory(
+                    process,
+                    ProcessRuntimeOps.ExecutionCategory.QUICK_QUERY
+            );
+
+            detailMap.put("fallbackWaitStatus", waitResult.status.name());
+            detailMap.put("fallbackWaitMessage", waitResult.message);
+            detailMap.put("fallbackTimedOut", Boolean.toString(waitResult.timedOut));
+            detailMap.put("fallbackExitCode", Integer.toString(waitResult.exitCode));
+            detailMap.put("fallbackOutput", readProcessOutput(process));
+
+            boolean ok = waitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.SUCCESS && waitResult.exitCode == 0;
+            String summary = ok
+                    ? "Proot self-check succeeded via fallback dry-run."
+                    : "Proot self-check failed: fallback dry-run did not complete successfully.";
+
+            return new ProotExecAttempt(
+                    buildProotSelfCheckResult(ok, true, true, true, waitResult.exitCode, summary, detailMap),
+                    detailMap
+            );
+        } catch (IOException ioException) {
+            detailMap.put("fallbackExecError", ioException.toString());
+            return new ProotExecAttempt(
+                    buildProotSelfCheckResult(false, true, true, false, -1,
+                            "Proot self-check failed: fallback dry-run failed to start.", detailMap),
+                    detailMap
+            );
+        } finally {
+            if (process != null && process.isAlive()) {
+                process.destroy();
+            }
+        }
+    }
+
+    private static ProotSelfCheckResult buildProotSelfCheckResult(boolean ok,
+                                                                   boolean validatorOk,
+                                                                   boolean commandBuilt,
+                                                                   boolean executed,
+                                                                   int exitCode,
+                                                                   String summary,
+                                                                   LinkedHashMap<String, String> detailMap) {
+        ArrayList<String> detailLines = new ArrayList<>();
+        for (Map.Entry<String, String> entry : detailMap.entrySet()) {
+            detailLines.add(entry.getKey() + "=" + (entry.getValue() == null ? "" : entry.getValue()));
+        }
+        return new ProotSelfCheckResult(ok, validatorOk, commandBuilt, executed, exitCode, summary, detailLines);
+    }
+
+    private static ProotPrerequisiteResult validateProotPrerequisites(Context context,
+                                                                      String rootfsPath,
+                                                                      String workDir) {
+        LinkedHashMap<String, String> details = new LinkedHashMap<>();
+        ArrayList<String> failures = new ArrayList<>();
+
+        boolean prootInstalled = isInstalledProot(context);
+        boolean distroInstalled = isInstalledDistro(context);
+        boolean workDirAvailable = new File(rootfsPath + workDir).isDirectory();
+
+        details.put("prootInstalled", Boolean.toString(prootInstalled));
+        details.put("distroInstalled", Boolean.toString(distroInstalled));
+        details.put("workDirAvailable", Boolean.toString(workDirAvailable));
+
+        if (!prootInstalled) {
+            failures.add("missing-proot");
+        }
+        if (!distroInstalled) {
+            failures.add("missing-distro");
+        }
+        if (!workDirAvailable) {
+            failures.add("missing-workdir");
+        }
+
+        if (failures.isEmpty()) {
+            details.put("validator", "ok");
+            return new ProotPrerequisiteResult(true, "prerequisites-ok", details);
+        }
+        details.put("validator", "failed");
+        details.put("missing", joinListForDetails(failures));
+        return new ProotPrerequisiteResult(false, "missing: " + joinListForDetails(failures), details);
+    }
+
+    private static String readProcessOutput(Process process) {
+        if (process == null) {
+            return "";
+        }
+        StringBuilder output = new StringBuilder();
+        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            int lineCount = 0;
+            while ((line = bufferedReader.readLine()) != null && lineCount < 4) {
+                if (lineCount > 0) {
+                    output.append(" | ");
+                }
+                output.append(line);
+                lineCount++;
+            }
+        } catch (IOException ignored) {
+        }
+        return output.toString();
+    }
+
+    private static String joinListForDetails(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return "";
+        }
+        StringJoiner joiner = new StringJoiner(",");
+        for (String value : values) {
+            joiner.add(value);
+        }
+        return joiner.toString();
+    }
+
+    private static final class ProotPrerequisiteResult {
+        final boolean ok;
+        final String summary;
+        final LinkedHashMap<String, String> details;
+
+        ProotPrerequisiteResult(boolean ok, String summary, LinkedHashMap<String, String> details) {
+            this.ok = ok;
+            this.summary = summary;
+            this.details = details;
+        }
+    }
+
+    private static final class ProotExecAttempt {
+        final ProotSelfCheckResult result;
+        final LinkedHashMap<String, String> details;
+
+        ProotExecAttempt(ProotSelfCheckResult result, LinkedHashMap<String, String> details) {
+            this.result = result;
+            this.details = details;
+        }
     }
 
     private static ArrayList<String> parsePackageTokens(String rawPkgs) {
