@@ -7,6 +7,8 @@ import android.content.res.AssetManager;
 import android.os.Build;
 import android.util.Log;
 
+import androidx.annotation.Nullable;
+
 import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
 import com.vectras.vm.VMManager;
@@ -50,6 +52,7 @@ public class SetupFeatureCore {
     public static final String ABI_RESOLVE_TAG = "SETUP_ABI_RESOLVE";
     public static String lastErrorLog = "";
     public static final String POST_CHECK_FAIL_PREFIX = "POST_CHECK_FAIL:";
+    public static final String INTEGRITY_FAIL_PREFIX = "INTEGRITY_FAIL:";
     private static final String BOOTSTRAP_LOG_PREFIX = "PROOT_BOOTSTRAP";
     private static final long MIN_TAR_BYTES = 1024L;
 
@@ -741,7 +744,48 @@ public class SetupFeatureCore {
         }
     }
 
+    @Nullable
+    public static String computeSha256Hex(File file) {
+        if (file == null || !file.isFile()) {
+            return null;
+        }
+
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            Log.e(TAG, "computeSha256Hex digest init: ", e);
+            return null;
+        }
+
+        try (FileInputStream fileInputStream = new FileInputStream(file);
+             BufferedInputStream in = new BufferedInputStream(fileInputStream)) {
+            byte[] buffer = new byte[32 * 1024];
+            int n;
+            while ((n = in.read(buffer)) != -1) {
+                digest.update(buffer, 0, n);
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "computeSha256Hex read: ", e);
+            return null;
+        }
+
+        byte[] hash = digest.digest();
+        char[] out = new char[hash.length * 2];
+        final char[] hexMap = "0123456789abcdef".toCharArray();
+        for (int i = 0; i < hash.length; i++) {
+            int v = hash[i] & 0xFF;
+            out[i * 2] = hexMap[v >>> 4];
+            out[i * 2 + 1] = hexMap[v & 0x0F];
+        }
+        return new String(out);
+    }
+
     public static boolean startExtractSystemFiles(Context context) {
+        return startExtractSystemFiles(context, null);
+    }
+
+    public static boolean startExtractSystemFiles(Context context, @Nullable String bootstrapExpectedSha256) {
         if (isInstalledSystemFiles(context)) return true;
         lastErrorLog = "";
 
@@ -750,7 +794,7 @@ public class SetupFeatureCore {
         File binDir = new File(distroDir + "/bin");
         if (!binDir.exists()) {
             if (!isInstalledProot(context)) {
-                if (!extractSystemFiles(context, "bootstrap", "")) return false;
+                if (!extractSystemFiles(context, "bootstrap", "", bootstrapExpectedSha256)) return false;
             }
 
             if (isInstalledDistro(context)) return true;
@@ -770,6 +814,10 @@ public class SetupFeatureCore {
     }
 
     public static boolean extractSystemFiles(Context context, String fromAsset, String extractTo) {
+        return extractSystemFiles(context, fromAsset, extractTo, null);
+    }
+
+    public static boolean extractSystemFiles(Context context, String fromAsset, String extractTo, @Nullable String expectedSha256) {
         String randomFileName = VMManager.startRamdomVMID();
         final String[] selectedAssetHolder = new String[1];
         String assetPath = resolveAssetPath(context, fromAsset, selectedAssetHolder);
@@ -827,11 +875,40 @@ public class SetupFeatureCore {
             return false;
         }
 
-        String tarValidationError = validateExtractedTarFile(extractedTarPath);
-        if (tarValidationError != null) {
-            lastErrorLog = tarValidationError;
-            Log.e(TAG, lastErrorLog);
-            return false;
+        if (isCompleted) {
+            File extractedTarFile = extractedTarPath.toFile();
+            if (!extractedTarPath.toString().endsWith(".tar") || !extractedTarFile.exists() || !extractedTarFile.isFile()) {
+                lastErrorLog = "Invalid tar file before extraction"
+                        + " path=" + extractedTarPath
+                        + " exists=" + extractedTarFile.exists()
+                        + " isFile=" + extractedTarFile.isFile();
+                Log.e(TAG, lastErrorLog);
+                return false;
+            }
+
+            String normalizedExpectedSha256 = expectedSha256 == null ? "" : expectedSha256.trim().toLowerCase(Locale.ROOT);
+            if (!normalizedExpectedSha256.isEmpty()) {
+                String actualSha256 = computeSha256Hex(extractedTarFile);
+                if (actualSha256 == null) {
+                    lastErrorLog = INTEGRITY_FAIL_PREFIX + "SHA256_COMPUTE_ERROR"
+                            + " asset=" + assetPath
+                            + " file=" + extractedTarPath;
+                    Log.e(TAG, BOOTSTRAP_LOG_PREFIX + " HASH_VERIFY_FAIL " + lastErrorLog);
+                    return false;
+                }
+                if (!normalizedExpectedSha256.equals(actualSha256)) {
+                    lastErrorLog = INTEGRITY_FAIL_PREFIX + "SHA256_MISMATCH"
+                            + " asset=" + assetPath
+                            + " expected=" + normalizedExpectedSha256
+                            + " actual=" + actualSha256;
+                    if (!extractedTarFile.delete()) {
+                        Log.w(TAG, "Failed to delete mismatched archive " + extractedTarPath);
+                    }
+                    Log.e(TAG, BOOTSTRAP_LOG_PREFIX + " HASH_VERIFY_FAIL " + lastErrorLog);
+                    return false;
+                }
+                Log.i(TAG, BOOTSTRAP_LOG_PREFIX + " HASH_VERIFY_OK asset=" + assetPath + " sha256=" + actualSha256);
+            }
         }
 
         // Step 2: Run tar extraction

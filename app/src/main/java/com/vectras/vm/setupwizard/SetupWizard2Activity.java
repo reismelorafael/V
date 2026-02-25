@@ -469,7 +469,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 }
 
                 new Thread(() -> {
-                    boolean result = SetupFeatureCore.startExtractSystemFiles(this);
+                    boolean result = SetupFeatureCore.startExtractSystemFiles(this, bootstrapExpectedSha256);
 
                     runOnUiThread(() -> new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         if (result) {
