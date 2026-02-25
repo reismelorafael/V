@@ -151,6 +151,7 @@ public class VncCanvas extends AppCompatImageView {
 	 *            Callback to run on UI thread after connection is set up
 	 */
 	void initializeVncCanvas(ConnectionBean bean, final Runnable setModes) {
+		retries = 0;
 		connection = bean;
 		this.pendingColorModel = COLORMODEL.valueOf(bean.getColorModel());
 
@@ -200,9 +201,9 @@ public class VncCanvas extends AppCompatImageView {
 					});
 					processNormalProtocol(getContext(), pd, setModes);
 				} catch (Throwable e) {
+					dismissProgressDialog(pd);
 					if (maintainConnection) {
 						Log.e(TAG, "initializeVncCanvas: ", e);
-						dismissProgressDialog(pd);
 						if (e instanceof OutOfMemoryError) {
 							handleOutOfMemoryError((OutOfMemoryError) e, pd, display);
 						} else if (e instanceof ArrayIndexOutOfBoundsException || e instanceof IOException) {
@@ -249,7 +250,6 @@ public class VncCanvas extends AppCompatImageView {
 						+ pendingColorModel + ", compressLevel=" + compressLevel + ", jpegQuality=" + jpegQuality
 						+ ", retries=" + retries + "/" + MAX_RETRIES,
 				error);
-		dismissProgressDialog(pd);
 		handler.post(new Runnable() {
 			@Override
 			public void run() {
