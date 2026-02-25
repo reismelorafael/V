@@ -3,6 +3,7 @@ package com.vectras.vm.setupwizard;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.AssetManager;
 import android.os.Build;
 import android.util.Log;
 
@@ -42,6 +43,7 @@ import java.util.StringJoiner;
 
 public class SetupFeatureCore {
     public static String TAG = "SetupFeatureCore";
+    public static final String ABI_RESOLVE_TAG = "SETUP_ABI_RESOLVE";
     public static String lastErrorLog = "";
     public static final String POST_CHECK_FAIL_PREFIX = "POST_CHECK_FAIL:";
 
@@ -331,8 +333,18 @@ public class SetupFeatureCore {
 
     public static boolean extractSystemFiles(Context context, String fromAsset, String extractTo) {
         String randomFileName = VMManager.startRamdomVMID();
-        String abi = Build.SUPPORTED_ABIS[0];
-        String assetPath = fromAsset + "/" + abi + ".tar";
+        ArrayList<String> abiCandidates = resolveBootstrapAbiCandidates();
+        String assetPath = resolveFirstExistingAssetPath(context.getAssets(), fromAsset, abiCandidates);
+        if (assetPath == null) {
+            lastErrorLog = buildAbiResolutionError(
+                    "No bundled bootstrap package matched the current device architecture.",
+                    Build.SUPPORTED_ABIS,
+                    abiCandidates,
+                    fromAsset
+            );
+            Log.e(ABI_RESOLVE_TAG, lastErrorLog);
+            return false;
+        }
 
         final Path filesDirRealPath;
         final Path extractTargetPath;
@@ -553,5 +565,69 @@ public class SetupFeatureCore {
                     true,
                     null,
                     null);
+    }
+
+    public static ArrayList<String> resolveBootstrapAbiCandidates() {
+        LinkedHashSet<String> orderedCandidates = new LinkedHashSet<>();
+        if (Build.SUPPORTED_ABIS != null) {
+            for (String abi : Build.SUPPORTED_ABIS) {
+                if (abi == null) continue;
+                String normalizedAbi = abi.trim().toLowerCase(Locale.ROOT);
+                if (normalizedAbi.isEmpty()) continue;
+                orderedCandidates.add(normalizedAbi);
+                addAbiAliases(normalizedAbi, orderedCandidates);
+            }
+        }
+
+        ArrayList<String> result = new ArrayList<>(orderedCandidates);
+        Log.i(ABI_RESOLVE_TAG,
+                "resolveBootstrapAbiCandidates supported=" + Arrays.toString(Build.SUPPORTED_ABIS)
+                        + " candidates=" + result);
+        return result;
+    }
+
+    public static String resolveFirstExistingAssetPath(AssetManager assetManager, String assetGroup, List<String> abiCandidates) {
+        if (assetManager == null || abiCandidates == null || abiCandidates.isEmpty()) {
+            return null;
+        }
+
+        for (String candidate : abiCandidates) {
+            String assetPath = assetGroup + "/" + candidate + ".tar";
+            try (InputStream inputStream = assetManager.open(assetPath)) {
+                Log.i(ABI_RESOLVE_TAG, "Resolved asset path group=" + assetGroup + " candidate=" + candidate + " path=" + assetPath);
+                return assetPath;
+            } catch (IOException ignored) {
+                Log.d(ABI_RESOLVE_TAG, "Asset candidate not found: " + assetPath);
+            }
+        }
+
+        return null;
+    }
+
+    public static String buildAbiResolutionError(String reason, String[] supportedAbis, List<String> candidates, String assetGroup) {
+        String requiredAssetKeys = assetGroup + "/<abi>.tar where <abi> is one of " + candidates;
+        return reason
+                + " Supported device ABIs=" + Arrays.toString(supportedAbis)
+                + " | Required asset keys=" + requiredAssetKeys;
+    }
+
+    private static void addAbiAliases(String abi, LinkedHashSet<String> orderedCandidates) {
+        switch (abi) {
+            case "arm64-v8a":
+                orderedCandidates.add("aarch64");
+                break;
+            case "armeabi-v7a":
+                orderedCandidates.add("arm");
+                orderedCandidates.add("armhf");
+                break;
+            case "x86_64":
+                orderedCandidates.add("amd64");
+                break;
+            case "x86":
+                orderedCandidates.add("i686");
+                break;
+            default:
+                break;
+        }
     }
 }

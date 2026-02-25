@@ -80,7 +80,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
     private static final String TAG = "SetupWizard2Activity";
     private static final String BOOTSTRAP_PREFIX_ARIA2 = " aria2c -x 4 --async-dns=false --disable-ipv6 -o setup.tar.gz ";
     private static final String BOOTSTRAP_PREFIX_CURL = " curl -o setup.tar.gz -L ";
-    private static final String[] BOOTSTRAP_COMPATIBLE_ABI_PREFIXES = new String[]{"arm64-v8a", "aarch64", "armeabi-v7a", "armhf", "x86_64", "amd64", "x86"};
+    private static final String[] BOOTSTRAP_COMPATIBLE_ABI_PREFIXES = new String[]{"arm64-v8a", "aarch64", "armeabi-v7a", "arm", "armhf", "x86_64", "amd64", "x86", "i686"};
     private static final Pattern ARIA2_PROGRESS_PATTERN = Pattern.compile("\\((\\d{1,3})%\\)");
     private static final Pattern CURL_PROGRESS_PATTERN = Pattern.compile("^\\s*(\\d{1,3})\\s+\\d");
     private static final Pattern PACKAGE_PROGRESS_PATTERN = Pattern.compile("\\((\\d+)/(\\d+)\\)");
@@ -711,9 +711,20 @@ public class SetupWizard2Activity extends AppCompatActivity {
     }
 
     private boolean prepareBundledBootstrapArchive() {
-        String abi = Build.SUPPORTED_ABIS[0];
-        String assetPath = "alpine19/" + abi + ".tar";
+        ArrayList<String> abiCandidates = SetupFeatureCore.resolveBootstrapAbiCandidates();
+        String assetPath = SetupFeatureCore.resolveFirstExistingAssetPath(getAssets(), "alpine19", abiCandidates);
         setupArchiveFileName = "setup.tar";
+
+        if (assetPath == null) {
+            String error = SetupFeatureCore.buildAbiResolutionError(
+                    "No bundled alpine19 bootstrap archive matched the current device architecture.",
+                    Build.SUPPORTED_ABIS,
+                    abiCandidates,
+                    "alpine19"
+            );
+            Log.e(SetupFeatureCore.ABI_RESOLVE_TAG, error);
+            return false;
+        }
 
         try (InputStream input = getAssets().open(assetPath);
              FileOutputStream output = new FileOutputStream(tarPath)) {
@@ -1414,52 +1425,66 @@ public class SetupWizard2Activity extends AppCompatActivity {
             return false;
         }
 
-        String architectureKey;
-        if (DeviceUtils.isArm()) {
-            architectureKey = DeviceUtils.is64bit() ? "aarch64" : "armhf";
-        } else {
-            architectureKey = DeviceUtils.is64bit() ? "amd64" : "x86";
-        }
+        ArrayList<String> architectureKeys = SetupFeatureCore.resolveBootstrapAbiCandidates();
+        Log.i(SetupFeatureCore.ABI_RESOLVE_TAG,
+                "metadata candidates=" + architectureKeys + " availableKeys=" + bootstrapMap.keySet());
 
-        Object architectureConfig = bootstrapMap.get(architectureKey);
-        String resolvedBootstrapUrl;
-        String resolvedSha256 = "";
-        String resolvedSignature = "";
-
-        if (architectureConfig instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> architectureMap = (Map<String, Object>) architectureConfig;
-            Object bootstrapUrlObject = architectureMap.get("url");
-            resolvedBootstrapUrl = bootstrapUrlObject == null ? "" : bootstrapUrlObject.toString().trim();
-            Object sha256Object = architectureMap.get("sha256");
-            if (sha256Object != null) {
-                String candidate = sha256Object.toString().trim();
-                if (SHA256_PATTERN.matcher(candidate).matches()) {
-                    resolvedSha256 = candidate.toLowerCase(Locale.ROOT);
-                } else if (!candidate.isEmpty()) {
-                    Log.w(TAG, "AUDIT bootstrap metadata contains invalid sha256 for architecture=" + architectureKey);
-                }
+        for (String architectureKey : architectureKeys) {
+            Object architectureConfig = bootstrapMap.get(architectureKey);
+            if (architectureConfig == null) {
+                continue;
             }
-            Object sigObject = architectureMap.get("sig");
-            resolvedSignature = sigObject == null ? "" : sigObject.toString().trim();
-        } else {
-            resolvedBootstrapUrl = architectureConfig == null ? "" : architectureConfig.toString().trim();
+
+            String resolvedBootstrapUrl;
+            String resolvedSha256 = "";
+            String resolvedSignature = "";
+
+            if (architectureConfig instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> architectureMap = (Map<String, Object>) architectureConfig;
+                Object bootstrapUrlObject = architectureMap.get("url");
+                resolvedBootstrapUrl = bootstrapUrlObject == null ? "" : bootstrapUrlObject.toString().trim();
+                Object sha256Object = architectureMap.get("sha256");
+                if (sha256Object != null) {
+                    String candidate = sha256Object.toString().trim();
+                    if (SHA256_PATTERN.matcher(candidate).matches()) {
+                        resolvedSha256 = candidate.toLowerCase(Locale.ROOT);
+                    } else if (!candidate.isEmpty()) {
+                        Log.w(TAG, "AUDIT bootstrap metadata contains invalid sha256 for architecture=" + architectureKey);
+                    }
+                }
+                Object sigObject = architectureMap.get("sig");
+                resolvedSignature = sigObject == null ? "" : sigObject.toString().trim();
+            } else {
+                resolvedBootstrapUrl = architectureConfig.toString().trim();
+            }
+
+            if (!isBootstrapLinkValid(resolvedBootstrapUrl)) {
+                Log.w(SetupFeatureCore.ABI_RESOLVE_TAG, "Invalid bootstrap URL for key=" + architectureKey + " value=" + resolvedBootstrapUrl);
+                continue;
+            }
+
+            bootstrapFileLink = resolvedBootstrapUrl;
+            bootstrapExpectedSha256 = resolvedSha256;
+            bootstrapExpectedSignature = resolvedSignature;
+            downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
+            Log.i(SetupFeatureCore.ABI_RESOLVE_TAG, "Resolved metadata key=" + architectureKey + " origin=" + bootstrapFileLink);
+            Log.i(TAG, "AUDIT bootstrap metadata resolved architecture=" + architectureKey
+                    + " | hasSha256=" + (!TextUtils.isEmpty(bootstrapExpectedSha256))
+                    + " | hasSig=" + (!TextUtils.isEmpty(bootstrapExpectedSignature))
+                    + " | origin=" + bootstrapFileLink);
+            MainSettingsManager.setLastSetupBootstrapUrl(this, bootstrapFileLink);
+            return !downloadBootstrapsCommand.isEmpty();
         }
 
-        if (!isBootstrapLinkValid(resolvedBootstrapUrl)) {
-            return false;
-        }
-
-        bootstrapFileLink = resolvedBootstrapUrl;
-        bootstrapExpectedSha256 = resolvedSha256;
-        bootstrapExpectedSignature = resolvedSignature;
-        downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
-        Log.i(TAG, "AUDIT bootstrap metadata resolved architecture=" + architectureKey
-                + " | hasSha256=" + (!TextUtils.isEmpty(bootstrapExpectedSha256))
-                + " | hasSig=" + (!TextUtils.isEmpty(bootstrapExpectedSignature))
-                + " | origin=" + bootstrapFileLink);
-        MainSettingsManager.setLastSetupBootstrapUrl(this, bootstrapFileLink);
-        return !downloadBootstrapsCommand.isEmpty();
+        String error = SetupFeatureCore.buildAbiResolutionError(
+                "No remote bootstrap metadata entry matched the current device architecture.",
+                Build.SUPPORTED_ABIS,
+                architectureKeys,
+                "bootstrap"
+        ) + " | Metadata keys=" + bootstrapMap.keySet();
+        Log.e(SetupFeatureCore.ABI_RESOLVE_TAG, error);
+        return false;
     }
 
     private void selectMirror() {
