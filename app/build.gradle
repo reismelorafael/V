@@ -27,14 +27,17 @@ android {
                 def rmrEnablePolicyModule = providers.gradleProperty("RMR_ENABLE_POLICY_MODULE").orElse("ON").get()
                 def rmrEnableBitrafModule = providers.gradleProperty("RMR_ENABLE_BITRAF_MODULE").orElse("ON").get()
                 def nativeMcpu = providers.gradleProperty("nativeMcpu").orNull
-                def arm64CppFlags = ["-O3", "-ffast-math", "-fno-exceptions", "-fno-rtti", "-march=armv8-a", "-DRMR_JNI_BUILD=1"]
+                def arm64CppFlags = ["-march=armv8-a"]
                 if (nativeMcpu) {
                     // -mcpu complementa o baseline de -march sem substituí-lo.
                     arm64CppFlags += "-mcpu=${nativeMcpu}"
                 }
-                cppFlags arm64CppFlags.join(" ")
+                def commonCppFlags = ["-O3", "-ffast-math", "-fno-exceptions", "-fno-rtti", "-DRMR_JNI_BUILD=1"]
+                cppFlags commonCppFlags.join(" ")
                 cFlags "-O3 -ffast-math -DRMR_JNI_BUILD=1"
-                arguments "-DRMR_ENABLE_POLICY_MODULE=${rmrEnablePolicyModule}", "-DRMR_ENABLE_BITRAF_MODULE=${rmrEnableBitrafModule}"
+                arguments "-DRMR_ENABLE_POLICY_MODULE=${rmrEnablePolicyModule}",
+                          "-DRMR_ENABLE_BITRAF_MODULE=${rmrEnableBitrafModule}",
+                          "-DVECTRA_ARM64_CPP_FLAGS=${arm64CppFlags.join(' ')}"
             }
         }
 

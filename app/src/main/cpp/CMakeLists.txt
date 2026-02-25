@@ -82,12 +82,28 @@ endif()
 set(VECTRA_COMMON_COMPILE_OPTIONS -O3 -ffast-math -fvisibility=hidden -DRMR_JNI_BUILD=1)
 set(VECTRA_ABI_COMPILE_OPTIONS)
 
+# Flag arm64 vinda do Gradle: baseline (-march=armv8-a) e tuning opcional (-mcpu=<valor>).
+set(VECTRA_ARM64_CPP_FLAGS "${VECTRA_ARM64_CPP_FLAGS}" CACHE STRING "Extra arm64 C/C++ flags from Gradle")
+set(VECTRA_ARM64_CPP_FLAGS_LIST)
+if(VECTRA_ARM64_CPP_FLAGS)
+    separate_arguments(VECTRA_ARM64_CPP_FLAGS_LIST NATIVE_COMMAND "${VECTRA_ARM64_CPP_FLAGS}")
+endif()
+
+# CMake já define -march=armv8-a+crc+simd para arm64-v8a; evita sobrescrever esse targeting.
+set(VECTRA_ARM64_TUNING_FLAGS)
+foreach(_flag IN LISTS VECTRA_ARM64_CPP_FLAGS_LIST)
+    if(NOT _flag MATCHES "^-march=")
+        list(APPEND VECTRA_ARM64_TUNING_FLAGS ${_flag})
+    endif()
+endforeach()
+
 if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
     # +crc enables CRC32 intrinsics | +simd enables NEON | +sha2 enables SHA hw
     set(VECTRA_ABI_COMPILE_OPTIONS
         -march=armv8-a+crc+simd
         -DRMR_ARCH_ARM64=1
         -DRMR_FEAT_CRC32_HW=1)
+    list(APPEND VECTRA_ABI_COMPILE_OPTIONS ${VECTRA_ARM64_TUNING_FLAGS})
 endif()
 if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
     set(VECTRA_ABI_COMPILE_OPTIONS -msse4.2 -mpopcnt -DRMR_ARCH_X86_64=1)
