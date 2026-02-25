@@ -733,22 +733,28 @@ public class SetupWizard2Activity extends AppCompatActivity {
     }
 
     private boolean prepareBundledBootstrapArchive() {
-        ArrayList<String> abiCandidates = SetupFeatureCore.resolveBootstrapAbiCandidates();
-        String assetPath = SetupFeatureCore.resolveFirstExistingAssetPath(getAssets(), "alpine19", abiCandidates);
-        setupArchiveFileName = "setup.tar";
+        String selectedAssetPath = null;
+        String selectedAbi = null;
+        for (String abiCandidate : BootstrapAbiMapper.resolveCandidates(Build.SUPPORTED_ABIS)) {
+            String candidatePath = "alpine19/" + abiCandidate + ".tar";
+            try (InputStream ignored = getAssets().open(candidatePath)) {
+                selectedAssetPath = candidatePath;
+                selectedAbi = abiCandidate;
+                break;
+            } catch (IOException ignored) {
+            }
+        }
 
-        if (assetPath == null) {
-            String error = SetupFeatureCore.buildAbiResolutionError(
-                    "No bundled alpine19 bootstrap archive matched the current device architecture.",
-                    Build.SUPPORTED_ABIS,
-                    abiCandidates,
-                    "alpine19"
-            );
-            Log.e(SetupFeatureCore.ABI_RESOLVE_TAG, error);
+        if (selectedAssetPath == null) {
+            Log.e(TAG, "PROOT_BOOTSTRAP ABI_RESOLUTION_FAIL bundled candidates="
+                    + BootstrapAbiMapper.resolveCandidates(Build.SUPPORTED_ABIS));
             return false;
         }
 
-        try (InputStream input = getAssets().open(assetPath);
+        setupArchiveFileName = "setup.tar";
+        Log.i(TAG, "PROOT_BOOTSTRAP ABI_SELECTED bundled selectedAbi=" + selectedAbi + " asset=" + selectedAssetPath);
+
+        try (InputStream input = getAssets().open(selectedAssetPath);
              FileOutputStream output = new FileOutputStream(tarPath)) {
             byte[] buffer = new byte[32 * 1024];
             int read;
@@ -759,7 +765,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
             Log.i(SetupFeatureCore.ABI_RESOLVE_TAG, "Bundled bootstrap prepared from path=" + assetPath);
             return true;
         } catch (IOException e) {
-            Log.e(TAG, "Failed to prepare bundled bootstrap archive: " + assetPath, e);
+            Log.e(TAG, "Failed to prepare bundled bootstrap archive: " + selectedAssetPath, e);
             return false;
         }
     }
@@ -839,6 +845,14 @@ public class SetupWizard2Activity extends AppCompatActivity {
             try {
                 String filesDir = getFilesDir().getAbsolutePath();
                 String tmpDirPath = getFilesDir().getAbsolutePath() + "/usr/tmp";
+                SetupFeatureCore.ProotBootstrapValidationResult prootValidation = SetupFeatureCore.validateProotBootstrapState(this);
+                if (!prootValidation.ok) {
+                    String validationError = "PROOT_PREFLIGHT_FAIL:" + prootValidation.summary();
+                    Log.e(TAG, validationError);
+                    runOnUiThread(() -> uiController(STEP_ERROR, withSetupSourceDiagnostic(validationError)));
+                    isExecutingCommand = false;
+                    return;
+                }
 
                 ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(this, filesDir + "/distro", "/root")
                         .setPath("/bin:/usr/bin:/sbin:/usr/sbin")
@@ -993,6 +1007,10 @@ public class SetupWizard2Activity extends AppCompatActivity {
             ProcessBuilder processBuilder = new ProcessBuilder();
             String filesDir = getFilesDir().getAbsolutePath();
             String tmpDirPath = getFilesDir().getAbsolutePath() + "/usr/tmp";
+            SetupFeatureCore.ProotBootstrapValidationResult prootValidation = SetupFeatureCore.validateProotBootstrapState(this);
+            if (!prootValidation.ok) {
+                return "validation prerequisites failed: " + prootValidation.summary();
+            }
             ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(this, filesDir + "/distro", "/root")
                     .setPath("/bin:/usr/bin:/sbin:/usr/sbin")
                     .setTmpDir(tmpDirPath);
@@ -1055,11 +1073,15 @@ public class SetupWizard2Activity extends AppCompatActivity {
                         "if [ -d \"$BACKUP_BASE/current/usr-local-bin\" ]; then rm -rf /usr/local/bin; cp -a \"$BACKUP_BASE/current/usr-local-bin\" /usr/local/bin; fi; " +
                         "if [ -f \"$BACKUP_BASE/current/etc-profile\" ]; then cp -a \"$BACKUP_BASE/current/etc-profile\" /etc/profile; fi; " +
                         "rm -rf \"$STAGE_DIR\"; " +
-                        "printf '{\\"version\\":1,\\"timestamp\\":\\"" + setupTimestamp + "\\",\\"phase\\":\\"ROLLBACK\\",\\"stage_dir\\":\\"/root/.vectras-staging/" + setupTimestamp + "\\",\\"message\\":\\"" + sanitizedReason + "\\"}\\n' > /root/.vectras-setup/setup_state.json";
-
+                        "echo ROLLBACK > /root/.vectras-setup/setup_state.json";
                 ProcessBuilder processBuilder = new ProcessBuilder();
                 String filesDir = getFilesDir().getAbsolutePath();
                 String tmpDirPath = getFilesDir().getAbsolutePath() + "/usr/tmp";
+                SetupFeatureCore.ProotBootstrapValidationResult prootValidation = SetupFeatureCore.validateProotBootstrapState(this);
+                if (!prootValidation.ok) {
+                    Log.e(TAG, "PROOT_PREFLIGHT_FAIL:" + prootValidation.summary());
+                    return;
+                }
                 ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(this, filesDir + "/distro", "/root")
                         .setPath("/bin:/usr/bin:/sbin:/usr/sbin")
                         .setTmpDir(tmpDirPath);
@@ -1412,12 +1434,12 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 return null;
             }
 
-            String normalizedScheme = scheme.toLowerCase();
+            String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
             if (!"https".equals(normalizedScheme) && !"http".equals(normalizedScheme)) {
                 return null;
             }
 
-            String normalizedHost = host.toLowerCase();
+            String normalizedHost = host.toLowerCase(Locale.ROOT);
             if (!BOOTSTRAP_HOST_PATTERN.matcher(normalizedHost).matches()) {
                 return null;
             }
@@ -1427,35 +1449,19 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 return null;
             }
 
-            String encodedPath = parsed.getEncodedPath();
-            String normalizedEncodedPath = encodedPath;
-            if (encodedPath != null) {
-                normalizedEncodedPath = encodedPath.replaceAll("/{2,}", "/");
-            }
-
-            Uri.Builder uriBuilder = new Uri.Builder()
+            String normalizedPath = BootstrapUrlNormalizer.normalizePath(parsed.getEncodedPath());
+            Uri normalized = parsed.buildUpon()
                     .scheme(normalizedScheme)
-                    .encodedAuthority(authority);
-
-            if (normalizedEncodedPath != null) {
-                uriBuilder.encodedPath(normalizedEncodedPath);
-            }
-
-            String encodedQuery = parsed.getEncodedQuery();
-            if (encodedQuery != null) {
-                uriBuilder.encodedQuery(encodedQuery);
-            }
-
-            String encodedFragment = parsed.getEncodedFragment();
-            if (encodedFragment != null) {
-                uriBuilder.encodedFragment(encodedFragment);
-            }
-
-            return uriBuilder.build().toString();
+                    .encodedPath(normalizedPath)
+                    .build();
+            String normalizedUrl = normalized.toString();
+            Log.i(TAG, "PROOT_BOOTSTRAP URL_NORMALIZED raw=" + trimmed + " normalized=" + normalizedUrl);
+            return normalizedUrl;
         } catch (Exception e) {
             return null;
         }
     }
+
 
     private boolean applyOfflineBootstrapFallback(boolean forceCurlDownload) {
         if (isBootstrapLinkValid(bootstrapFileLink)) {
@@ -1503,33 +1509,39 @@ public class SetupWizard2Activity extends AppCompatActivity {
             return false;
         }
 
-        ArrayList<String> architectureKeys = SetupFeatureCore.resolveBootstrapAbiCandidates();
-        Log.i(SetupFeatureCore.ABI_RESOLVE_TAG,
-                "metadata candidates=" + architectureKeys + " availableKeys=" + bootstrapMap.keySet());
-
-        for (String architectureKey : architectureKeys) {
-            Object architectureConfig = bootstrapMap.get(architectureKey);
-            if (architectureConfig == null) {
-                continue;
+        String architectureKey = "";
+        Object architectureConfig = null;
+        ArrayList<String> attemptedKeys = new ArrayList<>();
+        for (String abiCandidate : BootstrapAbiMapper.resolveCandidates(Build.SUPPORTED_ABIS)) {
+            String metadataKey = BootstrapAbiMapper.architectureMetadataKey(abiCandidate);
+            attemptedKeys.add(metadataKey);
+            Object candidateConfig = bootstrapMap.get(metadataKey);
+            if (candidateConfig != null) {
+                architectureKey = metadataKey;
+                architectureConfig = candidateConfig;
+                break;
             }
+        }
+        if (architectureConfig == null) {
+            Log.e(TAG, "PROOT_BOOTSTRAP ABI_RESOLUTION_FAIL metadataKeys=" + attemptedKeys);
+            return false;
+        }
+        String resolvedBootstrapUrl;
+        String resolvedSha256 = "";
+        String resolvedSignature = "";
 
-            String resolvedBootstrapUrl;
-            String resolvedSha256 = "";
-            String resolvedSignature = "";
-
-            if (architectureConfig instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> architectureMap = (Map<String, Object>) architectureConfig;
-                Object bootstrapUrlObject = architectureMap.get("url");
-                resolvedBootstrapUrl = bootstrapUrlObject == null ? "" : bootstrapUrlObject.toString().trim();
-                Object sha256Object = architectureMap.get("sha256");
-                if (sha256Object != null) {
-                    String candidate = sha256Object.toString().trim();
-                    if (SHA256_PATTERN.matcher(candidate).matches()) {
-                        resolvedSha256 = candidate.toLowerCase(Locale.ROOT);
-                    } else if (!candidate.isEmpty()) {
-                        Log.w(TAG, "AUDIT bootstrap metadata contains invalid sha256 for architecture=" + architectureKey);
-                    }
+        if (architectureConfig instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> architectureMap = (Map<String, Object>) architectureConfig;
+            Object bootstrapUrlObject = architectureMap.get("url");
+            resolvedBootstrapUrl = bootstrapUrlObject == null ? "" : bootstrapUrlObject.toString().trim();
+            Object sha256Object = architectureMap.get("sha256");
+            if (sha256Object != null) {
+                String candidate = sha256Object.toString().trim();
+                if (SHA256_PATTERN.matcher(candidate).matches()) {
+                    resolvedSha256 = candidate.toLowerCase(Locale.ROOT);
+                } else if (!candidate.isEmpty()) {
+                    Log.w(TAG, "AUDIT bootstrap metadata contains invalid sha256 for architecture=" + architectureKey);
                 }
                 Object sigObject = architectureMap.get("sig");
                 resolvedSignature = sigObject == null ? "" : sigObject.toString().trim();

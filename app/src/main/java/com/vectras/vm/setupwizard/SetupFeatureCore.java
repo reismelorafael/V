@@ -50,22 +50,91 @@ public class SetupFeatureCore {
     public static final String ABI_RESOLVE_TAG = "SETUP_ABI_RESOLVE";
     public static String lastErrorLog = "";
     public static final String POST_CHECK_FAIL_PREFIX = "POST_CHECK_FAIL:";
+    private static final String BOOTSTRAP_LOG_PREFIX = "PROOT_BOOTSTRAP";
 
     public static boolean isInstalledSystemFiles(Context context) {
         return isInstalledProot(context) && isInstalledDistro(context);
     }
 
     public static boolean isInstalledProot(Context context) {
-        return FileUtils.isFileExists(context.getFilesDir().getAbsolutePath() + "/usr/bin/proot");
+        return validateProotBootstrapState(context).ok;
     }
 
     public static boolean isInstalledDistro(Context context) {
-        return FileUtils.isFileExists(context.getFilesDir().getAbsolutePath() + "/distro/bin/busybox");
+        String filesDir = context.getFilesDir().getAbsolutePath();
+        File busybox = new File(filesDir + "/distro/bin/busybox");
+        return busybox.isFile();
     }
 
     public static boolean isInstalledQemu(Context context) {
         return FileUtils.isFileExists(context.getFilesDir().getAbsolutePath() + "/distro/usr/local/bin/qemu-system-x86_64") ||
                 FileUtils.isFileExists(context.getFilesDir().getAbsolutePath() + "/distro/usr/bin/qemu-system-x86_64");
+    }
+
+
+    public static final class ProotBootstrapValidationResult {
+        public final boolean ok;
+        public final ArrayList<String> errors;
+        public final String shellPath;
+
+        ProotBootstrapValidationResult(boolean ok, ArrayList<String> errors, String shellPath) {
+            this.ok = ok;
+            this.errors = errors;
+            this.shellPath = shellPath;
+        }
+
+        public String summary() {
+            if (ok) return "ok";
+            return String.join(",", errors);
+        }
+    }
+
+    public static ProotBootstrapValidationResult validateProotBootstrapState(Context context) {
+        String filesDir = context.getFilesDir().getAbsolutePath();
+        ArrayList<String> errors = new ArrayList<>();
+
+        File proot = new File(filesDir + "/usr/bin/proot");
+        if (!proot.isFile()) {
+            errors.add("missing-proot");
+        } else if (!proot.canExecute()) {
+            errors.add("proot-not-executable");
+        }
+
+        File busybox = new File(filesDir + "/distro/bin/busybox");
+        if (!busybox.isFile()) {
+            errors.add("missing-distro-busybox");
+        } else if (!busybox.canExecute()) {
+            errors.add("distro-busybox-not-executable");
+        }
+
+        File rootShell = new File(filesDir + "/distro/bin/sh");
+        if (!rootShell.isFile()) {
+            errors.add("missing-rootfs-shell");
+        } else if (!rootShell.canExecute()) {
+            errors.add("rootfs-shell-not-executable");
+        }
+
+        File tmpDir = new File(filesDir + "/usr/tmp");
+        if (!tmpDir.isDirectory()) {
+            errors.add("missing-proot-tmp-dir");
+        } else if (!tmpDir.canWrite()) {
+            errors.add("proot-tmp-not-writable");
+        }
+
+        boolean ok = errors.isEmpty();
+        return new ProotBootstrapValidationResult(ok, errors, rootShell.getAbsolutePath());
+    }
+
+    public static String runProotbuildSelfCheck(Context context) {
+        ProotBootstrapValidationResult validation = validateProotBootstrapState(context);
+        String filesDir = context.getFilesDir().getAbsolutePath();
+        if (!validation.ok) {
+            String summary = "PROOT_SELF_CHECK: FAIL errors=" + validation.summary();
+            Log.e(TAG, summary + " filesDir=" + filesDir);
+            return summary;
+        }
+
+        return "PROOT_SELF_CHECK: OK filesDir=" + filesDir + " shell=" + validation.shellPath;
     }
 
     public static final class PreflightResult {
@@ -701,18 +770,15 @@ public class SetupFeatureCore {
 
     public static boolean extractSystemFiles(Context context, String fromAsset, String extractTo) {
         String randomFileName = VMManager.startRamdomVMID();
-        ArrayList<String> abiCandidates = resolveBootstrapAbiCandidates();
-        String assetPath = resolveFirstExistingAssetPath(context.getAssets(), fromAsset, abiCandidates);
+        final String[] selectedAssetHolder = new String[1];
+        String assetPath = resolveAssetPath(context, fromAsset, selectedAssetHolder);
         if (assetPath == null) {
-            lastErrorLog = buildAbiResolutionError(
-                    "No bundled bootstrap package matched the current device architecture.",
-                    Build.SUPPORTED_ABIS,
-                    abiCandidates,
-                    fromAsset
-            );
-            Log.e(ABI_RESOLVE_TAG, lastErrorLog);
             return false;
         }
+        Log.i(TAG, BOOTSTRAP_LOG_PREFIX + " ABI_SELECTED candidates="
+                + BootstrapAbiMapper.resolveCandidates(Build.SUPPORTED_ABIS)
+                + " selected=" + selectedAssetHolder[0]
+                + " assetPath=" + assetPath);
 
         final Path filesDirRealPath;
         final Path extractTargetPath;
@@ -772,26 +838,24 @@ public class SetupFeatureCore {
             try {
                 // Security note: ProcessBuilder receives each token separately. There is no shell invocation here.
                 ProcessBuilder processBuilder = new ProcessBuilder(cmdline);
-                processBuilder.redirectErrorStream(true);
                 processBuilder.environment().remove("LD_LIBRARY_PATH");
                 process = processBuilder.start();
 
-                // Capture standard error output (stderr)
                 StringBuilder errorOutput = new StringBuilder();
-                Thread stderrCollector = new Thread(() -> {
-                    try (BufferedReader errorReader =
-                                 new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+                Thread stdoutCollector = new Thread(() -> {
+                    try (BufferedReader outputReader =
+                                 new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                         String line;
-                        while ((line = errorReader.readLine()) != null) {
+                        while ((line = outputReader.readLine()) != null) {
                             synchronized (errorOutput) {
                                 errorOutput.append(line).append("\n");
                             }
                         }
                     } catch (IOException e) {
-                        Log.e(TAG, "extractSystemFiles stderr collector: ", e);
+                        Log.e(TAG, "extractSystemFiles output collector: ", e);
                     }
-                }, "setup-extract-stderr");
-                stderrCollector.start();
+                }, "setup-extract-output");
+                stdoutCollector.start();
 
                 ProcessRuntimeOps.TimeoutExecutionResult waitResult = ProcessRuntimeOps.waitForByCategory(
                         process,
@@ -799,10 +863,10 @@ public class SetupFeatureCore {
                 );
 
                 try {
-                    stderrCollector.join();
+                    stdoutCollector.join();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    lastErrorLog = "Extraction stderr collector interrupted ["
+                    lastErrorLog = "Extraction output collector interrupted ["
                             + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
                             + "] asset=" + assetPath;
                     Log.e(TAG, lastErrorLog, e);
@@ -847,7 +911,11 @@ public class SetupFeatureCore {
                     return false;
                 }
 
+                if ("bootstrap".equals(fromAsset)) {
+                    FileUtils.chmod(new File(context.getFilesDir(), "usr/bin/proot"), 0755);
+                }
                 if (fromAsset.contains("alpine")) {
+                    FileUtils.chmod(new File(context.getFilesDir(), "distro/bin/busybox"), 0755);
                     setDNS(context);
                 }
 
@@ -861,12 +929,18 @@ public class SetupFeatureCore {
                 if (fromAsset.contains("alpine") && !isInstalledDistro(context)) {
                     extractionPostCheckFailedItems.add("missing-distro-after-alpine-extract");
                 }
+                ProotBootstrapValidationResult validation = validateProotBootstrapState(context);
+                if (!validation.ok) {
+                    extractionPostCheckFailedItems.addAll(validation.errors);
+                }
+
                 if (!extractionPostCheckFailedItems.isEmpty()) {
                     lastErrorLog = formatPostCheckFailure(extractionPostCheckFailedItems);
-                    Log.e(TAG, lastErrorLog);
+                    Log.e(TAG, BOOTSTRAP_LOG_PREFIX + " PRECHECK_FAIL details=" + lastErrorLog);
                     return false;
                 }
 
+                Log.i(TAG, BOOTSTRAP_LOG_PREFIX + " EXTRACT_OK asset=" + assetPath + " target=" + extractTargetPath);
                 return true;
             } catch (IOException e) {
                 lastErrorLog = lastErrorLog.isEmpty() ? e.toString() : lastErrorLog + "\n" + e;
@@ -878,6 +952,25 @@ public class SetupFeatureCore {
             }
         }
         return false;
+    }
+
+
+    private static String resolveAssetPath(Context context, String fromAsset, String[] selectedAssetHolder) {
+        List<String> candidates = BootstrapAbiMapper.resolveCandidates(Build.SUPPORTED_ABIS);
+        for (String abi : candidates) {
+            String assetPath = fromAsset + "/" + abi + ".tar";
+            try (InputStream ignored = context.getAssets().open(assetPath)) {
+                if (selectedAssetHolder != null && selectedAssetHolder.length > 0) {
+                    selectedAssetHolder[0] = abi;
+                }
+                return assetPath;
+            } catch (IOException ignored) {
+            }
+        }
+
+        lastErrorLog = "Unable to resolve asset for " + fromAsset + " candidates=" + candidates;
+        Log.e(TAG, BOOTSTRAP_LOG_PREFIX + " ABI_RESOLUTION_FAIL " + lastErrorLog);
+        return null;
     }
 
     private static String formatCommand(String[] cmdline) {
