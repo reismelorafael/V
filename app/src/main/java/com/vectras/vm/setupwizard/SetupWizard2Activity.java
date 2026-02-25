@@ -327,7 +327,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
     private void triggerDebugProotSelfCheck(String triggerOrigin) {
         executor.execute(() -> {
-            boolean checkOk = SetupFeatureCore.runProotSelfCheck(this);
+            boolean checkOk = SetupFeatureCore.runProotSelfCheck(this).ok;
             Log.i(TAG, "runProotSelfCheck trigger=" + triggerOrigin + " ok=" + checkOk);
         });
     }
@@ -514,11 +514,12 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 }
 
                 Log.d(TAG, "getDataForStandardSetup resolved=" + hasResolvedBootstrap + ", source=" + setupSource);
+                final boolean resolvedBootstrap = hasResolvedBootstrap;
 
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    if (isSystemUpdateMode && hasResolvedBootstrap) {
+                    if (isSystemUpdateMode && resolvedBootstrap) {
                         startSetup();
-                    } else if (pendingStandardSetupStart && hasResolvedBootstrap) {
+                    } else if (pendingStandardSetupStart && resolvedBootstrap) {
                         pendingStandardSetupStart = false;
                         isCustomSetupMode = false;
                         startSetup();
@@ -762,7 +763,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 output.write(buffer, 0, read);
             }
             output.flush();
-            Log.i(SetupFeatureCore.ABI_RESOLVE_TAG, "Bundled bootstrap prepared from path=" + assetPath);
+            Log.i(SetupFeatureCore.ABI_RESOLVE_TAG, "Bundled bootstrap prepared from path=" + selectedAssetPath);
             return true;
         } catch (IOException e) {
             Log.e(TAG, "Failed to prepare bundled bootstrap archive: " + selectedAssetPath, e);
@@ -1286,7 +1287,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
         for (String line : lastProotSelfCheckBlock.split("\\R")) {
             if (!line.trim().isEmpty()) {
-                Log.i(PROOT_SELF_CHECK_TAG, line);
+                Log.i(SetupFeatureCore.ABI_RESOLVE_TAG, line);
             }
         }
         appendTextAndScroll("\n[PROOT_SELF_CHECK]\n" + lastProotSelfCheckBlock + "\n");
@@ -1558,7 +1559,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
             if (!isBootstrapLinkValid(resolvedBootstrapUrl)) {
                 Log.w(SetupFeatureCore.ABI_RESOLVE_TAG, "Invalid bootstrap URL for key=" + architectureKey + " value=" + resolvedBootstrapUrl);
-                continue;
+                return false;
             }
 
             bootstrapFileLink = resolvedBootstrapUrl;
@@ -1577,7 +1578,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
         String error = SetupFeatureCore.buildAbiResolutionError(
                 "No remote bootstrap metadata entry matched the current device architecture.",
                 Build.SUPPORTED_ABIS,
-                architectureKeys,
+                attemptedKeys,
                 "bootstrap"
         ) + " | Metadata keys=" + bootstrapMap.keySet();
         Log.e(SetupFeatureCore.ABI_RESOLVE_TAG, error);

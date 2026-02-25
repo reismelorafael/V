@@ -29,6 +29,7 @@ import com.vectras.vm.databinding.ActivityRomInfoBinding;
 import com.vectras.vm.download.DownloadItemState;
 import com.vectras.vm.download.DownloadStateStore;
 import com.vectras.vm.download.DownloadStatus;
+import com.vectras.vm.download.DownloadViewModel;
 import com.vectras.vm.network.NetworkEndpoints;
 import com.vectras.vm.network.RequestNetwork;
 import com.vectras.vm.network.RequestNetworkController;

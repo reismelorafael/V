@@ -140,7 +140,8 @@ public class Config {
 
     //QMP
     public static String QMPServer = "127.0.0.1";
-    public static int QMPPort = 4444;
+    public static final int DEFAULT_QMP_PORT = 4444;
+    public static int QMPPort = DEFAULT_QMP_PORT;
 
     public static int MAX_DISPLAY_REFRESH_RATE = 100; //Hz
 

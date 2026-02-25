@@ -237,25 +237,5 @@ public class RomStoreFragment extends Fragment {
         return true;
     }
 
-    private List<DataRoms> deduplicateByVecid(List<DataRoms> source) {
-        List<DataRoms> result = new ArrayList<>();
-        if (source == null) {
-            return result;
-        }
 
-        Map<String, DataRoms> byVecid = new LinkedHashMap<>();
-        for (DataRoms item : source) {
-            if (item == null) {
-                continue;
-            }
-            String key = item.vecid;
-            if (key == null || key.trim().isEmpty()) {
-                result.add(item);
-                continue;
-            }
-            byVecid.put(key.trim(), item);
-        }
-        result.addAll(byVecid.values());
-        return result;
-    }
 }

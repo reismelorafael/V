@@ -3,7 +3,7 @@ package com.vectras.vm.core;
 /**
  * Bridge JNI opcional para rastreamento de estado de fluxo VM em memória nativa.
  */
-final class VmFlowNativeBridge {
+public final class VmFlowNativeBridge {
     private static final boolean AVAILABLE;
 
     static {
@@ -20,26 +20,26 @@ final class VmFlowNativeBridge {
     private VmFlowNativeBridge() {
     }
 
-    static boolean isAvailable() {
+    public static boolean isAvailable() {
         return AVAILABLE;
     }
 
-    static void mark(int vmHash, int stateOrdinal) {
+    public static void mark(int vmHash, int stateOrdinal) {
         if (!AVAILABLE) return;
         nativeVmFlowMark(vmHash, stateOrdinal);
     }
 
-    static int current(int vmHash) {
+    public static int current(int vmHash) {
         if (!AVAILABLE) return -1;
         return nativeVmFlowCurrent(vmHash);
     }
 
-    static int[] stats() {
+    public static int[] stats() {
         if (!AVAILABLE) return null;
         return nativeVmFlowStats();
     }
 
-    static long vmLastMonoNanos(int vmHash) {
+    public static long vmLastMonoNanos(int vmHash) {
         if (!AVAILABLE) return 0L;
         int[] parts = nativeVmFlowLastMono(vmHash);
         if (parts == null || parts.length < 2) return 0L;

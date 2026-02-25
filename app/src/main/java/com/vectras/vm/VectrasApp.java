@@ -58,7 +58,7 @@ public class VectrasApp extends Application {
 		DownloadStateReconciler.reconcileOnAppStart(getApplicationContext());
 		DeterministicRuntimeMatrix.Snapshot runtimeSnapshot = DeterministicRuntimeMatrix.capture();
 		android.util.Log.i("VectraRuntime", "arch=" + runtimeSnapshot.arch + " cores=" + runtimeSnapshot.cores + " ptr=" + runtimeSnapshot.pointerBits + " page=" + runtimeSnapshot.pageBytes + " line=" + runtimeSnapshot.cacheLineBytes + " feat=" + runtimeSnapshot.features + " ioq=" + runtimeSnapshot.ioQuantumBytes + " irqUs=" + runtimeSnapshot.irqPeriodMicros + " workers=" + runtimeSnapshot.workerParallelism + " det=" + runtimeSnapshot.deterministicProduct);
-		VectraCore.init(this);
+		VectraCore.init(this, null);
 
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override

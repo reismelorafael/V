@@ -111,7 +111,7 @@ public final class KvmProbe {
             return "";
         }
         try {
-            return Files.readString(Path.of(path), StandardCharsets.UTF_8);
+            return new String(Files.readAllBytes(Path.of(path)), StandardCharsets.UTF_8);
         } catch (IOException ignored) {
             return "";
         }

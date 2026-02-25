@@ -31,6 +31,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.termux.app.TermuxService;
 import com.vectras.qemu.MainSettingsManager;
 import com.vectras.vm.main.MainActivity;
+import com.vectras.vm.network.EndpointValidator;
 import com.vectras.vm.network.NetworkEndpoints;
 import com.vectras.vm.setupwizard.SetupWizard2Activity;
 import com.vectras.vm.utils.CommandUtils;

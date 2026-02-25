@@ -37,4 +37,6 @@ public class DataRoms {
     public String vecid;
     @SerializedName("hash")
     public String hash;
+    @SerializedName("sha256")
+    public String sha256;
 }

@@ -56,6 +56,7 @@ import java.util.Set;
  */
 public class FileUtils {
 	public static final String TAG = "FileUtils";
+	private static final HashMap<Integer, String> fdOwners = new HashMap<Integer, String>();
 
 	@NonNull
 	public static File getExternalFilesDirectory(Context context) {
@@ -651,6 +652,15 @@ public class FileUtils {
 		}
 	}
 
+
+	public static void viewVectrasLog(Activity activity) {
+		if (activity == null) return;
+		String logPath = activity.getFilesDir().getAbsolutePath() + "/vectras.log";
+		Intent intent = new Intent(Intent.ACTION_SEND);
+		intent.setType("text/plain");
+		intent.putExtra(Intent.EXTRA_TEXT, readAFile(logPath));
+		activity.startActivity(Intent.createChooser(intent, "Vectras Logs"));
+	}
 	public static void writeToFile(String data, File file, Context context) {
 		try {
 			FileOutputStream fileOutStream = new FileOutputStream(file);

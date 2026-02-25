@@ -104,6 +104,7 @@ public class MainActivity extends AppCompatActivity implements RomStoreFragment.
     private RomStoreHomeAdapterSearch adapterRomStoreSearch;
     private SoftwareStoreHomeAdapterSearch adapterSoftwareStoreSearch;
     private final List<DataRoms> dataRomStoreSearch = new ArrayList<>();
+    private final List<DataRoms> dataSoftwareStoreSearch = new ArrayList<>();
     private MainUiStateViewModel mainUiStateViewModel;
 
     public static CallbackInterface.HomeCallToVmsListener homeCallToVmsListener;

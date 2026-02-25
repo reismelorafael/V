@@ -38,6 +38,18 @@ public final class NetworkEndpoints {
         return SCHEME + HOST_GITHUB_WEB + "/" + username;
     }
 
+    public static String termuxPulseAudioScript() {
+        return SCHEME + HOST_GITHUB_RAW + "/rafaelmeloreisnovo/Vectras-VM-Android/main/resources/scripts/setup-termux-audio.sh";
+    }
+
+    public static String termuxReleasePage() {
+        return SCHEME + HOST_GITHUB_WEB + "/termux/termux-app/releases";
+    }
+
+    public static String githubProfile(@NonNull String username) {
+        return githubUserProfile(username);
+    }
+
     public static String languageModuleRaw(@NonNull String languageCode) {
         String normalized = languageCode.toLowerCase(Locale.ROOT);
         return SCHEME + HOST_GITHUB_RAW + "/rafaelmeloreisnovo/Vectras-VM-Android/main/resources/lang/" + normalized + ".json";

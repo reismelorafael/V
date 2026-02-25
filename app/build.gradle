@@ -185,6 +185,8 @@ tasks.register("printNativeVariantConfig") {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation project(':terminal-emulator')
+    implementation project(':terminal-view')
     implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'com.google.android.material:material:1.13.0'
     implementation "androidx.annotation:annotation:1.9.1"

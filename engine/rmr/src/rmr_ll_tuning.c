@@ -1,5 +1,9 @@
 #include "rmr_ll_tuning.h"
+#if defined(RMR_JNI_BUILD) && RMR_JNI_BUILD
+#include <string.h>
+#else
 #include "rmr_baremetal_compat.h" /* baremetal memset substitute */
+#endif
 
 /* BUG FIX baremetal: string.h removido */
 

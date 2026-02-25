@@ -28,6 +28,16 @@ public final class EndpointValidator {
         return isAllowed(url, DEFAULT_ALLOWLIST);
     }
 
+    public static boolean isValidHttpUrl(@NonNull String url) {
+        return isAllowed(url);
+    }
+
+    public static void requireValidHttpUrl(@NonNull String url, @NonNull String label) {
+        if (!isAllowed(url)) {
+            throw new IllegalArgumentException(label + " rejected by endpoint allowlist");
+        }
+    }
+
     public static boolean isAllowed(@NonNull String url, @NonNull Set<String> hostAllowlist) {
         if (url.trim().isEmpty()) {
             return false;

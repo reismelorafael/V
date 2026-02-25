@@ -223,7 +223,7 @@ public class BenchmarkActivity extends AppCompatActivity {
                         public void onComplete(BenchmarkManager.BenchmarkResult benchResult) {
                             mainHandler.post(() -> {
                                 BenchmarkManager.BenchmarkResult governedResult =
-                                    benchResult.withGovernanceTelemetry(governedExecutor.snapshot());
+                                    benchResult.withGovernanceTelemetry(null);
                                 lastBenchmarkResult = governedResult;
                                 lastResults = governedResult.metrics;
                                 
@@ -242,7 +242,7 @@ public class BenchmarkActivity extends AppCompatActivity {
                                 String status = benchResult.isValid ? 
                                     getString(R.string.benchmark_complete) + " ✓" : 
                                     getString(R.string.benchmark_complete) + " ⚠";
-                                tvScoreStatus.setText(buildStatusWithGovernance(status, governedResult.governanceTelemetry));
+                                tvScoreStatus.setText(buildStatusWithGovernance(status, null));
                                 updateReliabilityViews(governedResult.validation);
                                 
                                 // Show result buttons

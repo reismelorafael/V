@@ -273,7 +273,10 @@ public class QmpClient {
 			String key = keys.next();
 			Object value = object.opt(key);
 			if (isSensitiveField(key)) {
-				object.put(key, MASKED_VALUE);
+                    try {
+                        object.put(key, MASKED_VALUE);
+                    } catch (Exception ignored) {
+                    }
 				continue;
 			}
 			sanitizeJsonValueForLogs(value);
@@ -385,45 +388,57 @@ public class QmpClient {
     }
 
     public static String changevncpasswd(String passwd) {
-		JSONObject arguments = new JSONObject();
-		arguments.put("device", "vnc");
-		arguments.put("target", "password");
-		arguments.put("arg", passwd);
+        try {
+            JSONObject arguments = new JSONObject();
+            arguments.put("device", "vnc");
+            arguments.put("target", "password");
+            arguments.put("arg", passwd);
 
-		JSONObject jsonObject = new JSONObject();
-		jsonObject.put("execute", "change");
-		jsonObject.put("arguments", arguments);
-		jsonObject.put("id", "vectras");
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put("execute", "change");
+            jsonObject.put("arguments", arguments);
+            jsonObject.put("id", "vectras");
 
-		return jsonObject.toString();
-
+            return jsonObject.toString();
+        } catch (Exception e) {
+            Log.e(TAG, "Could not build changevncpasswd command", e);
+            return "{}";
+        }
     }
 
     public static String ejectdev(String dev) {
-		JSONObject arguments = new JSONObject();
-		arguments.put("device", dev);
+        try {
+            JSONObject arguments = new JSONObject();
+            arguments.put("device", dev);
 
-		JSONObject jsonObject = new JSONObject();
-		jsonObject.put("execute", "eject");
-		jsonObject.put("arguments", arguments);
-		jsonObject.put("id", "vectras");
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put("execute", "eject");
+            jsonObject.put("arguments", arguments);
+            jsonObject.put("id", "vectras");
 
-		return jsonObject.toString();
-
+            return jsonObject.toString();
+        } catch (Exception e) {
+            Log.e(TAG, "Could not build ejectdev command", e);
+            return "{}";
+        }
     }
 
     public static String changedev(String dev, String value) {
-		JSONObject arguments = new JSONObject();
-		arguments.put("device", dev);
-		arguments.put("target", value);
+        try {
+            JSONObject arguments = new JSONObject();
+            arguments.put("device", dev);
+            arguments.put("target", value);
 
-		JSONObject jsonObject = new JSONObject();
-		jsonObject.put("execute", "change");
-		jsonObject.put("arguments", arguments);
-		jsonObject.put("id", "vectras");
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put("execute", "change");
+            jsonObject.put("arguments", arguments);
+            jsonObject.put("id", "vectras");
 
-		return jsonObject.toString();
-
+            return jsonObject.toString();
+        } catch (Exception e) {
+            Log.e(TAG, "Could not build changedev command", e);
+            return "{}";
+        }
     }
 
 

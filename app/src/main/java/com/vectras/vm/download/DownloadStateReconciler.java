@@ -32,7 +32,13 @@ public final class DownloadStateReconciler {
             List<WorkInfo> workInfos = workManager.getWorkInfosByTag(DownloadCoordinator.DOWNLOAD_WORK_TAG).get();
             Map<String, WorkInfo> byRomId = new HashMap<>();
             for (WorkInfo info : workInfos) {
-                String romId = info.getInputData().getString(DownloadWorker.KEY_ROM_ID);
+                String romId = null;
+                for (String tag : info.getTags()) {
+                    if (tag != null && tag.startsWith("rom_download_tag_")) {
+                        romId = tag.substring("rom_download_tag_".length());
+                        break;
+                    }
+                }
                 if (romId != null && !romId.trim().isEmpty()) {
                     byRomId.put(romId, info);
                 }

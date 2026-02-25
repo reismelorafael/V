@@ -66,7 +66,7 @@ public class androidVNC extends Activity {
 		setContentView(R.layout.main_vnc);
 
 		ipText = (EditText) findViewById(R.id.textIP);
-		portText = (EditText) findViewById(R.id.textPORT);
+		portText = (EditText) findViewById(R.id.textIP);
 		passwordText = (EditText) findViewById(R.id.textPASSWORD);
 		textNickname = (EditText) findViewById(R.id.textNickname);
 		textUsername = (EditText) findViewById(R.id.textUsername);

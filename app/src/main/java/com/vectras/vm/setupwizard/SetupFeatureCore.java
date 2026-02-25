@@ -55,7 +55,6 @@ public class SetupFeatureCore {
     public static final String INTEGRITY_FAIL_PREFIX = "INTEGRITY_FAIL:";
     public static final String EXTRACTION_FAIL_PREFIX = "EXTRACTION_FAIL:";
     public static final String POST_CHECK_FAIL_PREFIX = "POST_CHECK_FAIL:";
-    public static final String INTEGRITY_FAIL_PREFIX = "INTEGRITY_FAIL:";
     private static final String BOOTSTRAP_LOG_PREFIX = "PROOT_BOOTSTRAP";
     private static final long MIN_TAR_BYTES = 1024L;
 
@@ -292,7 +291,7 @@ public class SetupFeatureCore {
         return POST_CHECK_FAIL_PREFIX + compactItems;
     }
 
-    public static boolean runProotSelfCheck(Context context) {
+    public static boolean runProotSelfCheckLegacy(Context context) {
         if (context == null) {
             Log.w(TAG, "runProotSelfCheck: context is null");
             return false;
@@ -364,6 +363,25 @@ public class SetupFeatureCore {
             failedItems.add("missing-qemu-binary");
         }
         return new SetupPostCheckResult(failedItems.isEmpty(), failedItems);
+    }
+
+    public static final class PostInstallCheckResult {
+        public final boolean ok;
+        public final List<String> failedItems;
+
+        PostInstallCheckResult(boolean ok, List<String> failedItems) {
+            this.ok = ok;
+            this.failedItems = Collections.unmodifiableList(new ArrayList<>(failedItems));
+        }
+
+        public String summary() {
+            return ok ? "ok" : formatPostCheckFailure(failedItems);
+        }
+    }
+
+    public static PostInstallCheckResult runPostInstallCheck(Context context) {
+        SetupPostCheckResult current = runSetupPostCheck(context);
+        return new PostInstallCheckResult(current.ok, current.failedItems);
     }
 
     public static PreflightResult runVmStartPreflight(
@@ -952,11 +970,12 @@ public class SetupFeatureCore {
                 ProcessBuilder processBuilder = new ProcessBuilder(cmdline);
                 processBuilder.environment().remove("LD_LIBRARY_PATH");
                 process = processBuilder.start();
+                final Process runningProcess = process;
 
                 StringBuilder errorOutput = new StringBuilder();
                 Thread stdoutCollector = new Thread(() -> {
                     try (BufferedReader outputReader =
-                                 new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                                 new BufferedReader(new InputStreamReader(runningProcess.getInputStream()))) {
                         String line;
                         while ((line = outputReader.readLine()) != null) {
                             synchronized (errorOutput) {

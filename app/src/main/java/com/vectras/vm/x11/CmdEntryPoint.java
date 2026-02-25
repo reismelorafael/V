@@ -4,11 +4,8 @@ import static android.system.Os.getuid;
 import static android.system.Os.getenv;
 
 import android.annotation.SuppressLint;
-import android.app.IActivityManager;
 import android.app.PendingIntent;
 import android.content.Context;
-import android.content.IIntentReceiver;
-import android.content.IIntentSender;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
@@ -16,7 +13,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.ParcelFileDescriptor;
-import android.os.RemoteException;
 import android.util.Log;
 import android.view.Surface;
 
@@ -85,21 +81,16 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
             else
                 Log.e("Broadcast", "Falling back to manual broadcasting, failed to broadcast intent through Context:", e);
 
-            String packageName;
-            try {
-                packageName = android.app.ActivityThread.getPackageManager().getPackagesForUid(getuid())[0];
-            } catch (RemoteException ex) {
-                throw new RuntimeException(ex);
-            }
-            IActivityManager am;
+            String packageName = "com.vectras.vm";
+            Object am;
             try {
                 //noinspection JavaReflectionMemberAccess
-                am = (IActivityManager) android.app.ActivityManager.class
+                am = android.app.ActivityManager.class
                         .getMethod("getService")
                         .invoke(null);
             } catch (Exception e2) {
                 try {
-                    am = (IActivityManager) Class.forName("android.app.ActivityManagerNative")
+                    am = Class.forName("android.app.ActivityManagerNative")
                             .getMethod("getDefault")
                             .invoke(null);
                 } catch (Exception e3) {
@@ -108,15 +99,14 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
             }
 
             assert am != null;
-            IIntentSender sender = am.getIntentSender(1, packageName, null, null, 0, new Intent[] { intent },
-                    null, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_ONE_SHOT, null, 0);
             try {
-                //noinspection JavaReflectionMemberAccess
-                IIntentSender.class
-                        .getMethod("send", int.class, Intent.class, String.class, IBinder.class, IIntentReceiver.class, String.class, Bundle.class)
-                        .invoke(sender, 0, intent, null, null, new IIntentReceiver.Stub() {
-                            @Override public void performReceive(Intent i, int r, String d, Bundle e, boolean o, boolean s, int a) {}
-                        }, null, null);
+                Object sender = am.getClass().getMethod("getIntentSender", int.class, String.class, String.class, String.class, int.class, Intent[].class, String[].class, int.class, Bundle.class, int.class)
+                        .invoke(am, 1, packageName, null, null, 0, new Intent[] { intent }, null, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_ONE_SHOT, null, 0);
+                Class<?> iIntentSenderClass = Class.forName("android.content.IIntentSender");
+                Class<?> iIntentReceiverClass = Class.forName("android.content.IIntentReceiver");
+                iIntentSenderClass
+                        .getMethod("send", int.class, Intent.class, String.class, IBinder.class, iIntentReceiverClass, String.class, Bundle.class)
+                        .invoke(sender, 0, intent, null, null, null, null, null);
             } catch (Exception ex) {
                 throw new RuntimeException(ex);
             }
@@ -194,13 +184,15 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
             // java.io.FileNotFoundException: /data/system/theme_config/theme_compatibility.xml: open failed: ENOENT (No such file or directory)
             System.setErr(new PrintStream(new OutputStream() { public void write(int arg0) {} }));
             if (System.getenv("OLD_CONTEXT") != null) {
-                context = android.app.ActivityThread.systemMain().getSystemContext();
+                Class<?> at = Class.forName("android.app.ActivityThread");
+                Object atMain = at.getMethod("systemMain").invoke(null);
+                context = (Context) at.getMethod("getSystemContext").invoke(atMain);
             } else {
-                context = ((android.app.ActivityThread) Class.
-                        forName("sun.misc.Unsafe").
+                Class<?> at = Class.forName("android.app.ActivityThread");
+                Object atObj = Class.forName("sun.misc.Unsafe").
                         getMethod("allocateInstance", Class.class).
-                        invoke(unsafe, android.app.ActivityThread.class))
-                        .getSystemContext();
+                        invoke(unsafe, at);
+                context = (Context) at.getMethod("getSystemContext").invoke(atObj);
             }
         } catch (Exception e) {
             Log.e("Context", "Failed to instantiate context:", e);

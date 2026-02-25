@@ -14,6 +14,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.vectras.vm.R;
+import com.vectras.vm.network.EndpointValidator;
 import com.vectras.vm.network.NetworkEndpoints;
 
 import org.json.JSONObject;

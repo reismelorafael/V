@@ -1,5 +1,12 @@
 #include "rmr_policy_kernel.h"
+#if defined(RMR_JNI_BUILD) && RMR_JNI_BUILD
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#else
 #include "rmr_baremetal_compat.h" /* baremetal stdlib substitute */
+#endif
 #include "rmr_corelib.h"
 #include "rmr_hw_detect.h"
 #include "rmr_ll_ops.h"
@@ -201,9 +208,9 @@ static uint32_t crc32c_aarch64_update(uint32_t crc, const uint8_t *buf, size_t l
   for (; i + 8 <= len; i += 8) {
     uint64_t x;
     rmr_mem_copy(&x, buf + i, sizeof(x));
-    crc = __builtin_aarch64_crc32cx(crc, x);
+    crc = __crc32cd(crc, x);
   }
-  for (; i < len; ++i) crc = __builtin_aarch64_crc32cb(crc, buf[i]);
+  for (; i < len; ++i) crc = __crc32cb(crc, buf[i]);
   return crc;
 #else
   (void)buf;

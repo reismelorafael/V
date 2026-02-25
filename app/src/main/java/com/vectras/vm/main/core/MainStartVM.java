@@ -48,6 +48,9 @@ import com.vectras.vm.rafaelia.RafaeliaEventRecorder;
 import com.vectras.vm.rafaelia.RafaeliaSettings;
 
 import java.io.File;
+import java.util.concurrent.Future;
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.lang.ref.WeakReference;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -61,6 +64,9 @@ public class MainStartVM {
     public static boolean isStopNow = false;
     private static final LaunchPoller LAUNCH_POLLER = new LaunchPoller();
     private static final ExecutorService VNC_PASSWORD_EXECUTOR = Executors.newSingleThreadExecutor();
+    private static final AtomicReference<ServerSocket> RESERVED_SPICE_PORT = new AtomicReference<>(null);
+    private static volatile String reservedSpiceVmId = "";
+    private static volatile Future<?> vncPasswordTask;
 
     public static String lastVMName = "";
     public static String lastEnv = "";
@@ -250,6 +256,7 @@ public class MainStartVM {
             return;
         }
         VMManager.lastQemuCommand = env;
+        final String envFinal = env;
 
         if (VMManager.isVMRunning(context, finalvmID)) {
             VmFlowTracker.mark(context, finalvmID, VmFlowState.RUNNING, "already_running", "attach");
@@ -260,9 +267,9 @@ public class MainStartVM {
         }
 
         if (AppConfig.getSetupFiles().contains("arm") && !AppConfig.getSetupFiles().contains("arm64")) {
-            if (env.contains("tcg,thread=multi")) {
+            if (envFinal.contains("tcg,thread=multi")) {
                 DialogUtils.twoDialog(context, context.getResources().getString(R.string.problem_has_been_detected), context.getResources().getString(R.string.can_not_use_mttcg), context.getString(R.string.ok), context.getString(R.string.cancel), true, R.drawable.warning_48px, true,
-                        () -> startNow(context, vmName, env.replace("tcg,thread=multi", "tcg,thread=single"), finalvmID, thumbnailFile), null, null);
+                        () -> startNow(context, vmName, envFinal.replace("tcg,thread=multi", "tcg,thread=single"), finalvmID, thumbnailFile), null, null);
                 stopLaunchPoller();
                 return;
             }
@@ -272,7 +279,7 @@ public class MainStartVM {
             DialogUtils.twoDialog(context, context.getString(R.string.problem_has_been_detected), context.getString(R.string.you_cannot_use_IDE_hard_drive_type_with_ARM64), context.getString(R.string.continuetext), context.getString(R.string.cancel), true, R.drawable.warning_48px, true,
                     () -> {
                         skipIDEwithARM64DialogInStartVM = true;
-                        startNow(context, vmName, env, finalvmID, thumbnailFile);
+                        startNow(context, vmName, envFinal, finalvmID, thumbnailFile);
                     }, null, null);
             stopLaunchPoller();
             return;
@@ -452,7 +459,7 @@ public class MainStartVM {
             return env;
         }
 
-        ServerSocket reservedPort = VMManager.reserveRandomPort();
+        ServerSocket reservedPort = reserveRandomPort();
         if (reservedPort == null) {
             DialogUtils.oneDialog(
                     context,
@@ -470,8 +477,31 @@ public class MainStartVM {
 
     private static void releaseReservedSpicePort() {
         ServerSocket reserved = RESERVED_SPICE_PORT.getAndSet(null);
-        VMManager.releaseReservedPort(reserved);
+        releaseReservedPort(reserved);
         reservedSpiceVmId = "";
+    }
+
+    private static void cancelPendingVncPasswordTask() {
+        cancelVncPasswordTask();
+    }
+
+    private static ServerSocket reserveRandomPort() {
+        try {
+            ServerSocket socket = new ServerSocket(0);
+            socket.setReuseAddress(true);
+            return socket;
+        } catch (IOException e) {
+            Log.w(TAG, "Unable to reserve random port", e);
+            return null;
+        }
+    }
+
+    private static void releaseReservedPort(ServerSocket socket) {
+        if (socket == null) return;
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+        }
     }
 
     private static synchronized void submitVncPasswordTask(String password) {
