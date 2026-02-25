@@ -80,7 +80,6 @@ public class SetupWizard2Activity extends AppCompatActivity {
     private static final String TAG = "SetupWizard2Activity";
     private static final String BOOTSTRAP_PREFIX_ARIA2 = " aria2c -x 4 --async-dns=false --disable-ipv6 -o setup.tar.gz ";
     private static final String BOOTSTRAP_PREFIX_CURL = " curl -o setup.tar.gz -L ";
-    private static final String[] BOOTSTRAP_COMPATIBLE_ABI_PREFIXES = new String[]{"arm64-v8a", "aarch64", "armeabi-v7a", "armhf", "x86_64", "amd64", "x86"};
     private static final Pattern ARIA2_PROGRESS_PATTERN = Pattern.compile("\\((\\d{1,3})%\\)");
     private static final Pattern CURL_PROGRESS_PATTERN = Pattern.compile("^\\s*(\\d{1,3})\\s+\\d");
     private static final Pattern PACKAGE_PROGRESS_PATTERN = Pattern.compile("\\((\\d+)/(\\d+)\\)");
@@ -711,10 +710,15 @@ public class SetupWizard2Activity extends AppCompatActivity {
     }
 
     private boolean prepareBundledBootstrapArchive() {
-        String abi = Build.SUPPORTED_ABIS[0];
-        String assetPath = "alpine19/" + abi + ".tar";
-        setupArchiveFileName = "setup.tar";
+        SetupFeatureCore.AbiAssetResolution abiAssetResolution =
+                SetupFeatureCore.resolveExistingBundledAbiAsset(this, "alpine19");
+        if (abiAssetResolution.assetPath == null) {
+            Log.e(SetupFeatureCore.ABI_RESOLVE_TAG, abiAssetResolution.errorMessage);
+            return false;
+        }
 
+        setupArchiveFileName = "setup.tar";
+        String assetPath = abiAssetResolution.assetPath;
         try (InputStream input = getAssets().open(assetPath);
              FileOutputStream output = new FileOutputStream(tarPath)) {
             byte[] buffer = new byte[32 * 1024];
@@ -723,6 +727,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 output.write(buffer, 0, read);
             }
             output.flush();
+            Log.i(SetupFeatureCore.ABI_RESOLVE_TAG, "Bundled bootstrap prepared from path=" + assetPath);
             return true;
         } catch (IOException e) {
             Log.e(TAG, "Failed to prepare bundled bootstrap archive: " + assetPath, e);
@@ -1414,52 +1419,59 @@ public class SetupWizard2Activity extends AppCompatActivity {
             return false;
         }
 
-        String architectureKey;
-        if (DeviceUtils.isArm()) {
-            architectureKey = DeviceUtils.is64bit() ? "aarch64" : "armhf";
-        } else {
-            architectureKey = DeviceUtils.is64bit() ? "amd64" : "x86";
-        }
+        ArrayList<String> abiCandidates = new ArrayList<>(SetupFeatureCore.resolveBootstrapAbiCandidates());
+        Log.i(SetupFeatureCore.ABI_RESOLVE_TAG, "Resolving remote bootstrap metadata keys=" + abiCandidates);
 
-        Object architectureConfig = bootstrapMap.get(architectureKey);
-        String resolvedBootstrapUrl;
-        String resolvedSha256 = "";
-        String resolvedSignature = "";
-
-        if (architectureConfig instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> architectureMap = (Map<String, Object>) architectureConfig;
-            Object bootstrapUrlObject = architectureMap.get("url");
-            resolvedBootstrapUrl = bootstrapUrlObject == null ? "" : bootstrapUrlObject.toString().trim();
-            Object sha256Object = architectureMap.get("sha256");
-            if (sha256Object != null) {
-                String candidate = sha256Object.toString().trim();
-                if (SHA256_PATTERN.matcher(candidate).matches()) {
-                    resolvedSha256 = candidate.toLowerCase(Locale.ROOT);
-                } else if (!candidate.isEmpty()) {
-                    Log.w(TAG, "AUDIT bootstrap metadata contains invalid sha256 for architecture=" + architectureKey);
-                }
+        for (String architectureKey : abiCandidates) {
+            Object architectureConfig = bootstrapMap.get(architectureKey);
+            if (architectureConfig == null) {
+                continue;
             }
-            Object sigObject = architectureMap.get("sig");
-            resolvedSignature = sigObject == null ? "" : sigObject.toString().trim();
-        } else {
-            resolvedBootstrapUrl = architectureConfig == null ? "" : architectureConfig.toString().trim();
+
+            String resolvedBootstrapUrl;
+            String resolvedSha256 = "";
+            String resolvedSignature = "";
+
+            if (architectureConfig instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> architectureMap = (Map<String, Object>) architectureConfig;
+                Object bootstrapUrlObject = architectureMap.get("url");
+                resolvedBootstrapUrl = bootstrapUrlObject == null ? "" : bootstrapUrlObject.toString().trim();
+                Object sha256Object = architectureMap.get("sha256");
+                if (sha256Object != null) {
+                    String candidate = sha256Object.toString().trim();
+                    if (SHA256_PATTERN.matcher(candidate).matches()) {
+                        resolvedSha256 = candidate.toLowerCase(Locale.ROOT);
+                    } else if (!candidate.isEmpty()) {
+                        Log.w(TAG, "AUDIT bootstrap metadata contains invalid sha256 for architecture=" + architectureKey);
+                    }
+                }
+                Object sigObject = architectureMap.get("sig");
+                resolvedSignature = sigObject == null ? "" : sigObject.toString().trim();
+            } else {
+                resolvedBootstrapUrl = architectureConfig.toString().trim();
+            }
+
+            if (!isBootstrapLinkValid(resolvedBootstrapUrl)) {
+                continue;
+            }
+
+            bootstrapFileLink = resolvedBootstrapUrl;
+            bootstrapExpectedSha256 = resolvedSha256;
+            bootstrapExpectedSignature = resolvedSignature;
+            downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
+            Log.i(SetupFeatureCore.ABI_RESOLVE_TAG, "Resolved remote bootstrap metadata key=" + architectureKey
+                    + " | hasSha256=" + (!TextUtils.isEmpty(bootstrapExpectedSha256))
+                    + " | hasSig=" + (!TextUtils.isEmpty(bootstrapExpectedSignature))
+                    + " | origin=" + bootstrapFileLink);
+            MainSettingsManager.setLastSetupBootstrapUrl(this, bootstrapFileLink);
+            return !downloadBootstrapsCommand.isEmpty();
         }
 
-        if (!isBootstrapLinkValid(resolvedBootstrapUrl)) {
-            return false;
-        }
-
-        bootstrapFileLink = resolvedBootstrapUrl;
-        bootstrapExpectedSha256 = resolvedSha256;
-        bootstrapExpectedSignature = resolvedSignature;
-        downloadBootstrapsCommand = buildBootstrapDownloadCommand(bootstrapFileLink, false);
-        Log.i(TAG, "AUDIT bootstrap metadata resolved architecture=" + architectureKey
-                + " | hasSha256=" + (!TextUtils.isEmpty(bootstrapExpectedSha256))
-                + " | hasSig=" + (!TextUtils.isEmpty(bootstrapExpectedSignature))
-                + " | origin=" + bootstrapFileLink);
-        MainSettingsManager.setLastSetupBootstrapUrl(this, bootstrapFileLink);
-        return !downloadBootstrapsCommand.isEmpty();
+        Log.e(SetupFeatureCore.ABI_RESOLVE_TAG,
+                "No remote bootstrap metadata matched. Supported device ABIs=" + java.util.Arrays.toString(Build.SUPPORTED_ABIS)
+                        + " | required metadata keys=" + abiCandidates);
+        return false;
     }
 
     private void selectMirror() {
@@ -1672,12 +1684,12 @@ public class SetupWizard2Activity extends AppCompatActivity {
             return false;
         }
 
-        String normalized = fileName.trim().toLowerCase();
+        String normalized = fileName.trim().toLowerCase(Locale.ROOT);
         if (!(normalized.endsWith(".tar.gz") || normalized.endsWith(".tar"))) {
             return false;
         }
 
-        for (String abiPrefix : BOOTSTRAP_COMPATIBLE_ABI_PREFIXES) {
+        for (String abiPrefix : SetupFeatureCore.resolveBootstrapAbiCandidates()) {
             if (normalized.contains(abiPrefix)) {
                 return true;
             }

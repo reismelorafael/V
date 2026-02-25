@@ -3,6 +3,7 @@ package com.vectras.vm.setupwizard;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.AssetManager;
 import android.os.Build;
 import android.util.Log;
 
@@ -42,6 +43,7 @@ import java.util.StringJoiner;
 
 public class SetupFeatureCore {
     public static String TAG = "SetupFeatureCore";
+    public static final String ABI_RESOLVE_TAG = "SETUP_ABI_RESOLVE";
     public static String lastErrorLog = "";
     public static final String POST_CHECK_FAIL_PREFIX = "POST_CHECK_FAIL:";
 
@@ -331,8 +333,12 @@ public class SetupFeatureCore {
 
     public static boolean extractSystemFiles(Context context, String fromAsset, String extractTo) {
         String randomFileName = VMManager.startRamdomVMID();
-        String abi = Build.SUPPORTED_ABIS[0];
-        String assetPath = fromAsset + "/" + abi + ".tar";
+        AbiAssetResolution abiAssetResolution = resolveExistingBundledAbiAsset(context, fromAsset);
+        if (abiAssetResolution.assetPath == null) {
+            lastErrorLog = abiAssetResolution.errorMessage;
+            return false;
+        }
+        String assetPath = abiAssetResolution.assetPath;
 
         final Path filesDirRealPath;
         final Path extractTargetPath;
@@ -553,5 +559,97 @@ public class SetupFeatureCore {
                     true,
                     null,
                     null);
+    }
+
+    public static final class AbiAssetResolution {
+        public final List<String> candidates;
+        public final String matchedCandidate;
+        public final String assetPath;
+        public final String errorMessage;
+
+        AbiAssetResolution(List<String> candidates, String matchedCandidate, String assetPath, String errorMessage) {
+            this.candidates = candidates;
+            this.matchedCandidate = matchedCandidate;
+            this.assetPath = assetPath;
+            this.errorMessage = errorMessage;
+        }
+    }
+
+    public static List<String> resolveBootstrapAbiCandidates() {
+        LinkedHashSet<String> candidates = new LinkedHashSet<>();
+        String[] supportedAbis = Build.SUPPORTED_ABIS == null ? new String[0] : Build.SUPPORTED_ABIS;
+
+        for (String supportedAbi : supportedAbis) {
+            if (supportedAbi == null) continue;
+            String normalized = supportedAbi.trim().toLowerCase(Locale.ROOT);
+            if (normalized.isEmpty()) continue;
+
+            switch (normalized) {
+                case "arm64-v8a":
+                    candidates.add("arm64-v8a");
+                    candidates.add("aarch64");
+                    break;
+                case "armeabi-v7a":
+                    candidates.add("armeabi-v7a");
+                    candidates.add("arm");
+                    candidates.add("armhf");
+                    break;
+                case "x86_64":
+                    candidates.add("x86_64");
+                    candidates.add("amd64");
+                    break;
+                case "x86":
+                    candidates.add("x86");
+                    candidates.add("i686");
+                    break;
+                default:
+                    candidates.add(normalized);
+                    break;
+            }
+        }
+
+        if (candidates.isEmpty()) {
+            candidates.add("arm64-v8a");
+            candidates.add("aarch64");
+            candidates.add("armeabi-v7a");
+            candidates.add("arm");
+            candidates.add("armhf");
+            candidates.add("x86_64");
+            candidates.add("amd64");
+            candidates.add("x86");
+            candidates.add("i686");
+        }
+
+        ArrayList<String> resolved = new ArrayList<>(candidates);
+        Log.i(ABI_RESOLVE_TAG, "resolveBootstrapAbiCandidates supported=" + Arrays.toString(supportedAbis)
+                + " | candidates=" + resolved);
+        return resolved;
+    }
+
+    public static AbiAssetResolution resolveExistingBundledAbiAsset(Context context, String assetRoot) {
+        List<String> candidates = resolveBootstrapAbiCandidates();
+        AssetManager assetManager = context.getAssets();
+
+        for (String candidate : candidates) {
+            String candidatePath = assetRoot + "/" + candidate + ".tar";
+            try (InputStream ignored = assetManager.open(candidatePath)) {
+                Log.i(ABI_RESOLVE_TAG, "Resolved bundled ABI asset root=" + assetRoot
+                        + " | selectedCandidate=" + candidate
+                        + " | path=" + candidatePath);
+                return new AbiAssetResolution(candidates, candidate, candidatePath, "");
+            } catch (IOException ignored) {
+                // Probe next candidate
+            }
+        }
+
+        ArrayList<String> requiredKeys = new ArrayList<>();
+        for (String candidate : candidates) {
+            requiredKeys.add(assetRoot + "/" + candidate + ".tar");
+        }
+        String error = "No bundled asset matched for root=" + assetRoot
+                + ". Supported device ABIs=" + Arrays.toString(Build.SUPPORTED_ABIS)
+                + ". Required asset keys=" + requiredKeys;
+        Log.e(ABI_RESOLVE_TAG, error);
+        return new AbiAssetResolution(candidates, null, null, error);
     }
 }
