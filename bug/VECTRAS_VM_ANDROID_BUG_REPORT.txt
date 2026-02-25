@@ -116,12 +116,13 @@ Impacto: Unintended command chaining, privilège escalation via operator injecti
 
 BUG #13 [MEDIUM] | ExecutionExecutors Missing RejectedExecutionHandler Config
 ────────────────────────────────────────────────────────────────────────────
-Arquivo: app/src/main/java/com/vectras/vm/core/ExecutionExecutors.java (inferido)
+Arquivo: terminal-emulator/src/main/java/com/vectras/vm/core/ExecutionExecutors.java (inferido)
 Referências: 365 ocorrências de threading no codebase
 Descrição: ThreadPoolExecutor instances criadas sem explicit RejectedExecutionHandler.
 Default CallerRunsPolicy causa deadlock em recursive task submission (executor task
 submits para mesmo executor, saturation scenario).
 Impacto: Deadlock em heavy VM load, all executor threads blocked, resposta travada.
+Nota: Classe compartilhada via dependência implementation project(':terminal-emulator') em app/build.gradle; manter correções no módulo terminal-emulator evita regressões futuras.
 
 BUG #14 [MEDIUM] | AllowBackup + DocumentFile ContentProvider Restore Failure
 ────────────────────────────────────────────────────────────────────────────

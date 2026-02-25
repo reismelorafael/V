@@ -6,7 +6,6 @@ import com.vectras.vm.logger.VectrasStatus;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -50,12 +49,30 @@ public class ShellExecutor {
     }
 
     public void exec(String command) {
-        processFuture = executorService.submit(() -> execute(command, DEFAULT_TIMEOUT_MS));
+        // Fire-and-forget path must not recursively submit into the same executor.
+        // Submitting execute() would enqueue CallableExec again and can deadlock under saturation.
+        processFuture = executorService.submit(new CallableExec(command, DEFAULT_TIMEOUT_MS));
     }
 
     public ExecResult execute(String command, long timeoutMs) {
         long effectiveTimeoutMs = timeoutMs <= 0 ? DEFAULT_TIMEOUT_MS : timeoutMs;
         CallableExec callable = new CallableExec(command, effectiveTimeoutMs);
+        if (Thread.currentThread().getName().startsWith("shell-executor-")) {
+            // Avoid recursive submission to the same pool (can self-block when queue is saturated).
+            callable.run();
+            try {
+                return callable.await();
+            } catch (TimeoutException e) {
+                callable.cancel();
+                Log.e(TAG, "exec timeout", e);
+                VectrasStatus.logInfo(TAG + " > " + e);
+                return new ExecResult(-1, "", "timeout", true);
+            } catch (Exception e) {
+                Log.e(TAG, "exec failed", e);
+                VectrasStatus.logInfo(TAG + " > " + e);
+                return new ExecResult(-1, "", e.toString(), false);
+            }
+        }
         Future<?> localFuture = executorService.submit(callable);
         processFuture = localFuture;
         try {
@@ -139,11 +156,11 @@ public class ShellExecutor {
             Process localProcess = null;
 
             try {
-                localProcess = new ProcessBuilder(shellPath).start();
+                localProcess = new ProcessBuilder(shellPath, "-c", command).start();
                 shellExecutorProcess = localProcess;
+                // Command is passed as a distinct ProcessBuilder arg; stdin is not used for command injection.
                 try (OutputStream outputStream = localProcess.getOutputStream()) {
-                    outputStream.write((command + "\n").getBytes(StandardCharsets.UTF_8));
-                    outputStream.flush();
+                    outputStream.close();
                 }
 
                 Process finalProcess = localProcess;

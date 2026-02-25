@@ -788,8 +788,9 @@ Impacto: Elimina operator injection, comando executa exatamente como fornecido.
 
 CORREÇÃO #13: ExecutionExecutors RejectedExecutionHandler - Configurar Policy
 ────────────────────────────────────────────────────────────────────────────
-Arquivo: app/src/main/java/com/vectras/vm/core/ExecutionExecutors.java
+Arquivo: terminal-emulator/src/main/java/com/vectras/vm/core/ExecutionExecutors.java
 Tipo: Deadlock via CallerRunsPolicy em recursive task submission
+Nota: Classe compartilhada via dependência implementation project(':terminal-emulator') em app/build.gradle; manter correções no módulo terminal-emulator evita regressões futuras.
 
 Problema Atual:
 ThreadPoolExecutor instances criadas sem RejectedExecutionHandler explícito usam default
