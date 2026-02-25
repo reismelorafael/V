@@ -734,6 +734,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 output.write(buffer, 0, read);
             }
             output.flush();
+            Log.i(SetupFeatureCore.ABI_RESOLVE_TAG, "Bundled bootstrap prepared from path=" + assetPath);
             return true;
         } catch (IOException e) {
             Log.e(TAG, "Failed to prepare bundled bootstrap archive: " + assetPath, e);
@@ -1697,12 +1698,12 @@ public class SetupWizard2Activity extends AppCompatActivity {
             return false;
         }
 
-        String normalized = fileName.trim().toLowerCase();
+        String normalized = fileName.trim().toLowerCase(Locale.ROOT);
         if (!(normalized.endsWith(".tar.gz") || normalized.endsWith(".tar"))) {
             return false;
         }
 
-        for (String abiPrefix : BOOTSTRAP_COMPATIBLE_ABI_PREFIXES) {
+        for (String abiPrefix : SetupFeatureCore.resolveBootstrapAbiCandidates()) {
             if (normalized.contains(abiPrefix)) {
                 return true;
             }
