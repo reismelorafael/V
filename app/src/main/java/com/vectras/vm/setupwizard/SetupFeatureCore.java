@@ -720,6 +720,49 @@ public class SetupFeatureCore {
         return false;
     }
 
+    private static ArrayList<File> buildRequiredExecutablesForExtractFlow(Context context, String fromAsset) {
+        ArrayList<File> requiredExecutables = new ArrayList<>();
+        if (context == null || fromAsset == null) {
+            return requiredExecutables;
+        }
+
+        File filesDir = context.getFilesDir();
+        if ("bootstrap".equals(fromAsset)) {
+            requiredExecutables.add(new File(filesDir, "usr/bin/proot"));
+        }
+
+        if (fromAsset.contains("alpine")) {
+            requiredExecutables.add(new File(filesDir, "distro/bin/busybox"));
+            requiredExecutables.add(new File(filesDir, "distro/bin/sh"));
+            requiredExecutables.add(new File(filesDir, "distro/usr/bin/env"));
+        }
+
+        return requiredExecutables;
+    }
+
+    private static void enforceExecutableMode(List<File> requiredExecutables, List<String> failedItems) {
+        if (requiredExecutables == null || failedItems == null) {
+            return;
+        }
+
+        for (File requiredExecutable : requiredExecutables) {
+            if (requiredExecutable == null) {
+                continue;
+            }
+
+            String normalizedPath = requiredExecutable.getPath().replace('\\', '/');
+            if (!requiredExecutable.isFile()) {
+                failedItems.add("missing-required-executable:" + normalizedPath);
+                continue;
+            }
+
+            FileUtils.chmod(requiredExecutable, 0755);
+            if (!requiredExecutable.canExecute()) {
+                failedItems.add("chmod-failed:" + normalizedPath);
+            }
+        }
+    }
+
     private static String readTextFile(String path) {
         File file = new File(path);
         if (!file.exists()) {
@@ -911,15 +954,14 @@ public class SetupFeatureCore {
                     return false;
                 }
 
-                if ("bootstrap".equals(fromAsset)) {
-                    FileUtils.chmod(new File(context.getFilesDir(), "usr/bin/proot"), 0755);
-                }
+                ArrayList<String> extractionPostCheckFailedItems = new ArrayList<>();
+                ArrayList<File> requiredExecutables = buildRequiredExecutablesForExtractFlow(context, fromAsset);
+                enforceExecutableMode(requiredExecutables, extractionPostCheckFailedItems);
+
                 if (fromAsset.contains("alpine")) {
-                    FileUtils.chmod(new File(context.getFilesDir(), "distro/bin/busybox"), 0755);
                     setDNS(context);
                 }
 
-                ArrayList<String> extractionPostCheckFailedItems = new ArrayList<>();
                 if (!extractTargetPath.toFile().exists()) {
                     extractionPostCheckFailedItems.add("missing-extract-target");
                 }
