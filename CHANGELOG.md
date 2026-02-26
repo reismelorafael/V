@@ -5,7 +5,13 @@ The format is based on Keep a Changelog.
 
 ## [Unreleased]
 
+### Added
+- Módulo BITOMEGA adicionado ao engine RMR com API pública em `engine/rmr/include/bitomega.h` e implementação determinística em `engine/rmr/src/bitomega.c`.
+
 ### Changed
+- Build CMake atualizado para compilar o BITOMEGA nos alvos `rmr` (root `CMakeLists.txt`) e `vectra_core_accel` (`app/src/main/cpp/CMakeLists.txt`), incluindo novo fonte C no pipeline nativo.
+- Documentação pós-doc em `docs/bitomega_postdoc/00..06` revisada para cobrir objetivo/escopo de integração, detalhes de implementação, limitações e próximos passos.
+- Impacto esperado: overhead baixo por chamada de transição, melhoria de auditabilidade de estado em runtime e compatibilidade preservada por integração aditiva (sem substituir módulos existentes).
 - Saneados links locais em `VECTRAS_MEGAPROMPT_DOCS.md` para caminhos reais sob `./docs/` (`ESFERAS_METODOLOGICAS_RAFAELIA`, `DETERMINISTIC_VM_MUTATION_LAYER`, `PERFORMANCE_INTEGRITY`) e executada verificação estática de links markdown locais sem novos quebrados.
 - Removida a diretiva global `-dontobfuscate` do `app/proguard-rules.pro`, com redução das regras `-keep` para apenas símbolos exigidos por reflexão/XML e inclusão de registro dos símbolos estáveis no guia de build/release.
 

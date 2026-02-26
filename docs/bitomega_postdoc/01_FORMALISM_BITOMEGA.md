@@ -31,11 +31,20 @@ com sinais normalizados em \([0,1]\).
 \[
 \Delta: S \times C \rightarrow S
 \]
-Implementação: `bitomega_transition(node, ctx)`.
+Implementação: `bitomega_transition(node, ctx)` em `engine/rmr/src/bitomega.c`.
+
+Detalhes práticos alinhados ao código:
+- `update_fields` faz suavização conservadora (fator `a=0.25`) entre estado interno e entrada.
+- Regras são por estado atual (`switch`), com thresholds explícitos para `coherence/entropy/noise/load`.
+- Em inconsistência, há “self-heal” para `ZERO/NONE`.
 
 ## 6) Invariantes mínimos
 - coerência e entropia dentro de \([0,1]\)
 - VOID ⇒ direção ∈ {NONE, NULL}
 - META ⇒ coerência ≥ entropia
 
-Esses invariantes são “guard rails” do sistema.
+Esses invariantes são “guard rails” do sistema e são validados por `bitomega_invariant_ok` (header em `engine/rmr/include/bitomega.h`).
+
+## 7) Escopo atual vs futuro
+- **Atual:** formalismo + implementação C + inclusão no build.
+- **Futuro:** calibração automática dos thresholds por perfil/arquitetura e integração com feedback do policy kernel.

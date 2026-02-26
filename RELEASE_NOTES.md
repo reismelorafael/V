@@ -20,3 +20,10 @@ Este release endurece o runtime contra travamentos operacionais de execução/lo
 - Build debug/release.
 - Testes unitários de componentes de pressão.
 - Teste manual de flood com confirmação de responsividade.
+
+
+## BITOMEGA (integração inicial)
+- Inclusão do módulo BITOMEGA no engine nativo, com API em `engine/rmr/include/bitomega.h` e transição determinística em `engine/rmr/src/bitomega.c`.
+- Impacto de build: novos fontes C adicionados aos alvos CMake `rmr` (root) e `vectra_core_accel` (JNI Android).
+- Impacto esperado em runtime/performance: custo por transição de baixa ordem e previsível; melhora na governança/auditoria de estado sem alterar o caminho crítico de módulos que ainda não consomem BITOMEGA diretamente.
+- Compatibilidade: integração aditiva e retrocompatível, preservando comportamento dos módulos existentes até o acoplamento funcional completo.
