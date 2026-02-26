@@ -67,14 +67,7 @@ jobs:
         run: cmake --build build-cmake --target run_bitomega_smoketest
 
       - name: Generate BitΩ transition graph
-        run: |
-          mkdir -p reports
-          python3 tools/bitomega_csv_to_dot.py \
-            bench/results/bitomega_transitions.csv \
-            reports/bitomega_transition_graph.dot \
-            reports/bitomega_summary.md
-          dot -Tpng reports/bitomega_transition_graph.dot -o reports/bitomega_transition_graph.png
-
+        run: cmake --build build-cmake --target bitomega_transition_graph
       - name: Run release gate (selftest + bench + summary)
         run: make run-release-gate
 

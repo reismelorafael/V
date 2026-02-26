@@ -55,6 +55,22 @@ add_custom_target(run_bitomega_smoketest
   DEPENDS bitomega_smoketest
 )
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+find_program(GRAPHVIZ_DOT_EXECUTABLE dot REQUIRED)
+
+add_custom_target(bitomega_transition_graph
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/reports
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/bitomega_csv_to_dot.py
+          ${CMAKE_SOURCE_DIR}/bench/results/bitomega_transitions.csv
+          ${CMAKE_SOURCE_DIR}/reports/bitomega_transition_graph.dot
+          ${CMAKE_SOURCE_DIR}/reports/bitomega_summary.md
+  COMMAND ${GRAPHVIZ_DOT_EXECUTABLE} -Tpng
+          ${CMAKE_SOURCE_DIR}/reports/bitomega_transition_graph.dot
+          -o ${CMAKE_SOURCE_DIR}/reports/bitomega_transition_graph.png
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  DEPENDS run_bitomega_smoketest
+)
+
 add_executable(bitraf_core engine/rmr/src/rafaelia_bitraf_core.c)
 target_compile_definitions(bitraf_core PRIVATE RAF_HOSTED_TEST=1)
 target_link_libraries(bitraf_core PRIVATE rmr)
