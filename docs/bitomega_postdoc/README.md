@@ -24,7 +24,8 @@ docs/bitomega_postdoc/validate_pack.sh
 ```
 
 O script valida o conjunto completo do pacote (`00` até `06`) usando a mesma
-convenção de nomes do ZIP.
+convenção de nomes do ZIP e emite apenas **aviso** se encontrar aliases legados
+no diretório.
 
 ## Ordem sugerida
 1. 00_THESIS_OVERVIEW.md

@@ -14,11 +14,26 @@ expected_files=(
   "06_LIMITATIONS_NEXT.md"
 )
 
+# Aliases legados (não-canônicos) que NÃO fazem parte da convenção do ZIP.
+deprecated_aliases=(
+  "01_FOUNDATIONS.md"
+  "02_METHODS.md"
+  "03_RESULTS.md"
+  "04_IMPL_DETAILS.md"
+  "05_VALIDATION.md"
+)
+
 missing=0
 for file in "${expected_files[@]}"; do
   if [[ ! -f "${ROOT_DIR}/${file}" ]]; then
     echo "[bitomega-postdoc] missing: ${file}" >&2
     missing=1
+  fi
+done
+
+for alias in "${deprecated_aliases[@]}"; do
+  if [[ -f "${ROOT_DIR}/${alias}" ]]; then
+    echo "[bitomega-postdoc] aviso: alias legado detectado (ignorado): ${alias}" >&2
   fi
 done
 
