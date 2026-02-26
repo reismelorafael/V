@@ -31,7 +31,6 @@ add_library(rmr STATIC
   engine/rmr/src/rmr_lowlevel_mix.c
   engine/rmr/src/rmr_lowlevel_reduce.c
   engine/rmr/src/rmr_neon_simd.c
-  engine/rmr/src/bitomega.c
 )
 
 target_include_directories(rmr PUBLIC engine/rmr/include)
@@ -44,6 +43,17 @@ rmr_apply_common_flags(rafaelia_demo)
 add_executable(rmr_bench bench/src/rmr_benchmark_main.c)
 target_link_libraries(rmr_bench PRIVATE rmr)
 rmr_apply_common_flags(rmr_bench)
+
+add_executable(bitomega_smoketest demo_cli/src/bitomega_smoketest.c)
+target_link_libraries(bitomega_smoketest PRIVATE rmr)
+rmr_apply_common_flags(bitomega_smoketest)
+
+add_custom_target(run_bitomega_smoketest
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bench/results
+  COMMAND bitomega_smoketest
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  DEPENDS bitomega_smoketest
+)
 
 add_executable(bitraf_core engine/rmr/src/rafaelia_bitraf_core.c)
 target_compile_definitions(bitraf_core PRIVATE RAF_HOSTED_TEST=1)

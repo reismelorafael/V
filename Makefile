@@ -11,7 +11,7 @@ else ifeq ($(UNAME_S),Darwin)
   SHARED_EXT := dylib
 endif
 
-ENGINE_SRCS := engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_lowlevel_portable.c engine/rmr/src/rmr_lowlevel_mix.c engine/rmr/src/rmr_lowlevel_reduce.c engine/rmr/src/rmr_neon_simd.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c engine/rmr/src/rmr_math_fabric.c engine/rmr/src/rmr_policy_kernel.c engine/rmr/src/rmr_qemu_bridge.c engine/rmr/src/rmr_corelib.c engine/rmr/src/rmr_ll_ops.c engine/rmr/src/rmr_ll_tuning.c engine/rmr/src/rmr_casm_bridge.c engine/rmr/src/rmr_unified_kernel.c
+ENGINE_SRCS := engine/rmr/src/bitomega.c engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_lowlevel_portable.c engine/rmr/src/rmr_lowlevel_mix.c engine/rmr/src/rmr_lowlevel_reduce.c engine/rmr/src/rmr_neon_simd.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c engine/rmr/src/rmr_math_fabric.c engine/rmr/src/rmr_policy_kernel.c engine/rmr/src/rmr_qemu_bridge.c engine/rmr/src/rmr_corelib.c engine/rmr/src/rmr_ll_ops.c engine/rmr/src/rmr_ll_tuning.c engine/rmr/src/rmr_casm_bridge.c engine/rmr/src/rmr_unified_kernel.c
 ENGINE_OBJS := $(patsubst %.c,build/%.o,$(ENGINE_SRCS))
 
 CASM_ASM_SRCS :=
@@ -44,9 +44,10 @@ QEMU_BRIDGE_SELFTEST_BIN := build/demo/rmr_qemu_bridge_selftest
 MATH_FABRIC_SELFTEST_BIN := build/demo/math_fabric_selftest
 DETERMINISM_SIGNATURE_SELFTEST_BIN := build/demo/determinism_signature_selftest
 CASM_BRIDGE_SELFTEST_BIN := build/demo/rmr_casm_bridge_selftest
+BITOMEGA_SMOKETEST_BIN := build/demo/bitomega_smoketest
 RMR_REQUIRED_SYMBOLS := RmR_MathFabric_AutodetectPlan RmR_MathFabric_VectorMix
 
-all: $(LIB_STATIC) verify-librmr-symbols $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_BRIDGE_SELFTEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
+all: $(LIB_STATIC) verify-librmr-symbols $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_BRIDGE_SELFTEST_BIN) $(BITOMEGA_SMOKETEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
 
 build/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -130,19 +131,29 @@ $(DETERMINISM_SIGNATURE_SELFTEST_BIN): demo_cli/src/determinism_signature_selfte
 $(CASM_BRIDGE_SELFTEST_BIN): demo_cli/src/rmr_casm_bridge_selftest.c $(CASM_BRIDGE_OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $< $(CASM_BRIDGE_OBJS) $(LDFLAGS) -o $@
+
+$(BITOMEGA_SMOKETEST_BIN): demo_cli/src/bitomega_smoketest.c $(LIB_STATIC)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
+
+run-bitomega-smoketest: $(BITOMEGA_SMOKETEST_BIN)
+	@mkdir -p bench/results
+	./$(BITOMEGA_SMOKETEST_BIN)
 run-demo: $(DEMO_BIN)
 	./$(DEMO_BIN)
 
 run-casm-selftest: $(CASM_BRIDGE_SELFTEST_BIN)
 	./$(CASM_BRIDGE_SELFTEST_BIN)
 
-run-selftest: $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_BRIDGE_SELFTEST_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
+run-selftest: $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_BRIDGE_SELFTEST_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_SELFTEST_BIN) $(BITOMEGA_SMOKETEST_BIN)
 	./$(SELFTEST_BIN)
 	./$(MATH_FABRIC_SELFTEST_BIN)
 	./$(DETERMINISM_SIGNATURE_SELFTEST_BIN)
 	./$(CASM_BRIDGE_SELFTEST_BIN)
 	./$(POLICY_SELFTEST_BIN)
 	./$(QEMU_BRIDGE_SELFTEST_BIN)
+	@mkdir -p bench/results
+	./$(BITOMEGA_SMOKETEST_BIN)
 
 run-bench: $(BENCH_BIN)
 	./$(BENCH_BIN) bench/results/latest.csv bench/results/latest.json
@@ -157,7 +168,7 @@ run-release-gate: run-selftest run-bench run-baremetal-gate
 clean:
 	rm -rf build
 
-.PHONY: all clean verify-librmr-symbols run-demo run-casm-selftest run-selftest run-bench run-baremetal-gate run-release-gate
+.PHONY: all clean verify-librmr-symbols run-demo run-casm-selftest run-selftest run-bitomega-smoketest run-bench run-baremetal-gate run-release-gate
 
 # ── NEON SIMD selftest (BUG#45 addition) ──
 NEON_SIMD_SELFTEST_BIN := build/demo/rmr_neon_simd_selftest

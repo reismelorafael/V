@@ -45,7 +45,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential cmake make
+          sudo apt-get install -y --no-install-recommends build-essential cmake make graphviz
 
       - name: Prepare output directories
         run: |
@@ -60,8 +60,34 @@ jobs:
           cmake -S . -B build-cmake
           cmake --build build-cmake -j"$(nproc)"
 
+      - name: Run BitΩ smoke test (Make)
+        run: make run-bitomega-smoketest
+
+      - name: Run BitΩ smoke test (CMake)
+        run: cmake --build build-cmake --target run_bitomega_smoketest
+
+      - name: Generate BitΩ transition graph
+        run: |
+          mkdir -p reports
+          python3 tools/bitomega_csv_to_dot.py \
+            bench/results/bitomega_transitions.csv \
+            reports/bitomega_transition_graph.dot \
+            reports/bitomega_summary.md
+          dot -Tpng reports/bitomega_transition_graph.dot -o reports/bitomega_transition_graph.png
+
       - name: Run release gate (selftest + bench + summary)
         run: make run-release-gate
+
+      - name: Upload BitΩ smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitomega-artifacts
+          path: |
+            bench/results/bitomega_transitions.csv
+            reports/bitomega_transition_graph.png
+            reports/bitomega_summary.md
+          if-no-files-found: warn
 
       - name: Upload bench summary artifact
         if: always()
