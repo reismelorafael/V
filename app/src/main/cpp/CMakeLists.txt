@@ -47,6 +47,7 @@ add_library(vectra_core_accel SHARED
     ../../../../engine/rmr/src/rmr_lowlevel_mix.c
     ../../../../engine/rmr/src/rmr_lowlevel_reduce.c
     ../../../../engine/rmr/src/rmr_neon_simd.c
+    ../../../../engine/rmr/src/bitomega.c
     ${VECTRA_LOWLEVEL_SOURCES}
     ${VECTRA_CASM_SOURCES})
 
