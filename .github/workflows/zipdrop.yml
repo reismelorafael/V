@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
     paths:
       - "_incoming/*.zip"
+      - "*.zip"
 
 jobs:
   apply:
@@ -25,7 +26,21 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
 
-          for z in _incoming/*.zip; do
+          zips=( _incoming/*.zip ./*.zip )
+          for z in "${zips[@]}"; do
+            [[ -f "$z" ]] || continue
+
+            python - "$z" <<'PY'
+import pathlib, sys, zipfile
+
+zip_path = pathlib.Path(sys.argv[1])
+with zipfile.ZipFile(zip_path) as zf:
+    for info in zf.infolist():
+        name = pathlib.PurePosixPath(info.filename)
+        if name.is_absolute() or ".." in name.parts:
+            raise SystemExit(f"Unsafe archive path in {zip_path}: {info.filename}")
+PY
+
             echo ">> Applying $z"
             unzip -o "$z" -d .
 
