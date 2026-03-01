@@ -1,0 +1,60 @@
+name: vectras-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build python3 graphviz
+
+      - name: Show hosted engine config
+        run: make print-build-config
+
+      - name: Build engine with Makefile
+        run: make -j"$(nproc)"
+
+      - name: Run engine selftests
+        run: make run-selftest
+
+      - name: Build engine with root CMake
+        run: |
+          cmake -S . -B build-cmake -G Ninja -DRMR_JNI_BUILD=ON -DRMR_ENABLE_POLICY_MODULE=ON
+          cmake --build build-cmake -j"$(nproc)"
+
+  android-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "cmake;3.22.1" "ndk;27.2.12479018"
+
+      - name: Verify Gradle baseline
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon verifyGradleRuntimeJvm verifyTargetApiBaseline verifyMinApiAbiCompatibility verifyArm64ToolchainCompatibility verifyBootstrapAssets verifyRepoFileDependencies
+
+      - name: Assemble app debug
+        run: ./gradlew --no-daemon :app:assembleDebug -PcheckVariant=debug
