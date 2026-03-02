@@ -1,0 +1,339 @@
+##############################################################################
+# Vectras-VM-Android — CI/CD Android Build
+# Auditado e corrigido por RAFAELIA | §∆ ΣΩΔΦBITRAF
+##############################################################################
+
+name: "Android Build"
+
+on:
+  push:
+    branches: [main, master, dev, release/**]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      build_variant:
+        description: "Build variant"
+        type: choice
+        options: [debug, release, both]
+        default: debug
+      abi_policy:
+        description: "ABI policy"
+        type: choice
+        options: [arm64-only, with-32bit]
+        default: arm64-only
+      ndk_version:
+        description: "NDK version (override)"
+        default: "27.2.12479018"
+      enable_policy_module:
+        description: "Enable RMR policy module"
+        type: boolean
+        default: true
+      enable_bitraf_module:
+        description: "Enable BITRAF module"
+        type: boolean
+        default: true
+
+##############################################################################
+# ENV
+##############################################################################
+env:
+  JAVA_VERSION:    "17"
+  NDK_VERSION:     ${{ github.event.inputs.ndk_version || '27.2.12479018' }}
+  CMAKE_VERSION:   "3.22.1"
+  COMPILE_API:     "35"
+  TARGET_API:      "35"
+  MIN_API:         "23"
+  ABI_POLICY:      ${{ github.event.inputs.abi_policy || 'arm64-only' }}
+  RMR_POLICY:      ${{ github.event.inputs.enable_policy_module == 'false' && 'OFF' || 'ON' }}
+  RMR_BITRAF:      ${{ github.event.inputs.enable_bitraf_module == 'false' && 'OFF' || 'ON' }}
+
+##############################################################################
+# JOBS
+##############################################################################
+jobs:
+
+  # ── 0. PREFLIGHT ──────────────────────────────────────────────────────────
+  preflight:
+    name: "Preflight"
+    runs-on: ubuntu-24.04
+    outputs:
+      run_debug:   ${{ steps.decide.outputs.run_debug }}
+      run_release: ${{ steps.decide.outputs.run_release }}
+    steps:
+      - name: "Decide variants"
+        id: decide
+        run: |
+          VARIANT="${{ github.event.inputs.build_variant }}"
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            VARIANT="debug"
+          fi
+          echo "run_debug=$( [[ "$VARIANT" == "debug" || "$VARIANT" == "both" ]] && echo true || echo false )" >> $GITHUB_OUTPUT
+          echo "run_release=$( [[ "$VARIANT" == "release" || "$VARIANT" == "both" ]] && echo true || echo false )" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: "Validate Java runtime"
+        run: |
+          JAVA_VER=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}' | cut -d. -f1)
+          echo "Detected Java major: $JAVA_VER (expected: $JAVA_VERSION)"
+          if [ "$JAVA_VER" != "$JAVA_VERSION" ]; then
+            echo "::error::Java version mismatch: expected $JAVA_VERSION got $JAVA_VER"
+            exit 1
+          fi
+
+  # ── 1. BUILD DEBUG ────────────────────────────────────────────────────────
+  build_debug:
+    name: "Build · Debug"
+    needs: preflight
+    if: needs.preflight.outputs.run_debug == 'true'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: "Java ${{ env.JAVA_VERSION }}"
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: "Setup Android SDK"
+        uses: android-actions/setup-android@v3
+        with:
+          log-accepted-android-sdk-licenses: false
+
+      - name: "Install NDK ${{ env.NDK_VERSION }} + CMake ${{ env.CMAKE_VERSION }}"
+        run: |
+          sdkmanager --install "ndk;${{ env.NDK_VERSION }}" "cmake;${{ env.CMAKE_VERSION }}"
+
+      - name: "Cache Gradle"
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: gradle-
+
+      - name: "Validate ABI/API policy"
+        run: |
+          ./gradlew verifyMinApiAbiCompatibility --no-daemon -q \
+            -PAPP_ABI_POLICY=${{ env.ABI_POLICY }} \
+            -PCOMPILE_API=${{ env.COMPILE_API }} \
+            -PTARGET_API=${{ env.TARGET_API }} \
+            -PMIN_API=${{ env.MIN_API }}
+
+      - name: "Validate NDK toolchain"
+        run: |
+          ./gradlew verifyArm64ToolchainCompatibility --no-daemon -q \
+            -PNDK_VERSION=${{ env.NDK_VERSION }}
+
+      - name: "Assemble Debug"
+        run: |
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace \
+            -PCOMPILE_API=${{ env.COMPILE_API }} \
+            -PTARGET_API=${{ env.TARGET_API }} \
+            -PMIN_API=${{ env.MIN_API }} \
+            -PNDK_VERSION=${{ env.NDK_VERSION }} \
+            -PCMAKE_VERSION=${{ env.CMAKE_VERSION }} \
+            -PJAVA_LANGUAGE_VERSION=${{ env.JAVA_VERSION }} \
+            -PAPP_ABI_POLICY=${{ env.ABI_POLICY }} \
+            -PRMR_ENABLE_POLICY_MODULE=${{ env.RMR_POLICY }} \
+            -PRMR_ENABLE_BITRAF_MODULE=${{ env.RMR_BITRAF }}
+
+      - name: "Verify libvectra_core_accel.so"
+        run: |
+          SO=$(find app/build -name "libvectra_core_accel.so" 2>/dev/null | head -1)
+          if [ -z "$SO" ]; then
+            echo "::error::libvectra_core_accel.so NOT FOUND — CMake build failed silently"
+            exit 1
+          fi
+          echo "Found: $SO"
+          file "$SO"
+          file "$SO" | grep -q "aarch64" && echo "✅ AArch64 confirmed" \
+            || (echo "::error::Expected AArch64 ELF"; exit 1)
+
+      - name: "Run unit tests"
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :app:testDebugUnitTest \
+            --no-daemon \
+            --tests com.vectras.vm.core.ProotCommandBuilderTest \
+            -PCI_TEST_FOCUS=proot \
+            -PAPP_ABI_POLICY=${{ env.ABI_POLICY }} 2>&1 | tail -40
+
+      - name: "Upload Debug APK"
+        uses: actions/upload-artifact@v4
+        with:
+          name: "vectras-debug-apk"
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+      - name: "Upload test results"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "test-results-debug"
+          path: app/build/reports/tests/
+          retention-days: 7
+
+  # ── 2. BUILD RELEASE ──────────────────────────────────────────────────────
+  build_release:
+    name: "Build · Release"
+    needs: preflight
+    if: needs.preflight.outputs.run_release == 'true'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: "Java ${{ env.JAVA_VERSION }}"
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: "Setup Android SDK"
+        uses: android-actions/setup-android@v3
+        with:
+          log-accepted-android-sdk-licenses: false
+
+      - name: "Install NDK + CMake"
+        run: |
+          sdkmanager --install "ndk;${{ env.NDK_VERSION }}" "cmake;${{ env.CMAKE_VERSION }}"
+
+      - name: "Cache Gradle"
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: gradle-
+
+      - name: "Validate release API baseline"
+        run: |
+          ./gradlew verifyTargetApiBaseline --no-daemon -q \
+            -PTARGET_API=${{ env.TARGET_API }} \
+            -PRELEASE_MIN_TARGET_API=35
+
+      - name: "Assemble Release (signed)"
+        env:
+          VECTRAS_RELEASE_STORE_FILE:     ${{ secrets.VECTRAS_RELEASE_STORE_FILE }}
+          VECTRAS_RELEASE_STORE_PASSWORD: ${{ secrets.VECTRAS_RELEASE_STORE_PASSWORD }}
+          VECTRAS_RELEASE_KEY_ALIAS:      ${{ secrets.VECTRAS_RELEASE_KEY_ALIAS }}
+          VECTRAS_RELEASE_KEY_PASSWORD:   ${{ secrets.VECTRAS_RELEASE_KEY_PASSWORD }}
+          ANDROID_SIGNING_KEYSTORE:       ${{ secrets.ANDROID_SIGNING_KEYSTORE }}
+        run: |
+          # Decode keystore if base64-encoded secret provided
+          if [ -n "$ANDROID_SIGNING_KEYSTORE" ]; then
+            echo "$ANDROID_SIGNING_KEYSTORE" | base64 -d > /tmp/release.keystore
+            export VECTRAS_RELEASE_STORE_FILE=/tmp/release.keystore
+          fi
+
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            -PCOMPILE_API=${{ env.COMPILE_API }} \
+            -PTARGET_API=${{ env.TARGET_API }} \
+            -PMIN_API=${{ env.MIN_API }} \
+            -PNDK_VERSION=${{ env.NDK_VERSION }} \
+            -PCMAKE_VERSION=${{ env.CMAKE_VERSION }} \
+            -PJAVA_LANGUAGE_VERSION=${{ env.JAVA_VERSION }} \
+            -PAPP_ABI_POLICY=${{ env.ABI_POLICY }} \
+            -PRMR_ENABLE_POLICY_MODULE=${{ env.RMR_POLICY }} \
+            -PRMR_ENABLE_BITRAF_MODULE=${{ env.RMR_BITRAF }}
+
+          rm -f /tmp/release.keystore
+
+      - name: "Verify native .so (release)"
+        run: |
+          SO=$(find app/build -name "libvectra_core_accel.so" -path "*/release/*" 2>/dev/null | head -1)
+          if [ -z "$SO" ]; then
+            echo "::error::libvectra_core_accel.so NOT FOUND in release build"
+            exit 1
+          fi
+          file "$SO"
+          file "$SO" | grep -q "aarch64" && echo "✅ AArch64 release confirmed" \
+            || (echo "::error::Expected AArch64"; exit 1)
+
+      - name: "Upload Release APK"
+        uses: actions/upload-artifact@v4
+        with:
+          name: "vectras-release-apk"
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+  # ── 3. ENGINE CI ──────────────────────────────────────────────────────────
+  engine_ci:
+    name: "Engine · RMR native (Linux x86_64)"
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: "Install build tools"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build
+
+      - name: "Build RMR engine (portable, no Android)"
+        run: |
+          cmake -S . -B build-engine -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DRMR_JNI_BUILD=ON \
+            -DRMR_ENABLE_POLICY_MODULE=ON
+          cmake --build build-engine --parallel $(nproc)
+          echo "✅ RMR engine build complete"
+          ls build-engine/
+
+      - name: "Upload engine libs"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "rmr-engine-linux-x86_64"
+          path: build-engine/
+          retention-days: 7
+
+  # ── 4. SUMMARY ────────────────────────────────────────────────────────────
+  summary:
+    name: "Summary"
+    needs: [preflight, build_debug, build_release, engine_ci]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: "Build results"
+        run: |
+          echo "=============================================="
+          echo " Vectras-VM-Android — Build Summary"
+          echo "=============================================="
+          echo " debug:    ${{ needs.build_debug.result }}"
+          echo " release:  ${{ needs.build_release.result }}"
+          echo " engine:   ${{ needs.engine_ci.result }}"
+          echo "=============================================="
+          # Fail CI if debug or engine failed
+          D="${{ needs.build_debug.result }}"
+          E="${{ needs.engine_ci.result }}"
+          for R in "$D" "$E"; do
+            if [ "$R" = "failure" ]; then
+              echo "::error::Critical job failed"
+              exit 1
+            fi
+          done
+          echo "All critical jobs passed."
