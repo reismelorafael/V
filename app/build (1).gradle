@@ -1,0 +1,239 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace = 'com.vectras.vm'
+    compileSdk = rootProject.ext.compileApi
+    buildToolsVersion = rootProject.ext.toolsVersion
+    ndkVersion = rootProject.ext.ndkVersion
+
+    defaultConfig {
+        applicationId "com.vectras.vm"
+        minSdk = rootProject.ext.minApi
+        targetSdk = rootProject.ext.targetApi
+        versionCode = 70
+        versionName = "3.6.6"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        multiDexEnabled = false
+
+        ndk {
+            abiFilters(*rootProject.ext.supportedAbis as String[])
+        }
+
+        externalNativeBuild {
+            cmake {
+                def rmrEnablePolicyModule = providers.gradleProperty("RMR_ENABLE_POLICY_MODULE").orElse("ON").get()
+                def rmrEnableBitrafModule = providers.gradleProperty("RMR_ENABLE_BITRAF_MODULE").orElse("ON").get()
+                def nativeMcpu = providers.gradleProperty("nativeMcpu").orNull
+                def arm64CppFlags = ["-march=armv8-a"]
+                if (nativeMcpu) {
+                    // -mcpu complementa o baseline de -march sem substituí-lo.
+                    arm64CppFlags += "-mcpu=${nativeMcpu}"
+                }
+                def commonCppFlags = ["-O3", "-ffast-math", "-fno-exceptions", "-fno-rtti", "-DRMR_JNI_BUILD=1"]
+                cppFlags commonCppFlags.join(" ")
+                cFlags "-O3 -ffast-math -DRMR_JNI_BUILD=1"
+                arguments "-DRMR_ENABLE_POLICY_MODULE=${rmrEnablePolicyModule}",
+                          "-DRMR_ENABLE_BITRAF_MODULE=${rmrEnableBitrafModule}",
+                          "-DVECTRA_ARM64_CPP_FLAGS=${arm64CppFlags.join(' ')}"
+            }
+        }
+
+        resValue "string", "app_version", versionName
+        resValue "integer", "app_version_code", versionCode.toString()
+        buildConfigField "int", "VECTRA_CORE_SEED", "0"
+    }
+
+    packaging {
+        jniLibs {
+            if (rootProject.ext.appAbiPolicy == 'arm64-only') {
+                excludes += [
+                        "lib/armeabi-v7a/**",
+                        "lib/x86/**",
+                        "lib/x86_64/**"
+                ]
+            } else if (rootProject.ext.appAbiPolicy == 'with-32bit') {
+                excludes += [
+                        "lib/x86_64/**"
+                ]
+            }
+        }
+    }
+
+    def releaseStoreFile = providers.gradleProperty("android.injected.signing.store.file").orNull ?: System.getenv("VECTRAS_RELEASE_STORE_FILE")
+    def releaseStorePassword = providers.gradleProperty("android.injected.signing.store.password").orNull ?: System.getenv("VECTRAS_RELEASE_STORE_PASSWORD")
+    def releaseKeyAlias = providers.gradleProperty("android.injected.signing.key.alias").orNull ?: System.getenv("VECTRAS_RELEASE_KEY_ALIAS")
+    def releaseKeyPassword = providers.gradleProperty("android.injected.signing.key.password").orNull ?: System.getenv("VECTRAS_RELEASE_KEY_PASSWORD")
+
+    signingConfigs {
+        if (releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (signingConfigs.findByName('release') != null) {
+                signingConfig = signingConfigs.release
+            } else {
+                logger.lifecycle("Release signing não configurado: build de release seguirá sem assinatura de produção.")
+            }
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles(getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro')
+            buildConfigField "boolean", "VECTRA_CORE_ENABLED", "false"
+        }
+        debug {
+            minifyEnabled = false
+            proguardFiles(getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro')
+            buildConfigField "boolean", "VECTRA_CORE_ENABLED", "true"
+        }
+        perfRelease {
+            initWith release
+            matchingFallbacks = ['release']
+        }
+    }
+
+    buildFeatures {
+        viewBinding = true
+        buildConfig = true
+        aidl = true
+    }
+
+    splits {
+        abi {
+            enable = false
+        }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
+    // Note: Using Java 17 for CI compatibility
+    // GitHub Actions runners currently support Java 17 by default
+    // If using Java 21 features locally, consider updating CI to Java 21
+    compileOptions {
+        sourceCompatibility JavaVersion.toVersion(rootProject.ext.javaLanguageVersion)
+        targetCompatibility JavaVersion.toVersion(rootProject.ext.javaLanguageVersion)
+    }
+
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = rootProject.ext.cmakeVersion
+        }
+    }
+
+    kotlinOptions {
+        jvmTarget = String.valueOf(rootProject.ext.javaLanguageVersion)
+    }
+}
+
+def checkVariant = (providers.gradleProperty("checkVariant").orElse("debug").get() ?: "debug").trim()
+if (!checkVariant) {
+    throw new GradleException("checkVariant não pode ser vazio")
+}
+
+def checkVariantTaskSuffix = checkVariant.substring(0, 1).toUpperCase() + checkVariant.substring(1)
+def checkVariantAssembleTask = "assemble${checkVariantTaskSuffix}"
+
+tasks.register("checkGradleCmakeConfig") {
+    group = "verification"
+    description = "Valida configuração Gradle/CMake e executa build do variant selecionado via -PcheckVariant=<variant>."
+
+    dependsOn(":app:${checkVariantAssembleTask}")
+
+    doFirst {
+        def rmrEnablePolicyModule = providers.gradleProperty("RMR_ENABLE_POLICY_MODULE").orElse("ON").get()
+        def rmrEnableBitrafModule = providers.gradleProperty("RMR_ENABLE_BITRAF_MODULE").orElse("ON").get()
+
+        logger.lifecycle("[checkGradleCmakeConfig] variant=${checkVariant}")
+        logger.lifecycle("[checkGradleCmakeConfig] RMR_ENABLE_POLICY_MODULE=${rmrEnablePolicyModule}")
+        logger.lifecycle("[checkGradleCmakeConfig] RMR_ENABLE_BITRAF_MODULE=${rmrEnableBitrafModule}")
+        logger.lifecycle("[checkGradleCmakeConfig] Executando :app:${checkVariantAssembleTask} para validar Gradle + CMake...")
+    }
+}
+
+tasks.register("printNativeVariantConfig") {
+    group = "verification"
+    description = "Imprime ABIs efetivas e argumentos CMake configurados por variant."
+
+    doLast {
+        def supportedAbis = (rootProject.ext.supportedAbis ?: []) as List<String>
+        def defaultConfigCmakeArgs = android.defaultConfig.externalNativeBuild?.cmake?.arguments ?: []
+
+        logger.lifecycle("[printNativeVariantConfig] supportedAbis=${supportedAbis}")
+        android.applicationVariants.all { variant ->
+            def variantCmakeArgs = []
+            if (variant.mergedFlavor?.externalNativeBuild?.cmake?.arguments) {
+                variantCmakeArgs.addAll(variant.mergedFlavor.externalNativeBuild.cmake.arguments)
+            }
+
+            logger.lifecycle("[printNativeVariantConfig] variant=${variant.name}")
+            logger.lifecycle("[printNativeVariantConfig] abiFilters=${supportedAbis}")
+            logger.lifecycle("[printNativeVariantConfig] cmakeArgs=${(defaultConfigCmakeArgs + variantCmakeArgs).unique()}")
+        }
+    }
+}
+
+
+def ciTestFocus = providers.gradleProperty("CI_TEST_FOCUS").orNull
+
+android.sourceSets {
+    test {
+        if (ciTestFocus == "proot") {
+            java.setSrcDirs(["src/test/java"])
+            java.include "com/vectras/vm/core/ProotCommandBuilderTest.java"
+        }
+    }
+}
+
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation project(':terminal-emulator')
+    implementation project(':terminal-view')
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.google.android.material:material:1.13.0'
+    implementation "androidx.annotation:annotation:1.9.1"
+    implementation "androidx.core:core-ktx:1.13.1"
+    implementation "androidx.drawerlayout:drawerlayout:1.2.0"
+    implementation "androidx.preference:preference-ktx:1.2.1"
+    implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
+    implementation "androidx.viewpager:viewpager:1.1.0"
+    implementation 'com.google.guava:guava:33.5.0-jre'
+    implementation 'com.google.code.gson:gson:2.13.2'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation "androidx.window:window:1.5.1"
+    implementation "commons-io:commons-io:2.16.1"
+    implementation 'com.airbnb.android:lottie:6.7.1'
+    implementation 'org.apache.commons:commons-compress:1.28.0'
+    implementation 'androidx.activity:activity-ktx:1.9.2'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation "androidx.documentfile:documentfile:1.1.0"
+    implementation "androidx.work:work-runtime:2.9.1"
+    
+    // Retrofit
+
+    // Glide
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'
+    
+    // Test dependencies
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    testImplementation 'org.mockito:mockito-core:5.12.0'
+    testImplementation 'org.mockito:mockito-inline:5.2.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
+}
