@@ -155,6 +155,48 @@ jobs:
       - name: Generate local.properties
         run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
 
+      - name: Materialize Firebase config (optional fallback for debug/tests)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ secrets.VECTRAS_GOOGLE_SERVICES_JSON_B64 }}" ]]; then
+            echo "${{ secrets.VECTRAS_GOOGLE_SERVICES_JSON_B64 }}" | base64 --decode > app/google-services.json
+            echo "Firebase config loaded from VECTRAS_GOOGLE_SERVICES_JSON_B64"
+          elif [[ ! -f app/google-services.json ]]; then
+            cat > app/google-services.json <<'JSON'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "vectras-vm-placeholder",
+              "storage_bucket": "vectras-vm-placeholder.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                  "android_client_info": {
+                    "package_name": "com.vectras.vm"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [
+                  {
+                    "current_key": "AIzaSyDummyKeyForBuildPurposesOnly000000"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+            echo "Using local placeholder Firebase config for non-release verification"
+          fi
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
@@ -384,6 +426,48 @@ jobs:
       run: |
         echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
 
+    - name: Materialize Firebase config (optional fallback for debug/tests)
+      shell: bash
+      run: |
+          set -euo pipefail
+          if [[ -n "${{ secrets.VECTRAS_GOOGLE_SERVICES_JSON_B64 }}" ]]; then
+            echo "${{ secrets.VECTRAS_GOOGLE_SERVICES_JSON_B64 }}" | base64 --decode > app/google-services.json
+            echo "Firebase config loaded from VECTRAS_GOOGLE_SERVICES_JSON_B64"
+          elif [[ ! -f app/google-services.json ]]; then
+            cat > app/google-services.json <<'JSON'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "vectras-vm-placeholder",
+              "storage_bucket": "vectras-vm-placeholder.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                  "android_client_info": {
+                    "package_name": "com.vectras.vm"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [
+                  {
+                    "current_key": "AIzaSyDummyKeyForBuildPurposesOnly000000"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+            echo "Using local placeholder Firebase config for non-release verification"
+          fi
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
@@ -521,6 +605,25 @@ jobs:
           find app/build -type f -path '*/obj/*/*.so' | grep -v '/obj/arm64-v8a/' >&2
           exit 1
         fi
+
+
+    - name: Materialize Firebase config for release (required)
+      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -z "${{ secrets.VECTRAS_GOOGLE_SERVICES_JSON_B64 }}" ]]; then
+          echo "Missing VECTRAS_GOOGLE_SERVICES_JSON_B64 secret for release build" >&2
+          exit 1
+        fi
+        echo "${{ secrets.VECTRAS_GOOGLE_SERVICES_JSON_B64 }}" | base64 --decode > app/google-services.json
+
+    - name: Validate Firebase release config
+      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true' }}
+      env:
+        ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+      run: ./gradlew :app:validateFirebaseReleaseConfig ${{ env.GRADLE_ARGS }}
 
     - name: Build Release APK (unsigned)
       if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_release == 'true' && github.event.inputs.sign_release != 'true' }}
