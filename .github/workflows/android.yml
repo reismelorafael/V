@@ -717,6 +717,20 @@ jobs:
         fi
         cp app/build/outputs/apk/release/*.apk artifacts/release/
 
+    - name: Stage Release APKs for Telegram upload
+      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram == 'true' && github.event.inputs.build_release == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        shopt -s nullglob
+        mkdir -p artifacts/release
+        release_apks=(app/build/outputs/apk/release/*.apk)
+        if [[ ${#release_apks[@]} -eq 0 ]]; then
+          echo "No APK files found under app/build/outputs/apk/release for Telegram staging." >&2
+          exit 1
+        fi
+        cp app/build/outputs/apk/release/*.apk artifacts/release/
+
     - name: Upload to Telegram
       if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram == 'true' && github.event.inputs.build_release == 'true' }}
       shell: bash
