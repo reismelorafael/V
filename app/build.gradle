@@ -226,6 +226,21 @@ tasks.register("printNativeVariantConfig") {
     }
 }
 
+tasks.register("checkNativeAllMatrix") {
+    group = "verification"
+    description = "Executa verificações nativas de raiz e a matriz de assemble da app (debug/release/perfRelease)."
+
+    // Verificações de compatibilidade registradas no build.gradle raiz.
+    dependsOn(":verifyMinApiAbiCompatibility")
+    dependsOn(":verifyArm64ToolchainCompatibility")
+    dependsOn(":verifyGradleRuntimeJvm")
+
+    // Matriz de assemble da app.
+    dependsOn(":app:assembleDebug")
+    dependsOn(":app:assembleRelease")
+    dependsOn(":app:assemblePerfRelease")
+}
+
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
