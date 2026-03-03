@@ -8,10 +8,14 @@ import android.util.Log;
 import com.vectras.qemu.MainSettingsManager;
 import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
+import com.vectras.vm.telemetry.TelemetryHub;
+import com.vectras.vm.telemetry.TelemetryRecord;
+import com.vectras.vm.telemetry.TelemetrySink;
 import com.vectras.vm.utils.DeviceUtils;
 import com.vectras.vm.utils.FileUtils;
 
 import java.io.File;
+import org.json.JSONObject;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
@@ -67,6 +71,14 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
 
             FileUtils.writeToFile(file.getParent(), file.getName(), builder.toString());
             MainSettingsManager.setShowLastCrashLog(context.getApplicationContext(), true);
+
+            TelemetrySink sink = TelemetryHub.get(context);
+            JSONObject payload = new JSONObject();
+            payload.put("thread", t != null ? t.getName() : "unknown");
+            payload.put("kernel", DeviceUtils.getKernel());
+            payload.put("fingerprint", Build.FINGERPRINT);
+            sink.publish(TelemetryRecord.crash("crash", builder.toString(), payload));
+            sink.exportDeterministicBatch(256);
         } catch (Throwable handlerError) {
             Log.e(TAG, "Failed while persisting crash log", handlerError);
         }

@@ -2,6 +2,8 @@ package com.vectras.vm.rafaelia
 
 import android.content.Context
 import android.util.Log
+import com.vectras.vm.telemetry.TelemetryHub
+import com.vectras.vm.telemetry.TelemetryRecord
 import com.vectras.vm.vectra.VectraBitStackLog
 import org.json.JSONObject
 import java.io.File
@@ -85,6 +87,10 @@ object RafaeliaEventRecorder {
         val bytes = payload.toString().toByteArray()
         logger?.append(bytes, type.hashCode())
         appendJsonl(context, payload)
+        val telemetryPayload = JSONObject(payload.toString())
+        telemetryPayload.put("source", "rafaelia")
+        val sink = TelemetryHub.get(context)
+        sink.publish(TelemetryRecord.event(type, telemetryPayload))
         Log.d(TAG, "recorded event=$type")
     }
 
