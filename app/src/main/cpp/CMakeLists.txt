@@ -3,6 +3,10 @@ project(vectra_core_accel C)
 
 option(RMR_ENABLE_POLICY_MODULE "Enable RMR policy module" ON)
 option(RMR_ENABLE_BITRAF_MODULE "Enable BITRAF module" ON)
+option(RMR_ASM_CORE_EXPERIMENTAL "Enable experimental ASM core hot paths" OFF)
+option(RMR_ASM_CORE_X86_64_VALIDATED "Enable ASM hot paths on x86_64 (validated ABI)" ON)
+option(RMR_ASM_CORE_ARM64_VALIDATED "Enable ASM hot paths on arm64-v8a (validated ABI)" OFF)
+option(RMR_ASM_CORE_RISCV64_VALIDATED "Enable ASM hot paths on riscv64 (validated ABI)" OFF)
 
 set(VECTRA_REPO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../../../)
 set(VECTRA_RMR_INCLUDE_DIR ${VECTRA_REPO_ROOT}/engine/rmr/include)
@@ -10,25 +14,23 @@ set(VECTRA_RMR_INCLUDE_DIR ${VECTRA_REPO_ROOT}/engine/rmr/include)
 set(VECTRA_LOWLEVEL_SOURCES)
 set(VECTRA_CASM_SOURCES)
 
-if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
+if(RMR_ASM_CORE_EXPERIMENTAL AND ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64" AND RMR_ASM_CORE_X86_64_VALIDATED)
     list(APPEND VECTRA_LOWLEVEL_SOURCES ../../../../engine/rmr/interop/rmr_lowlevel_x86_64.S)
     list(APPEND VECTRA_CASM_SOURCES ../../../../engine/rmr/interop/rmr_casm_x86_64.S)
 endif()
 
-if(NOT ANDROID AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
+if(RMR_ASM_CORE_EXPERIMENTAL AND NOT ANDROID AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64") AND RMR_ASM_CORE_X86_64_VALIDATED)
     list(APPEND VECTRA_LOWLEVEL_SOURCES ../../../../engine/rmr/interop/rmr_lowlevel_x86_64.S)
     list(APPEND VECTRA_CASM_SOURCES ../../../../engine/rmr/interop/rmr_casm_x86_64.S)
 endif()
 
-if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+if(RMR_ASM_CORE_EXPERIMENTAL AND ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a" AND RMR_ASM_CORE_ARM64_VALIDATED)
     set(VECTRA_CASM_ARM64_SOURCE ../../../../engine/rmr/interop/rmr_casm_arm64.S)
-    # BUG FIX: rmr_casm_arm64.S agora existe — sem IF EXISTS
     list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_ARM64_SOURCE})
 endif()
 
-if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "riscv64")
+if(RMR_ASM_CORE_EXPERIMENTAL AND ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "riscv64" AND RMR_ASM_CORE_RISCV64_VALIDATED)
     set(VECTRA_CASM_RISCV64_SOURCE ../../../../engine/rmr/interop/rmr_casm_riscv64.S)
-    # BUG FIX: rmr_casm_riscv64.S agora existe — sem IF EXISTS
     list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_RISCV64_SOURCE})
 endif()
 
@@ -150,6 +152,12 @@ endif()
 target_compile_options(vectra_core_accel PRIVATE
     ${VECTRA_COMMON_COMPILE_OPTIONS}
     ${VECTRA_ABI_COMPILE_OPTIONS})
+
+target_compile_definitions(vectra_core_accel PRIVATE
+    RMR_ASM_CORE_EXPERIMENTAL=$<BOOL:${RMR_ASM_CORE_EXPERIMENTAL}>
+    RMR_ASM_CORE_X86_64_VALIDATED=$<BOOL:${RMR_ASM_CORE_X86_64_VALIDATED}>
+    RMR_ASM_CORE_ARM64_VALIDATED=$<BOOL:${RMR_ASM_CORE_ARM64_VALIDATED}>
+    RMR_ASM_CORE_RISCV64_VALIDATED=$<BOOL:${RMR_ASM_CORE_RISCV64_VALIDATED}>)
 
 target_link_libraries(vectra_core_accel PRIVATE ${log-lib})
 

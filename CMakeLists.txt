@@ -6,6 +6,10 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 option(RMR_JNI_BUILD "Use hosted/JNI libc path for root builds" ON)
 option(RMR_ENABLE_POLICY_MODULE "Enable RMR policy module for root builds" ON)
+option(RMR_ASM_CORE_EXPERIMENTAL "Enable experimental ASM core hot paths" OFF)
+option(RMR_ASM_CORE_X86_64_VALIDATED "Enable ASM hot paths on x86_64 (validated ABI)" ON)
+option(RMR_ASM_CORE_ARM64_VALIDATED "Enable ASM hot paths on arm64-v8a (validated ABI)" OFF)
+option(RMR_ASM_CORE_RISCV64_VALIDATED "Enable ASM hot paths on riscv64 (validated ABI)" OFF)
 
 if(RMR_JNI_BUILD)
   set(RMR_JNI_BUILD_VALUE 1)
@@ -19,6 +23,30 @@ else()
   set(RMR_ENABLE_POLICY_MODULE_VALUE 0)
 endif()
 
+if(RMR_ASM_CORE_EXPERIMENTAL)
+  set(RMR_ASM_CORE_EXPERIMENTAL_VALUE 1)
+else()
+  set(RMR_ASM_CORE_EXPERIMENTAL_VALUE 0)
+endif()
+
+if(RMR_ASM_CORE_X86_64_VALIDATED)
+  set(RMR_ASM_CORE_X86_64_VALIDATED_VALUE 1)
+else()
+  set(RMR_ASM_CORE_X86_64_VALIDATED_VALUE 0)
+endif()
+
+if(RMR_ASM_CORE_ARM64_VALIDATED)
+  set(RMR_ASM_CORE_ARM64_VALIDATED_VALUE 1)
+else()
+  set(RMR_ASM_CORE_ARM64_VALIDATED_VALUE 0)
+endif()
+
+if(RMR_ASM_CORE_RISCV64_VALIDATED)
+  set(RMR_ASM_CORE_RISCV64_VALIDATED_VALUE 1)
+else()
+  set(RMR_ASM_CORE_RISCV64_VALIDATED_VALUE 0)
+endif()
+
 function(rmr_apply_common_flags target_name)
   target_compile_options(${target_name} PRIVATE
     $<$<C_COMPILER_ID:MSVC>:/O2 /W4>
@@ -27,6 +55,10 @@ function(rmr_apply_common_flags target_name)
   target_compile_definitions(${target_name} PRIVATE
     RMR_JNI_BUILD=${RMR_JNI_BUILD_VALUE}
     RMR_ENABLE_POLICY_MODULE=${RMR_ENABLE_POLICY_MODULE_VALUE}
+    RMR_ASM_CORE_EXPERIMENTAL=${RMR_ASM_CORE_EXPERIMENTAL_VALUE}
+    RMR_ASM_CORE_X86_64_VALIDATED=${RMR_ASM_CORE_X86_64_VALIDATED_VALUE}
+    RMR_ASM_CORE_ARM64_VALIDATED=${RMR_ASM_CORE_ARM64_VALIDATED_VALUE}
+    RMR_ASM_CORE_RISCV64_VALIDATED=${RMR_ASM_CORE_RISCV64_VALIDATED_VALUE}
   )
   target_include_directories(${target_name} PRIVATE ${CMAKE_SOURCE_DIR}/engine/rmr/include)
 endfunction()
@@ -56,8 +88,11 @@ if(RMR_ENABLE_POLICY_MODULE)
   list(APPEND RMR_SOURCES engine/rmr/src/rmr_policy_kernel.c)
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-  list(APPEND RMR_SOURCES engine/rmr/interop/rmr_casm_x86_64.S)
+if(RMR_ASM_CORE_EXPERIMENTAL AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64" AND RMR_ASM_CORE_X86_64_VALIDATED)
+  list(APPEND RMR_SOURCES
+    engine/rmr/interop/rmr_lowlevel_x86_64.S
+    engine/rmr/interop/rmr_casm_x86_64.S
+  )
   set(RMR_HAS_CASM TRUE)
 else()
   set(RMR_HAS_CASM FALSE)
@@ -132,6 +167,10 @@ if(RMR_HAS_CASM)
   target_link_libraries(rmr_casm_bridge_selftest PRIVATE rmr)
   rmr_apply_common_flags(rmr_casm_bridge_selftest)
 endif()
+
+add_executable(rmr_asm_equivalence_selftest demo_cli/src/rmr_asm_equivalence_selftest.c)
+target_link_libraries(rmr_asm_equivalence_selftest PRIVATE rmr)
+rmr_apply_common_flags(rmr_asm_equivalence_selftest)
 
 add_custom_target(run_bitomega_smoketest
   COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bench/results

@@ -1,12 +1,30 @@
 #include "rmr_casm_bridge.h"
 
-#if defined(__x86_64__)
+#ifndef RMR_ASM_CORE_EXPERIMENTAL
+#define RMR_ASM_CORE_EXPERIMENTAL 0
+#endif
+#ifndef RMR_ASM_CORE_X86_64_VALIDATED
+#define RMR_ASM_CORE_X86_64_VALIDATED 0
+#endif
+#ifndef RMR_ASM_CORE_ARM64_VALIDATED
+#define RMR_ASM_CORE_ARM64_VALIDATED 0
+#endif
+#ifndef RMR_ASM_CORE_RISCV64_VALIDATED
+#define RMR_ASM_CORE_RISCV64_VALIDATED 0
+#endif
+
+#if RMR_ASM_CORE_EXPERIMENTAL && RMR_ASM_CORE_X86_64_VALIDATED && defined(__x86_64__)
 uint32_t rmr_casm_xor_fold32_x86_64(const uint8_t *data, size_t size);
+#define RMR_CASM_HAS_ASM 1
+#elif RMR_ASM_CORE_EXPERIMENTAL && RMR_ASM_CORE_ARM64_VALIDATED && defined(__aarch64__)
+uint32_t rmr_casm_xor_fold32_arm64(const uint8_t *data, size_t size);
+#define RMR_CASM_HAS_ASM 1
+#elif RMR_ASM_CORE_EXPERIMENTAL && RMR_ASM_CORE_RISCV64_VALIDATED && defined(__riscv) && (__riscv_xlen == 64)
+uint32_t rmr_casm_xor_fold32_riscv64(const uint8_t *data, size_t size);
 #define RMR_CASM_HAS_ASM 1
 #else
 #define RMR_CASM_HAS_ASM 0
 #endif
-
 static uint32_t rmr_casm_mix_tail(uint32_t acc, const uint8_t *data, size_t start, size_t size) {
   size_t i = start;
   while (i < size) {
@@ -44,7 +62,13 @@ uint32_t RmR_CASM_XorFold32(const uint8_t *data, size_t size, RmR_CASM_Report *r
 
 #if RMR_CASM_HAS_ASM
   if (data && size != 0u) {
+    #if defined(__x86_64__)
     checksum = rmr_casm_xor_fold32_x86_64(data, size);
+#elif defined(__aarch64__)
+    checksum = rmr_casm_xor_fold32_arm64(data, size);
+#elif defined(__riscv) && (__riscv_xlen == 64)
+    checksum = rmr_casm_xor_fold32_riscv64(data, size);
+#endif
     used_asm = 1u;
   }
 #endif
@@ -67,7 +91,13 @@ uint32_t RmR_CASM_XorFold32_Interop(const uint8_t *data, size_t size, uint32_t *
 
 #if RMR_CASM_HAS_ASM
   if (data && size != 0u) {
+    #if defined(__x86_64__)
     csum_asm = rmr_casm_xor_fold32_x86_64(data, size);
+#elif defined(__aarch64__)
+    csum_asm = rmr_casm_xor_fold32_arm64(data, size);
+#elif defined(__riscv) && (__riscv_xlen == 64)
+    csum_asm = rmr_casm_xor_fold32_riscv64(data, size);
+#endif
   }
 #endif
 
