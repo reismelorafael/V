@@ -181,6 +181,7 @@ jobs:
         with:
           name: "test-results-debug"
           path: app/build/reports/tests/
+          if-no-files-found: ignore
           retention-days: 7
 
   # ── 2. BUILD RELEASE ──────────────────────────────────────────────────────

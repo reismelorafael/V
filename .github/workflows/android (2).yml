@@ -288,14 +288,21 @@ jobs:
         run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace --info --tests com.vectras.vm.core.ProotCommandBuilderTest -PCI_TEST_FOCUS=proot ${{ env.GRADLE_ARGS }}
 
       - name: Upload ProotCommandBuilder unit test reports
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: unit-test-reports-test_and_verify
           path: |
             app/build/reports/tests/**
             app/build/test-results/**
-            ./**/*.log
+          if-no-files-found: ignore
+
+      - name: Upload ProotCommandBuilder failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-logs-test_and_verify
+          path: ./**/*.log
           if-no-files-found: ignore
 
       - name: Verify repository file dependencies
