@@ -30,7 +30,15 @@ typedef unsigned long long u64;
    Benchmark target: > 20 GB/s on Cortex-A78
    ───────────────────────────────────────────────────────────── */
 #if defined(__aarch64__)
-#include <arm_neon.h>
+#  if defined(__has_include)
+#    if __has_include(<arm_neon.h>)
+#      include <arm_neon.h>
+#    else
+#      error "__aarch64__ build requires <arm_neon.h>"
+#    endif
+#  else
+#    include <arm_neon.h>
+#  endif
 
 u32 rmr_neon_xor_fold32(const u8 *data, u32 len) {
     if (!data || len == 0) return 0u;
@@ -64,7 +72,15 @@ void rmr_neon_memcpy(u8 *dst, const u8 *src, u32 len) {
 
 /* NEON CRC32C hardware path (ARMv8.0-CRC) */
 #if defined(__ARM_FEATURE_CRC32)
-#include <arm_acle.h>
+#  if defined(__has_include)
+#    if __has_include(<arm_acle.h>)
+#      include <arm_acle.h>
+#    else
+#      error "__ARM_FEATURE_CRC32 build requires <arm_acle.h>"
+#    endif
+#  else
+#    include <arm_acle.h>
+#  endif
 u32 rmr_neon_crc32c(u32 seed, const u8 *data, u32 len) {
     u32 crc = seed, i = 0;
     for (; i + 8u <= len; i += 8u) {
@@ -138,7 +154,15 @@ u32 rmr_neon_popcount_bulk(const u32 *data, u32 count) {
 /* ─────────────────────────────────────────────────────────────
    SECTION 2: x86_64 SSE4.2 / POPCNT paths
    ───────────────────────────────────────────────────────────── */
-#include <immintrin.h>
+#if defined(__has_include)
+#  if __has_include(<immintrin.h>)
+#    include <immintrin.h>
+#  else
+#    error "x86 SIMD build requires <immintrin.h>"
+#  endif
+#else
+#  include <immintrin.h>
+#endif
 
 u32 rmr_neon_xor_fold32(const u8 *data, u32 len) {
     if (!data || len == 0) return 0u;

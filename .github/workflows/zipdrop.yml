@@ -40,43 +40,43 @@ jobs:
             [[ -f "$z" ]] || continue
 
             python - "$z" <<'PY'
-import pathlib, sys, zipfile
+            import pathlib, sys, zipfile
 
-zip_path = pathlib.Path(sys.argv[1])
-with zipfile.ZipFile(zip_path) as zf:
-    for info in zf.infolist():
-        name = pathlib.PurePosixPath(info.filename)
-        if name.is_absolute() or ".." in name.parts:
-            raise SystemExit(f"Unsafe archive path in {zip_path}: {info.filename}")
-PY
+            zip_path = pathlib.Path(sys.argv[1])
+            with zipfile.ZipFile(zip_path) as zf:
+                for info in zf.infolist():
+                    name = pathlib.PurePosixPath(info.filename)
+                    if name.is_absolute() or ".." in name.parts:
+                        raise SystemExit(f"Unsafe archive path in {zip_path}: {info.filename}")
+          PY
 
             echo ">> Applying $z"
             unzip -o "$z" -d .
 
             python - <<'PY'
-import pathlib, shutil
+            import pathlib, shutil
 
-base = pathlib.Path(".")
+            base = pathlib.Path(".")
 
-dl = base/"__DELTA__"/"DELETE_LIST.txt"
-if dl.exists():
-    for line in dl.read_text(encoding="utf-8", errors="ignore").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        p = pathlib.Path(line)
-        if p.is_absolute() or ".." in p.parts:
-            print("SKIP unsafe delete path:", line)
-            continue
-        target = base/p
-        if target.is_symlink() or target.is_file():
-            target.unlink(missing_ok=True)
-        elif target.is_dir():
-            shutil.rmtree(target, ignore_errors=True)
+            dl = base/"__DELTA__"/"DELETE_LIST.txt"
+            if dl.exists():
+                for line in dl.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    p = pathlib.Path(line)
+                    if p.is_absolute() or ".." in p.parts:
+                        print("SKIP unsafe delete path:", line)
+                        continue
+                    target = base/p
+                    if target.is_symlink() or target.is_file():
+                        target.unlink(missing_ok=True)
+                    elif target.is_dir():
+                        shutil.rmtree(target, ignore_errors=True)
 
-# limpa metadados pra não poluir o repo
-shutil.rmtree(base/"__DELTA__", ignore_errors=True)
-PY
+            # limpa metadados pra não poluir o repo
+            shutil.rmtree(base/"__DELTA__", ignore_errors=True)
+          PY
 
             rm -f "$z"
           done
