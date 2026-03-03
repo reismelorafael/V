@@ -3,6 +3,8 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+import groovy.json.JsonSlurper
+
 android {
     namespace = 'com.vectras.vm'
     compileSdk = rootProject.ext.compileApi
@@ -162,6 +164,43 @@ tasks.register("checkGradleCmakeConfig") {
         logger.lifecycle("[checkGradleCmakeConfig] RMR_ENABLE_BITRAF_MODULE=${rmrEnableBitrafModule}")
         logger.lifecycle("[checkGradleCmakeConfig] Executando :app:${checkVariantAssembleTask} para validar Gradle + CMake...")
     }
+}
+
+def firebaseConfigFile = file("${project.projectDir}/google-services.json")
+
+tasks.register("validateFirebaseReleaseConfig") {
+    group = "verification"
+    description = "Falha builds release quando google-services.json está ausente ou com project_id placeholder."
+
+    doLast {
+        if (!firebaseConfigFile.exists()) {
+            throw new GradleException("google-services.json ausente para variant release. Injete o arquivo real via secret/base64 no CI ou use fallback apenas para debug. Veja app/FIREBASE.md.")
+        }
+
+        def firebaseConfig
+        try {
+            firebaseConfig = new JsonSlurper().parse(firebaseConfigFile)
+        } catch (Exception e) {
+            throw new GradleException("google-services.json inválido para build release: ${e.message}")
+        }
+
+        def projectId = (firebaseConfig?.project_info?.project_id ?: "").toString().trim()
+        if (!projectId) {
+            throw new GradleException("google-services.json sem project_info.project_id para variant release.")
+        }
+
+        if (projectId.toLowerCase().contains("placeholder")) {
+            throw new GradleException("Build release bloqueado: project_id contém 'placeholder' (${projectId}). Injete o google-services.json de produção via segredo de pipeline.")
+        }
+
+        logger.lifecycle("[validateFirebaseReleaseConfig] project_id=${projectId} (ok)")
+    }
+}
+
+tasks.matching { task ->
+    task.name in ["preReleaseBuild", "prePerfReleaseBuild"]
+}.configureEach {
+    dependsOn(tasks.named("validateFirebaseReleaseConfig"))
 }
 
 
