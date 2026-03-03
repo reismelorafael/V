@@ -16,6 +16,9 @@ jobs:
       - name: Block duplicated overlay ZIP source
         run: bash tools/check_overlay_zip_duplicates.sh
 
+      - name: Block firebasestorage links in web assets
+        run: bash tools/check_no_firebasestorage_links.sh
+
       - name: Install host build deps
         run: |
           sudo apt-get update
