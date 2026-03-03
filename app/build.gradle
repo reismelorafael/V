@@ -164,6 +164,46 @@ tasks.register("checkGradleCmakeConfig") {
     }
 }
 
+
+
+def nativeCheckAbiPolicies = ['arm64-only', 'with-32bit'].sort()
+def nativeCheckBuildVariants = ['debug', 'release', 'perfRelease'].sort()
+
+def abiPolicyTaskPart = { String policy ->
+    policy.split('-').collect { token ->
+        token ? token.substring(0, 1).toUpperCase() + token.substring(1) : token
+    }.join('')
+}
+
+def variantTaskPart = { String variant ->
+    variant ? variant.substring(0, 1).toUpperCase() + variant.substring(1) : variant
+}
+
+def checkNativeMatrixTasks = []
+
+nativeCheckAbiPolicies.each { policy ->
+    nativeCheckBuildVariants.each { variant ->
+        def nativeTaskName = "checkNative${abiPolicyTaskPart(policy)}${variantTaskPart(variant)}"
+        checkNativeMatrixTasks << nativeTaskName
+
+        tasks.register(nativeTaskName, Exec) {
+            group = "verification"
+            description = "Executa :app:assemble${variantTaskPart(variant)} com APP_ABI_POLICY=${policy}."
+            workingDir rootProject.projectDir
+            commandLine rootProject.file('gradlew').absolutePath,
+                        ':app:assemble' + variantTaskPart(variant),
+                        "-PAPP_ABI_POLICY=${policy}"
+        }
+    }
+}
+
+checkNativeMatrixTasks = checkNativeMatrixTasks.sort()
+
+tasks.register('checkNativeAllMatrix') {
+    group = "verification"
+    description = "Valida a matriz completa de APP_ABI_POLICY (arm64-only, with-32bit) e variants (debug, release, perfRelease)."
+    dependsOn(checkNativeMatrixTasks)
+}
 tasks.register("printNativeVariantConfig") {
     group = "verification"
     description = "Imprime ABIs efetivas e argumentos CMake configurados por variant."
