@@ -17,6 +17,7 @@ import android.os.ParcelFileDescriptor;
 
 import org.junit.Test;
 
+import java.io.File;
 import java.lang.reflect.Method;
 import java.util.UUID;
 

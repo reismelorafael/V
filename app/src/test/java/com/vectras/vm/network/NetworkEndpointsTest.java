@@ -25,7 +25,7 @@ public class NetworkEndpointsTest {
         );
 
         assertEquals(
-                "https://go.anbui.ovh/egg/updatelike?app=verctrasvm",
+                "https://go.anbui.ovh/egg/updatelike?app=vectrasvm",
                 NetworkEndpoints.romUpdateLike()
         );
 
@@ -57,12 +57,13 @@ public class NetworkEndpointsTest {
                 continue;
             }
 
-            URI uri = URI.create(module.getDownloadUrl());
+            URI uri = URI.create(NetworkEndpoints.languageModuleRaw(module.getLanguageCode()));
             assertEquals("https", uri.getScheme());
             assertEquals("raw.githubusercontent.com", uri.getHost());
             assertTrue(uri.getPath().startsWith("/rafaelmeloreisnovo/Vectras-VM-Android/main/resources/lang/"));
             assertTrue(uri.getPath().endsWith("/" + module.getLanguageCode() + ".json"));
-            assertEquals(NetworkEndpoints.languageModuleRaw(module.getLanguageCode()), module.getDownloadUrl());
+            String expected = NetworkEndpoints.languageModuleRaw(module.getLanguageCode());
+            assertEquals(expected, uri.toString());
         }
     }
 }

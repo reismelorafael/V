@@ -31,7 +31,7 @@ public class QmpClientContractTest {
     }
 
     @Test
-    public void saveSnapshot_buildsValidJsonWithEscapedName() {
+    public void saveSnapshot_buildsValidJsonWithEscapedName() throws Exception {
         String snapshotName = "snap\"name";
         String payload = QmpClient.save_snapshot(snapshotName);
 
