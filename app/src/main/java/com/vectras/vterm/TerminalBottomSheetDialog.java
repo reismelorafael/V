@@ -16,8 +16,10 @@ import androidx.appcompat.app.AlertDialog;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
+import com.vectras.vm.core.ProcessLaunch;
 import com.vectras.vm.core.ProcessOutputDrainer;
 import com.vectras.vm.core.ProcessRuntimeOps;
+import com.vectras.vm.core.ProcessRuntimeOps.ExecutionCategory;
 import com.vectras.vm.core.ProotCommandBuilder;
 import com.vectras.vterm.view.ZoomableTextView;
 
@@ -35,37 +37,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
-import java.util.Enumeration;
-import java.util.Objects;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
-import java.util.Enumeration;
-import java.util.Objects;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
 public class TerminalBottomSheetDialog {
-    private static final long PROCESS_TIMEOUT_MS = 5_000L;
-    private static final long INTERACTIVE_PROCESS_TIMEOUT_MS = 1_500L;
     private final ZoomableTextView terminalOutput;
     private final EditText commandInput;
     private final View view;
@@ -205,12 +177,20 @@ public class TerminalBottomSheetDialog {
                     prootCommandBuilder.applyEnvironment(processBuilder.environment());
                     processBuilder.command(prootCommandBuilder.buildCommand());
                     Process process = null;
+                    ProcessLaunch.LaunchLease launchLease = null;
                     ProcessOutputDrainer drainer = new ProcessOutputDrainer();
                     BufferedWriter writer = null;
                     ExecutorService drainExecutor = Executors.newSingleThreadExecutor();
                     Future<?> drainFuture = null;
                     try {
-                        process = processBuilder.start();
+                        launchLease = ProcessLaunch.withBudget(
+                                processBuilder,
+                                "vterm-bottom-sheet",
+                                "vterm.bottom_sheet",
+                                "interactive_shell",
+                                "TerminalBottomSheetDialog#executeShellCommand"
+                        );
+                        process = launchLease.process();
                         writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
 
                         // Send user command to PRoot
@@ -230,14 +210,12 @@ public class TerminalBottomSheetDialog {
                             }
                         });
 
-                        long timeoutMs = ProcessRuntimeOps.isLikelyInteractiveCommand(userCommand)
-                                ? INTERACTIVE_PROCESS_TIMEOUT_MS
-                                : PROCESS_TIMEOUT_MS;
-                        if (!runningProcess.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
-                            runningProcess.destroy();
-                            if (!runningProcess.waitFor(300, TimeUnit.MILLISECONDS)) {
-                                runningProcess.destroyForcibly();
-                            }
+                        ExecutionCategory executionCategory = ProcessRuntimeOps.isLikelyInteractiveCommand(userCommand)
+                                ? ExecutionCategory.INTERACTIVE
+                                : ExecutionCategory.NON_INTERACTIVE;
+                        ProcessRuntimeOps.TimeoutExecutionResult waitResult = launchLease.waitFor(executionCategory);
+                        if (waitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.TIMEOUT) {
+                            long timeoutMs = executionCategory.timeUnit().toMillis(executionCategory.timeout());
                             activity.runOnUiThread(() -> appendTextAndScroll(
                                     "[stderr] timeout after " + timeoutMs + "ms\n"));
                         }
@@ -261,8 +239,8 @@ public class TerminalBottomSheetDialog {
                         }
                         drainExecutor.shutdownNow();
                         drainer.shutdown();
-                        if (process != null) {
-                            process.destroy();
+                        if (launchLease != null) {
+                            launchLease.release("execute_shell_command_finally");
                         }
                         activity.runOnUiThread(() -> {
                             inputContainer.setVisibility(View.VISIBLE);

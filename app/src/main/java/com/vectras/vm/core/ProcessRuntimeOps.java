@@ -4,6 +4,7 @@ import android.os.SystemClock;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -69,12 +70,65 @@ public final class ProcessRuntimeOps {
         }
     }
 
+    public static final class TrackedProcess {
+        private final ProcessBudgetRegistry.SlotToken slot;
+        public final Process process;
+        public final String feature;
+        public final String tag;
+        public final String caller;
+
+        private TrackedProcess(ProcessBudgetRegistry.SlotToken slot,
+                               Process process,
+                               String feature,
+                               String tag,
+                               String caller) {
+            this.slot = slot;
+            this.process = process;
+            this.feature = feature;
+            this.tag = tag;
+            this.caller = caller;
+        }
+    }
+
     private ProcessRuntimeOps() {
         throw new AssertionError("ProcessRuntimeOps is utility-only");
     }
 
     public static long monoMs() {
         return SystemClock.elapsedRealtime();
+    }
+
+    public static TrackedProcess launchTrackedProcess(List<String> command,
+                                                      String feature,
+                                                      String tag,
+                                                      String caller) throws java.io.IOException {
+        if (command == null || command.isEmpty()) {
+            throw new IllegalArgumentException("command_missing");
+        }
+        ProcessBudgetRegistry.SlotToken slot = ProcessBudgetRegistry.tryAcquireSlot(
+                feature,
+                tag,
+                caller,
+                "system"
+        );
+        if (slot == null) {
+            throw new java.io.IOException("process_budget_exhausted");
+        }
+        try {
+            Process process = new ProcessBuilder(command).start();
+            ProcessBudgetRegistry.bindProcess(slot, process);
+            return new TrackedProcess(slot, process, feature, tag, caller);
+        } catch (java.io.IOException | RuntimeException e) {
+            ProcessBudgetRegistry.releaseSlot(slot, "launch_failed");
+            throw e;
+        }
+    }
+
+    public static void releaseTrackedProcess(TrackedProcess trackedProcess, String reason) {
+        if (trackedProcess == null) {
+            return;
+        }
+        ProcessBudgetRegistry.releaseSlot(trackedProcess.slot, reason);
     }
 
     public static long wallMs() {

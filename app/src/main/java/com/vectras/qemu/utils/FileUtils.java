@@ -31,6 +31,7 @@ import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Hashtable;
 
@@ -47,6 +48,7 @@ import android.webkit.MimeTypeMap;
 
 import com.vectras.vm.R;
 import com.vectras.qemu.Config;
+import com.vectras.vm.core.ProcessRuntimeOps;
 import com.vectras.vm.utils.UIUtils;
 
 /**
@@ -275,7 +277,11 @@ public class FileUtils {
         Thread t = new Thread(new Runnable() {
             public void run() {
 
+                final String feature = "qemu.logcat";
+                final String caller = "FileUtils#startLogging";
                 FileOutputStream os = null;
+                ProcessRuntimeOps.TrackedProcess clearProcess = null;
+                ProcessRuntimeOps.TrackedProcess captureProcess = null;
                 File logFile = null;
                 try {
                     logFile = new File(Config.getLogFilePath());
@@ -283,10 +289,28 @@ public class FileUtils {
                         logFile.delete();
                     }
                     logFile.createNewFile();
-                    Runtime.getRuntime().exec("logcat -c");
-                    Process process = Runtime.getRuntime().exec("logcat v main");
+
+                    clearProcess = ProcessRuntimeOps.launchTrackedProcess(
+                            Arrays.asList("logcat", "-c"),
+                            feature,
+                            "logcat_clear",
+                            caller
+                    );
+                    ProcessRuntimeOps.waitForWithCategory(
+                            clearProcess.process,
+                            ProcessRuntimeOps.ExecutionCategory.QUICK_QUERY
+                    );
+                    ProcessRuntimeOps.releaseTrackedProcess(clearProcess, "clear_complete");
+                    clearProcess = null;
+
+                    captureProcess = ProcessRuntimeOps.launchTrackedProcess(
+                            Arrays.asList("logcat", "v", "main"),
+                            feature,
+                            "logcat_capture",
+                            caller
+                    );
                     os = new FileOutputStream(logFile);
-                    BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                    BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(captureProcess.process.getInputStream()));
 
                     StringBuilder log = new StringBuilder("");
                     String line = "";
@@ -297,7 +321,7 @@ public class FileUtils {
                         os.flush();
                     }
                 } catch (IOException e) {
-                    Log.e(TAG, "Failed to start log capture", e);
+                    Log.e(TAG, "Failed to start log capture feature=qemu.logcat tag=logcat_capture caller=FileUtils#startLogging", e);
                 } finally {
                     try {
                         if (os != null) {
@@ -308,6 +332,13 @@ public class FileUtils {
                         Log.e(TAG, "Failed to close log file", e);
                     }
 
+                    if (captureProcess != null) {
+                        ProcessRuntimeOps.stopProcessWithTimeout(captureProcess.process, 150, 150);
+                        ProcessRuntimeOps.releaseTrackedProcess(captureProcess, "capture_thread_finished");
+                    }
+                    if (clearProcess != null) {
+                        ProcessRuntimeOps.releaseTrackedProcess(clearProcess, "clear_finalize");
+                    }
                 }
 
             }

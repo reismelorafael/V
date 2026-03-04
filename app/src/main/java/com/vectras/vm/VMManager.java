@@ -114,14 +114,6 @@ public class VMManager {
         STOPPING
     }
 
-    /**
-     * Android app sandboxes can hit failures near the 32-child-process ceiling.
-     * Keep VM-owned subprocesses conservatively capped while adapting to device class.
-     */
-    private static final int MIN_SUPERVISED_VM_PROCESSES = 4;
-    private static final int BASE_SUPERVISED_VM_PROCESSES = 9;
-    private static final int MAX_SUPERVISED_VM_PROCESSES = 12;
-
     private static String normalizeVmLifecycleId(String vmId) {
         if (vmId == null) return "unknown";
         String normalized = vmId.trim();
@@ -163,7 +155,7 @@ public class VMManager {
         ProcessSupervisor supervisor = SUPERVISORS.get(key);
         if (supervisor == null) {
             VM_STATES.put(key, VmRuntimeState.STOPPED);
-            releaseSlotForKey(key, "unregister_no_supervisor");
+            ProcessBudgetRegistry.releaseByProcess(process, key, ProcessRuntimeOps.safePid(process));
             return;
         }
 
@@ -173,7 +165,7 @@ public class VMManager {
 
         SUPERVISORS.remove(key, supervisor);
         VM_STATES.put(key, VmRuntimeState.STOPPED);
-        releaseSlotForKey(key, "unregister");
+        ProcessBudgetRegistry.releaseByProcess(process, key, ProcessRuntimeOps.safePid(process));
     }
 
     public static synchronized void unregisterVmProcess(String vmId) {
@@ -189,6 +181,21 @@ public class VMManager {
      */
     public static synchronized void registerVmProcess(Context context, String vmId, Process process) {
         if (process == null) return;
+        long processPid = ProcessRuntimeOps.safePid(process);
+        int maxBudget = getMaxSupervisedVmProcesses();
+        ProcessBudgetRegistry.BudgetToken budgetToken = ProcessBudgetRegistry.acquire(
+                "vm_process",
+                "register",
+                resolveBudgetCaller(),
+                vmId,
+                processPid,
+                maxBudget
+        );
+        if (budgetToken == null) {
+            safeTerminateDetachedProcess(process);
+            Log.w(TAG, "registerVmProcess rejected: budget acquire denied (" + maxBudget + ") vmId=" + vmId);
+            return;
+        }
         String key = normalizeVmLifecycleId(vmId);
 
         if ("unknown".equals(key)) {
@@ -208,6 +215,7 @@ public class VMManager {
         if (current != null && current.isBoundTo(process) && current.isProcessAlive()) {
             VM_STATES.put(key, VmRuntimeState.RUNNING);
             VmFlowTracker.mark(context, key, VmFlowState.RUNNING, "process_already_bound", "run");
+            ProcessBudgetRegistry.release(budgetToken, key, processPid);
             return;
         }
 
@@ -215,6 +223,7 @@ public class VMManager {
             if (current != null && current.isProcessAlive()) {
                 safeTerminateDetachedProcess(process);
                 Log.w(TAG, "registerVmProcess rejected: vm lifecycle busy for key=" + key + " state=" + state);
+                ProcessBudgetRegistry.release(budgetToken, key, processPid);
                 return;
             }
             VM_STATES.put(key, VmRuntimeState.STOPPED);
@@ -227,6 +236,7 @@ public class VMManager {
             if (previous.isBoundTo(process) && previous.isProcessAlive()) {
                 SUPERVISORS.put(key, previous);
                 VM_STATES.put(key, VmRuntimeState.RUNNING);
+                ProcessBudgetRegistry.release(budgetToken, key, processPid);
                 return;
             }
             previous.stopGracefully(false);
@@ -236,6 +246,7 @@ public class VMManager {
             VM_STATES.put(key, VmRuntimeState.STOPPED);
             safeTerminateDetachedProcess(process);
             Log.w(TAG, "registerVmProcess rejected: active supervisor cap reached (" + getMaxSupervisedVmProcesses() + ")");
+            ProcessBudgetRegistry.release(budgetToken, key, processPid);
             return;
         }
 
@@ -259,12 +270,14 @@ public class VMManager {
             SUPERVISORS.put(key, supervisor);
             SUPERVISOR_SLOTS.put(key, slot);
             VM_STATES.put(key, VmRuntimeState.RUNNING);
+            ProcessBudgetRegistry.bind(budgetToken, process, key, processPid);
             VmFlowTracker.mark(context, key, VmFlowState.RUNNING, "process_bound", "run");
             spawnProcessExitWatcher(key, supervisor, process);
         } catch (RuntimeException registerError) {
             VM_STATES.put(key, VmRuntimeState.STOPPED);
             ProcessBudgetRegistry.get().releaseSlot(slot, "register_exception");
             safeTerminateDetachedProcess(process);
+            ProcessBudgetRegistry.release(budgetToken, key, processPid);
             String errorMessage = "registerVmProcess recoverable failure: key=" + key
                 + " vmId=" + vmId
                 + " message=" + registerError.getMessage();
@@ -295,7 +308,24 @@ public class VMManager {
         }
         SUPERVISORS.remove(key, supervisor);
         VM_STATES.put(key, VmRuntimeState.STOPPED);
-        releaseSlotForKey(key, "process_exit");
+        ProcessBudgetRegistry.releaseByProcess(process, key, ProcessRuntimeOps.safePid(process));
+    }
+
+    private static String resolveBudgetCaller() {
+        StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+        if (stack == null || stack.length == 0) {
+            return "unknown_caller";
+        }
+        for (StackTraceElement frame : stack) {
+            if (frame == null) continue;
+            String className = frame.getClassName();
+            if (className == null) continue;
+            if (className.startsWith("java.lang.Thread")) continue;
+            if (className.equals(VMManager.class.getName())) continue;
+            if (className.equals(ProcessBudgetRegistry.class.getName())) continue;
+            return className + "#" + frame.getMethodName();
+        }
+        return "unknown_caller";
     }
 
     private static void pruneInactiveSupervisors() {
@@ -352,12 +382,7 @@ public class VMManager {
     }
 
     public static synchronized int getMaxSupervisedVmProcesses() {
-        int cpuCount = Runtime.getRuntime().availableProcessors();
-        int adaptive = BASE_SUPERVISED_VM_PROCESSES + (cpuCount >= 8 ? 2 : 0) + (cpuCount >= 12 ? 1 : 0);
-        if (adaptive < MIN_SUPERVISED_VM_PROCESSES) {
-            return MIN_SUPERVISED_VM_PROCESSES;
-        }
-        return Math.min(adaptive, MAX_SUPERVISED_VM_PROCESSES);
+        return ProcessBudgetRegistry.getMaxSupervisedVmProcesses();
     }
 
     public static synchronized boolean canRegisterAnotherVmProcess() {
@@ -1449,12 +1474,29 @@ public class VMManager {
         if (pid <= 0) {
             return false;
         }
+        final String feature = "vm.probe";
+        final String tag = "pid_alive_probe";
+        final String caller = "VMManager#isPidAlive";
+        ProcessRuntimeOps.TrackedProcess probe = null;
         try {
-            Process probe = new ProcessBuilder("kill", "-0", Long.toString(pid)).start();
-            boolean finished = probe.waitFor(700, TimeUnit.MILLISECONDS);
-            return !finished || probe.exitValue() == 0;
-        } catch (Exception ignored) {
+            probe = ProcessRuntimeOps.launchTrackedProcess(
+                    java.util.Arrays.asList("kill", "-0", Long.toString(pid)),
+                    feature,
+                    tag,
+                    caller
+            );
+            boolean finished = probe.process.waitFor(700, TimeUnit.MILLISECONDS);
+            boolean alive = !finished || probe.process.exitValue() == 0;
+            ProcessRuntimeOps.releaseTrackedProcess(probe, "pid_probe_success");
+            probe = null;
+            return alive;
+        } catch (Exception e) {
+            Log.w(TAG, "pid probe failed feature=" + feature + " tag=" + tag + " caller=" + caller + " pid=" + pid, e);
             return false;
+        } finally {
+            if (probe != null) {
+                ProcessRuntimeOps.releaseTrackedProcess(probe, "pid_probe_error");
+            }
         }
     }
 
@@ -1465,16 +1507,34 @@ public class VMManager {
         if (signal <= 0 || signal > 64) {
             return false;
         }
+        final String feature = "vm.probe";
+        final String tag = "pid_signal";
+        final String caller = "VMManager#signalPidAndAwait";
+        ProcessRuntimeOps.TrackedProcess signalProcess = null;
         try {
-            new ProcessBuilder("kill", "-" + signal, Long.toString(pid))
-                    .start()
-                    .waitFor(700, TimeUnit.MILLISECONDS);
-        } catch (Exception ignored) {
+            signalProcess = ProcessRuntimeOps.launchTrackedProcess(
+                    java.util.Arrays.asList("kill", "-" + signal, Long.toString(pid)),
+                    feature,
+                    tag,
+                    caller
+            );
+            signalProcess.process.waitFor(700, TimeUnit.MILLISECONDS);
+            ProcessRuntimeOps.releaseTrackedProcess(signalProcess, "pid_signal_sent");
+            signalProcess = null;
+        } catch (Exception e) {
+            Log.w(TAG, "pid signal failed feature=" + feature + " tag=" + tag + " caller=" + caller
+                    + " pid=" + pid + " signal=" + signal, e);
             return false;
+        } finally {
+            if (signalProcess != null) {
+                ProcessRuntimeOps.releaseTrackedProcess(signalProcess, "pid_signal_error");
+            }
         }
         long deadline = ProcessRuntimeOps.monoMs() + Math.max(0, timeoutMs);
         while (ProcessRuntimeOps.monoMs() < deadline) {
             if (!isPidAlive(pid)) {
+                Log.d(TAG, "pid signal completed feature=" + feature + " tag=" + tag + " caller=" + caller
+                        + " pid=" + pid + " signal=" + signal);
                 return true;
             }
             try {
@@ -1484,7 +1544,10 @@ public class VMManager {
                 break;
             }
         }
-        return !isPidAlive(pid);
+        boolean terminated = !isPidAlive(pid);
+        Log.d(TAG, "pid signal await done feature=" + feature + " tag=" + tag + " caller=" + caller
+                + " pid=" + pid + " signal=" + signal + " terminated=" + terminated);
+        return terminated;
     }
 
     private static synchronized void resetLifecycleStateAfterKillAll() {

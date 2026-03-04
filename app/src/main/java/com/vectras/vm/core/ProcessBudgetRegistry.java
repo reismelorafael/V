@@ -1,84 +1,107 @@
 package com.vectras.vm.core;
 
-import com.vectras.vm.VMManager;
+import android.os.Build;
+import android.util.Log;
 
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
+import com.vectras.vm.BuildConfig;
 
 /**
- * Lightweight process-start budget registry used to reserve start slots before spawning subprocesses.
+ * Runtime process-budget resolver for VM supervision caps.
+ * Priority: System property override > BuildConfig > hardcoded safety default.
  */
 public final class ProcessBudgetRegistry {
-    private static final Object LOCK = new Object();
-    private static final ConcurrentHashMap<String, SlotToken> TOKENS = new ConcurrentHashMap<>();
+
+    private static final String TAG = "ProcessBudgetRegistry";
+    private static final String PROP_PROCESS_BUDGET = "vectras.process_budget_max";
+    private static final String PROP_DEBUG_PROCESS_BUDGET = "debug.vectras.process_budget_max";
+
+    private static final int HARDCODED_DEFAULT_LEGACY = 9;
+    private static final int HARDCODED_DEFAULT_ANDROID15 = 6;
+    private static final int HARD_MIN = 1;
+    private static final int HARD_MAX = 32;
+
+    private static final int RESOLVED_MAX;
+    private static final String RESOLVED_SOURCE;
+
+    static {
+        Resolution resolution = resolveInternal();
+        RESOLVED_MAX = resolution.max;
+        RESOLVED_SOURCE = resolution.source;
+        Log.i(TAG, "init sdk=" + Build.VERSION.SDK_INT
+                + " resolvedMax=" + RESOLVED_MAX
+                + " source=" + RESOLVED_SOURCE);
+    }
 
     private ProcessBudgetRegistry() {
+        throw new AssertionError("ProcessBudgetRegistry is a utility class and cannot be instantiated");
     }
 
-    public static SlotToken tryAcquireSlot(String feature, String subFeature, String origin, String vmId) {
-        synchronized (LOCK) {
-            int active = VMManager.getActiveSupervisedVmProcessCount();
-            int max = VMManager.getMaxSupervisedVmProcesses();
-            int unboundReservations = 0;
-            for (SlotToken token : TOKENS.values()) {
-                if (!token.isReleased() && !token.isBound()) {
-                    unboundReservations++;
-                }
-            }
-            if (active + unboundReservations >= max) {
-                return null;
-            }
-            SlotToken token = new SlotToken(feature, subFeature, origin, vmId);
-            TOKENS.put(token.id, token);
-            return token;
+    public static int getMaxSupervisedVmProcesses() {
+        return RESOLVED_MAX;
+    }
+
+    public static String getResolvedSource() {
+        return RESOLVED_SOURCE;
+    }
+
+    private static Resolution resolveInternal() {
+        Integer fromProperty = parsePropertyOverride();
+        if (fromProperty != null) {
+            return new Resolution(clamp(fromProperty), "property");
+        }
+
+        int fromBuild = Build.VERSION.SDK_INT >= 35
+                ? BuildConfig.PROCESS_BUDGET_MAX_ANDROID15
+                : BuildConfig.PROCESS_BUDGET_MAX_DEFAULT;
+        if (fromBuild > 0) {
+            return new Resolution(clamp(fromBuild), "build");
+        }
+
+        int fromDefault = Build.VERSION.SDK_INT >= 35
+                ? HARDCODED_DEFAULT_ANDROID15
+                : HARDCODED_DEFAULT_LEGACY;
+        return new Resolution(clamp(fromDefault), "default");
+    }
+
+    private static Integer parsePropertyOverride() {
+        Integer debugValue = parseIntProperty(PROP_DEBUG_PROCESS_BUDGET);
+        if (debugValue != null) {
+            return debugValue;
+        }
+        return parseIntProperty(PROP_PROCESS_BUDGET);
+    }
+
+    private static Integer parseIntProperty(String key) {
+        String raw = System.getProperty(key);
+        if (raw == null || raw.trim().isEmpty()) {
+            return null;
+        }
+
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException ignored) {
+            Log.w(TAG, "Ignoring invalid property " + key + "=" + raw);
+            return null;
         }
     }
 
-    public static void bindProcess(SlotToken token, Process process) {
-        if (token == null || process == null || token.isReleased()) {
-            return;
+    private static int clamp(int value) {
+        if (value < HARD_MIN) {
+            return HARD_MIN;
         }
-        token.boundProcess = process;
-        token.bound.set(true);
+        if (value > HARD_MAX) {
+            return HARD_MAX;
+        }
+        return value;
     }
 
-    public static void releaseSlot(SlotToken token, String reason) {
-        if (token == null) {
-            return;
-        }
-        if (token.released.compareAndSet(false, true)) {
-            token.releaseReason = reason;
-            TOKENS.remove(token.id);
-        }
-    }
+    private static final class Resolution {
+        final int max;
+        final String source;
 
-    public static final class SlotToken {
-        private final String id;
-        public final String feature;
-        public final String subFeature;
-        public final String origin;
-        public final String vmId;
-        private final AtomicBoolean bound = new AtomicBoolean(false);
-        private final AtomicBoolean released = new AtomicBoolean(false);
-        private volatile Process boundProcess;
-        private volatile String releaseReason;
-
-        private SlotToken(String feature, String subFeature, String origin, String vmId) {
-            this.id = UUID.randomUUID().toString();
-            this.feature = feature;
-            this.subFeature = subFeature;
-            this.origin = origin;
-            this.vmId = vmId;
-        }
-
-        private boolean isBound() {
-            return bound.get();
-        }
-
-        private boolean isReleased() {
-            return released.get();
+        Resolution(int max, String source) {
+            this.max = max;
+            this.source = source;
         }
     }
 }
-

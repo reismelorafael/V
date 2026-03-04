@@ -46,6 +46,8 @@ android {
         resValue "string", "app_version", versionName
         resValue "integer", "app_version_code", versionCode.toString()
         buildConfigField "int", "VECTRA_CORE_SEED", "0"
+        buildConfigField "int", "PROCESS_BUDGET_MAX_DEFAULT", "9"
+        buildConfigField "int", "PROCESS_BUDGET_MAX_ANDROID15", "6"
     }
 
     packaging {
