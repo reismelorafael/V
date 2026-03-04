@@ -34,6 +34,7 @@ import com.vectras.qemu.MainSettingsManager;
 import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
 import com.vectras.vm.VMManager;
+import com.vectras.vm.core.ProcessLaunch;
 import com.vectras.vm.core.ProcessRuntimeOps;
 import com.vectras.vm.core.ProotCommandBuilder;
 import com.vectras.vm.network.RequestNetwork;
@@ -58,13 +59,9 @@ import com.vectras.vm.utils.CommandUtils;
 import com.vectras.vterm.Terminal;
 import com.vectras.vterm.TerminalBottomSheetDialog;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -860,33 +857,28 @@ public class SetupWizard2Activity extends AppCompatActivity {
                         .setTmpDir(tmpDirPath);
                 ProcessBuilder processBuilder = new ProcessBuilder(prootCommandBuilder.buildCommand());
                 prootCommandBuilder.applyEnvironment(processBuilder.environment());
-                processBuilder.redirectErrorStream(true);
-                Process process = processBuilder.start();
-
-                try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
-                     BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                    writer.write(userCommand);
-                    writer.newLine();
-                    writer.flush();
-
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        final String outputLine = line;
-                        runOnUiThread(() -> appendTextAndScroll(outputLine + "\n"));
-                    }
-                }
-
-                ProcessRuntimeOps.TimeoutExecutionResult result = ProcessRuntimeOps.waitForByCategory(
-                        process,
-                        ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION
+                ProcessLaunch.LaunchResult result = ProcessLaunch.withBudget(
+                        this,
+                        "setupwizard.bootstrap",
+                        "proot-shell",
+                        "SetupWizard2Activity.executeShellCommand",
+                        null,
+                        ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION,
+                        processBuilder,
+                        line -> runOnUiThread(() -> appendTextAndScroll(line + "\n")),
+                        line -> runOnUiThread(() -> appendTextAndScroll(line + "\n")),
+                        writer -> {
+                            writer.write(userCommand);
+                            writer.newLine();
+                        }
                 );
 
-                if (result.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.TIMEOUT) {
+                if (result.status == ProcessLaunch.LaunchStatus.TIMEOUT) {
                     isExecutingCommand = false;
                     final String timeoutMessage = "Command timed out ["
                             + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
                             + "]: "
-                            + result.message;
+                            + result.diagnosis;
                     Log.e(TAG, withSetupSourceDiagnostic(timeoutMessage));
                     executeBestEffortRollback(setupTimestamp, "timeout during setup");
                     runOnUiThread(() -> {
@@ -896,12 +888,14 @@ public class SetupWizard2Activity extends AppCompatActivity {
                     return;
                 }
 
-                if (result.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.ERROR) {
+                if (result.status == ProcessLaunch.LaunchStatus.ERROR
+                        || result.status == ProcessLaunch.LaunchStatus.CANCELLED
+                        || result.status == ProcessLaunch.LaunchStatus.START_ERROR) {
                     isExecutingCommand = false;
                     final String operationErrorMessage = "Command execution error ["
                             + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
                             + "]: "
-                            + result.message;
+                            + result.diagnosis;
                     Log.e(TAG, withSetupSourceDiagnostic(operationErrorMessage));
                     executeBestEffortRollback(setupTimestamp, "execution error during setup");
                     runOnUiThread(() -> {
@@ -964,7 +958,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
                     clearSetupSnapshot();
                     finalizeSetupSuccess();
                 });
-            } catch (IOException e) {
+            } catch (Exception e) {
                 isExecutingCommand = false;
                 Log.e(TAG, withSetupSourceDiagnostic("executeShellCommand IO error: " + e.getMessage()), e);
                 handleSetupFailureWithRollback(
@@ -1005,7 +999,6 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 "grep -q '\"timestamp\":\"" + setupTimestamp + "\"' \"$STATE_FILE\" || exit 64;";
 
         try {
-            ProcessBuilder processBuilder = new ProcessBuilder();
             String filesDir = getFilesDir().getAbsolutePath();
             String tmpDirPath = getFilesDir().getAbsolutePath() + "/usr/tmp";
             SetupFeatureCore.ProotBootstrapValidationResult prootValidation = SetupFeatureCore.validateProotBootstrapState(this);
@@ -1015,38 +1008,31 @@ public class SetupWizard2Activity extends AppCompatActivity {
             ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(this, filesDir + "/distro", "/root")
                     .setPath("/bin:/usr/bin:/sbin:/usr/sbin")
                     .setTmpDir(tmpDirPath);
-            prootCommandBuilder.applyEnvironment(processBuilder.environment());
-            processBuilder.command(prootCommandBuilder.buildCommand());
-            processBuilder.redirectErrorStream(true);
-
-            Process process = processBuilder.start();
             StringBuilder output = new StringBuilder();
-            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                writer.write(validationCommand);
-                writer.newLine();
-                writer.flush();
-
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (output.length() > 0) {
-                        output.append(" | ");
+            ProcessBuilder processBuilder = new ProcessBuilder(prootCommandBuilder.buildCommand());
+            prootCommandBuilder.applyEnvironment(processBuilder.environment());
+            ProcessLaunch.LaunchResult validationWaitResult = ProcessLaunch.withBudget(
+                    this,
+                    "setupwizard.bootstrap",
+                    "preflight",
+                    "SetupWizard2Activity.validatePostInstallSynchronously",
+                    null,
+                    ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION,
+                    processBuilder,
+                    line -> appendValidationOutput(output, line),
+                    line -> appendValidationOutput(output, line),
+                    writer -> {
+                        writer.write(validationCommand);
+                        writer.newLine();
                     }
-                    output.append(line);
-                }
-            }
-
-            ProcessRuntimeOps.TimeoutExecutionResult validationWaitResult = ProcessRuntimeOps.waitForByCategory(
-                    process,
-                    ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION
             );
 
-            if (validationWaitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.TIMEOUT) {
-                return "validation timeout: " + validationWaitResult.message;
+            if (validationWaitResult.status == ProcessLaunch.LaunchStatus.TIMEOUT) {
+                return "validation timeout: " + validationWaitResult.diagnosis;
             }
 
-            if (validationWaitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.ERROR) {
-                return "validation execution error: " + validationWaitResult.message;
+            if (validationWaitResult.status != ProcessLaunch.LaunchStatus.SUCCESS) {
+                return "validation execution error: " + validationWaitResult.diagnosis;
             }
 
             if (validationWaitResult.exitCode != 0) {
@@ -1075,7 +1061,6 @@ public class SetupWizard2Activity extends AppCompatActivity {
                         "if [ -f \"$BACKUP_BASE/current/etc-profile\" ]; then cp -a \"$BACKUP_BASE/current/etc-profile\" /etc/profile; fi; " +
                         "rm -rf \"$STAGE_DIR\"; " +
                         "echo ROLLBACK > /root/.vectras-setup/setup_state.json";
-                ProcessBuilder processBuilder = new ProcessBuilder();
                 String filesDir = getFilesDir().getAbsolutePath();
                 String tmpDirPath = getFilesDir().getAbsolutePath() + "/usr/tmp";
                 SetupFeatureCore.ProotBootstrapValidationResult prootValidation = SetupFeatureCore.validateProotBootstrapState(this);
@@ -1086,20 +1071,41 @@ public class SetupWizard2Activity extends AppCompatActivity {
                 ProotCommandBuilder prootCommandBuilder = new ProotCommandBuilder(this, filesDir + "/distro", "/root")
                         .setPath("/bin:/usr/bin:/sbin:/usr/sbin")
                         .setTmpDir(tmpDirPath);
+                ProcessBuilder processBuilder = new ProcessBuilder(prootCommandBuilder.buildCommand());
                 prootCommandBuilder.applyEnvironment(processBuilder.environment());
-                processBuilder.command(prootCommandBuilder.buildCommand());
-                processBuilder.redirectErrorStream(true);
-                Process process = processBuilder.start();
-                try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()))) {
-                    writer.write(rollbackCommand);
-                    writer.newLine();
-                    writer.flush();
+                ProcessLaunch.LaunchResult rollbackResult = ProcessLaunch.withBudget(
+                        this,
+                        "setupwizard.rollback",
+                        "proot-shell",
+                        "SetupWizard2Activity.executeBestEffortRollback",
+                        null,
+                        ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION,
+                        processBuilder,
+                        null,
+                        null,
+                        writer -> {
+                            writer.write(rollbackCommand);
+                            writer.newLine();
+                        }
+                );
+                if (rollbackResult.status != ProcessLaunch.LaunchStatus.SUCCESS || rollbackResult.exitCode != 0) {
+                    Log.e(TAG, "Best-effort rollback failed status=" + rollbackResult.status
+                            + " exitCode=" + rollbackResult.exitCode
+                            + " detail=" + rollbackResult.diagnosis);
                 }
-                process.waitFor();
             } catch (Exception e) {
                 Log.e(TAG, "Best-effort rollback failed: " + e.getMessage(), e);
             }
         }).start();
+    }
+
+    private static void appendValidationOutput(StringBuilder output, String line) {
+        synchronized (output) {
+            if (output.length() > 0) {
+                output.append(" | ");
+            }
+            output.append(line);
+        }
     }
 
     @SuppressLint("SetTextI18n")

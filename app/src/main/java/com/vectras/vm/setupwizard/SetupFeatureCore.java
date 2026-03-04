@@ -13,6 +13,7 @@ import com.vectras.vm.AppConfig;
 import com.vectras.vm.R;
 import com.vectras.vm.VMManager;
 import com.vectras.vm.core.ProotCommandBuilder;
+import com.vectras.vm.core.ProcessLaunch;
 import com.vectras.vm.core.ProcessRuntimeOps;
 import com.vectras.vm.utils.DeviceUtils;
 import com.vectras.vm.utils.DialogUtils;
@@ -498,54 +499,43 @@ public class SetupFeatureCore {
         String prootBin = filesDir + "/usr/bin/proot";
         detailMap.put("preferredExec", prootBin + " --version");
 
-        Process process = null;
-        try {
-            ProcessBuilder processBuilder = new ProcessBuilder(prootBin, "--version");
-            processBuilder.redirectErrorStream(true);
-            process = processBuilder.start();
-            ProcessRuntimeOps.TimeoutExecutionResult waitResult = ProcessRuntimeOps.waitForByCategory(
-                    process,
-                    ProcessRuntimeOps.ExecutionCategory.QUICK_QUERY
-            );
+        ProcessBuilder processBuilder = new ProcessBuilder(prootBin, "--version");
+        StringBuilder output = new StringBuilder();
+        ProcessLaunch.LaunchResult launchResult = ProcessLaunch.withBudget(
+                context,
+                "setupwizard.bootstrap",
+                "proot-version",
+                "SetupFeatureCore.executeProotVersion",
+                null,
+                ProcessRuntimeOps.ExecutionCategory.QUICK_QUERY,
+                processBuilder,
+                line -> appendProcessLine(output, line),
+                line -> appendProcessLine(output, line),
+                null
+        );
 
-            detailMap.put("preferredWaitStatus", waitResult.status.name());
-            detailMap.put("preferredWaitMessage", waitResult.message);
-            detailMap.put("preferredTimedOut", Boolean.toString(waitResult.timedOut));
-            detailMap.put("preferredExitCode", Integer.toString(waitResult.exitCode));
-            detailMap.put("preferredOutput", readProcessOutput(process));
+        detailMap.put("preferredWaitStatus", launchResult.status.name());
+        detailMap.put("preferredWaitMessage", launchResult.diagnosis);
+        detailMap.put("preferredTimedOut", Boolean.toString(launchResult.timedOut));
+        detailMap.put("preferredExitCode", Integer.toString(launchResult.exitCode));
+        detailMap.put("preferredRegistryId", launchResult.registryId);
+        detailMap.put("preferredOutput", compactProcessOutput(output));
 
-            boolean ok = waitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.SUCCESS && waitResult.exitCode == 0;
-            String summary = ok
-                    ? "Proot self-check succeeded via preferred version probe."
-                    : "Preferred proot version probe failed, falling back to dry-run.";
+        boolean ok = launchResult.status == ProcessLaunch.LaunchStatus.SUCCESS && launchResult.exitCode == 0;
+        String summary = ok
+                ? "Proot self-check succeeded via preferred version probe."
+                : "Preferred proot version probe failed, falling back to dry-run.";
 
-            ProotSelfCheckResult result = buildProotSelfCheckResult(
-                    ok,
-                    true,
-                    true,
-                    true,
-                    waitResult.exitCode,
-                    summary,
-                    detailMap
-            );
-            return new ProotExecAttempt(result, detailMap);
-        } catch (IOException ioException) {
-            detailMap.put("preferredExecError", ioException.toString());
-            ProotSelfCheckResult result = buildProotSelfCheckResult(
-                    false,
-                    true,
-                    true,
-                    false,
-                    -1,
-                    "Preferred proot version probe failed to start, falling back to dry-run.",
-                    detailMap
-            );
-            return new ProotExecAttempt(result, detailMap);
-        } finally {
-            if (process != null && process.isAlive()) {
-                process.destroy();
-            }
-        }
+        ProotSelfCheckResult result = buildProotSelfCheckResult(
+                ok,
+                true,
+                true,
+                true,
+                launchResult.exitCode,
+                summary,
+                detailMap
+        );
+        return new ProotExecAttempt(result, detailMap);
     }
 
     private static ProotExecAttempt executeProotFallback(ProotCommandBuilder commandBuilder,
@@ -556,44 +546,55 @@ public class SetupFeatureCore {
         fallbackCommand.add("true");
         detailMap.put("fallbackExec", formatCommand(fallbackCommand.toArray(new String[0])));
 
-        Process process = null;
-        try {
-            ProcessBuilder processBuilder = new ProcessBuilder(fallbackCommand);
-            commandBuilder.applyEnvironment(processBuilder.environment());
-            processBuilder.redirectErrorStream(true);
-            process = processBuilder.start();
+        ProcessBuilder processBuilder = new ProcessBuilder(fallbackCommand);
+        commandBuilder.applyEnvironment(processBuilder.environment());
+        StringBuilder output = new StringBuilder();
+        ProcessLaunch.LaunchResult launchResult = ProcessLaunch.withBudget(
+                AppConfig.getAppContext(),
+                "setupwizard.bootstrap",
+                "proot-fallback",
+                "SetupFeatureCore.executeProotFallback",
+                null,
+                ProcessRuntimeOps.ExecutionCategory.QUICK_QUERY,
+                processBuilder,
+                line -> appendProcessLine(output, line),
+                line -> appendProcessLine(output, line),
+                null
+        );
 
-            ProcessRuntimeOps.TimeoutExecutionResult waitResult = ProcessRuntimeOps.waitForByCategory(
-                    process,
-                    ProcessRuntimeOps.ExecutionCategory.QUICK_QUERY
-            );
+        detailMap.put("fallbackWaitStatus", launchResult.status.name());
+        detailMap.put("fallbackWaitMessage", launchResult.diagnosis);
+        detailMap.put("fallbackTimedOut", Boolean.toString(launchResult.timedOut));
+        detailMap.put("fallbackExitCode", Integer.toString(launchResult.exitCode));
+        detailMap.put("fallbackRegistryId", launchResult.registryId);
+        detailMap.put("fallbackOutput", compactProcessOutput(output));
 
-            detailMap.put("fallbackWaitStatus", waitResult.status.name());
-            detailMap.put("fallbackWaitMessage", waitResult.message);
-            detailMap.put("fallbackTimedOut", Boolean.toString(waitResult.timedOut));
-            detailMap.put("fallbackExitCode", Integer.toString(waitResult.exitCode));
-            detailMap.put("fallbackOutput", readProcessOutput(process));
+        boolean ok = launchResult.status == ProcessLaunch.LaunchStatus.SUCCESS && launchResult.exitCode == 0;
+        String summary = ok
+                ? "Proot self-check succeeded via fallback dry-run."
+                : "Proot self-check failed: fallback dry-run did not complete successfully.";
 
-            boolean ok = waitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.SUCCESS && waitResult.exitCode == 0;
-            String summary = ok
-                    ? "Proot self-check succeeded via fallback dry-run."
-                    : "Proot self-check failed: fallback dry-run did not complete successfully.";
+        return new ProotExecAttempt(
+                buildProotSelfCheckResult(ok, true, true, true, launchResult.exitCode, summary, detailMap),
+                detailMap
+        );
+    }
 
-            return new ProotExecAttempt(
-                    buildProotSelfCheckResult(ok, true, true, true, waitResult.exitCode, summary, detailMap),
-                    detailMap
-            );
-        } catch (IOException ioException) {
-            detailMap.put("fallbackExecError", ioException.toString());
-            return new ProotExecAttempt(
-                    buildProotSelfCheckResult(false, true, true, false, -1,
-                            "Proot self-check failed: fallback dry-run failed to start.", detailMap),
-                    detailMap
-            );
-        } finally {
-            if (process != null && process.isAlive()) {
-                process.destroy();
+    private static void appendProcessLine(StringBuilder output, String line) {
+        if (line == null) {
+            return;
+        }
+        synchronized (output) {
+            if (output.length() > 0) {
+                output.append(" | ");
             }
+            output.append(line);
+        }
+    }
+
+    private static String compactProcessOutput(StringBuilder output) {
+        synchronized (output) {
+            return output.toString();
         }
     }
 
@@ -642,26 +643,6 @@ public class SetupFeatureCore {
         details.put("validator", "failed");
         details.put("missing", joinListForDetails(failures));
         return new ProotPrerequisiteResult(false, "missing: " + joinListForDetails(failures), details);
-    }
-
-    private static String readProcessOutput(Process process) {
-        if (process == null) {
-            return "";
-        }
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            int lineCount = 0;
-            while ((line = bufferedReader.readLine()) != null && lineCount < 4) {
-                if (lineCount > 0) {
-                    output.append(" | ");
-                }
-                output.append(line);
-                lineCount++;
-            }
-        } catch (IOException ignored) {
-        }
-        return output.toString();
     }
 
     private static String joinListForDetails(List<String> values) {
@@ -964,68 +945,46 @@ public class SetupFeatureCore {
         // Step 2: Run tar extraction
         if (isCompleted) {
             String[] cmdline = {"tar", "xf", extractedTarPath.toString(), "-C", extractTargetPath.toString()};
-            Process process = null;
             try {
                 // Security note: ProcessBuilder receives each token separately. There is no shell invocation here.
                 ProcessBuilder processBuilder = new ProcessBuilder(cmdline);
                 processBuilder.environment().remove("LD_LIBRARY_PATH");
-                process = processBuilder.start();
-                final Process runningProcess = process;
-
                 StringBuilder errorOutput = new StringBuilder();
-                Thread stdoutCollector = new Thread(() -> {
-                    try (BufferedReader outputReader =
-                                 new BufferedReader(new InputStreamReader(runningProcess.getInputStream()))) {
-                        String line;
-                        while ((line = outputReader.readLine()) != null) {
-                            synchronized (errorOutput) {
-                                errorOutput.append(line).append("\n");
-                            }
-                        }
-                    } catch (IOException e) {
-                        Log.e(TAG, "extractSystemFiles output collector: ", e);
-                    }
-                }, "setup-extract-output");
-                stdoutCollector.start();
-
-                ProcessRuntimeOps.TimeoutExecutionResult waitResult = ProcessRuntimeOps.waitForByCategory(
-                        process,
-                        ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION
+                ProcessLaunch.LaunchResult waitResult = ProcessLaunch.withBudget(
+                        context,
+                        "setupwizard.extract",
+                        "tar-extract",
+                        "SetupFeatureCore.extractSystemFiles",
+                        null,
+                        ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION,
+                        processBuilder,
+                        line -> appendExtractOutput(errorOutput, line),
+                        line -> appendExtractOutput(errorOutput, line),
+                        null
                 );
-
-                try {
-                    stdoutCollector.join();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    lastErrorLog = formatErrorCode(EXTRACTION_FAIL_PREFIX, "OUTPUT_COLLECTOR_INTERRUPTED ["
-                            + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
-                            + "] asset=" + assetPath);
-                    Log.e(TAG, lastErrorLog, e);
-                    return false;
-                }
 
                 String commandSummary = formatCommand(cmdline);
                 String stderrSummary;
                 synchronized (errorOutput) {
                     stderrSummary = errorOutput.toString().trim();
                 }
-                if (waitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.TIMEOUT) {
+                if (waitResult.status == ProcessLaunch.LaunchStatus.TIMEOUT) {
                     lastErrorLog = formatErrorCode(EXTRACTION_FAIL_PREFIX, "PROCESS_TIMEOUT ["
                             + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
                             + "] asset=" + assetPath
                             + " cmd=" + commandSummary
-                            + " detail=" + waitResult.message
+                            + " detail=" + waitResult.diagnosis
                             + (stderrSummary.isEmpty() ? "" : " stderr=" + stderrSummary));
                     Log.e(TAG, lastErrorLog);
                     return false;
                 }
 
-                if (waitResult.status == ProcessRuntimeOps.TimeoutExecutionResult.Status.ERROR) {
+                if (waitResult.status != ProcessLaunch.LaunchStatus.SUCCESS) {
                     lastErrorLog = formatErrorCode(EXTRACTION_FAIL_PREFIX, "PROCESS_EXECUTION_ERROR ["
                             + ProcessRuntimeOps.ExecutionCategory.SETUP_EXTRACTION.name()
                             + "] asset=" + assetPath
                             + " cmd=" + commandSummary
-                            + " detail=" + waitResult.message
+                            + " detail=" + waitResult.diagnosis
                             + (stderrSummary.isEmpty() ? "" : " stderr=" + stderrSummary));
                     Log.e(TAG, lastErrorLog);
                     return false;
@@ -1072,19 +1031,25 @@ public class SetupFeatureCore {
 
                 Log.i(TAG, BOOTSTRAP_LOG_PREFIX + " EXTRACT_OK asset=" + assetPath + " target=" + extractTargetPath);
                 return true;
-            } catch (IOException e) {
-                lastErrorLog = formatErrorCode(EXTRACTION_FAIL_PREFIX, "PROCESS_EXECUTION_IO_EXCEPTION " + e);
+            } catch (Exception e) {
+                lastErrorLog = formatErrorCode(EXTRACTION_FAIL_PREFIX, "PROCESS_EXECUTION_EXCEPTION " + e);
                 Log.e(TAG, "extractSystemFiles: ", e);
                 return false;
-            } finally {
-                if (process != null) {
-                    process.destroy();
-                }
             }
         }
         lastErrorLog = formatErrorCode(EXTRACTION_FAIL_PREFIX,
                 "UNEXPECTED_EXTRACTION_STATE asset=" + assetPath + " output=" + extractedTarPath);
         return false;
+    }
+
+
+    private static void appendExtractOutput(StringBuilder output, String line) {
+        if (line == null) {
+            return;
+        }
+        synchronized (output) {
+            output.append(line).append("\n");
+        }
     }
 
 
