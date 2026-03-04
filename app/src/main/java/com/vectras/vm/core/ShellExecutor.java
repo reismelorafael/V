@@ -16,6 +16,9 @@ public class ShellExecutor {
     private static final long DEFAULT_TIMEOUT_MS = 30_000L;
     private static final int OUTPUT_MAX_LINES = 512;
     private static final int OUTPUT_MAX_BYTES = 256 * 1024;
+    private static final String LAUNCH_FEATURE = "shell.executor";
+    private static final String LAUNCH_TAG = "sh-c";
+    private static final String LAUNCH_CALLER = "ShellExecutor#CallableExec.run";
     private final ThreadPoolExecutor executorService;
     private final boolean ownsExecutorService;
     private volatile Process shellExecutorProcess;
@@ -64,12 +67,12 @@ public class ShellExecutor {
                 return callable.await();
             } catch (TimeoutException e) {
                 callable.cancel();
-                Log.e(TAG, "exec timeout", e);
-                VectrasStatus.logInfo(TAG + " > " + e);
+                Log.e(TAG, "exec timeout " + ProcessLaunch.diagnosticPrefix(LAUNCH_FEATURE, LAUNCH_TAG, LAUNCH_CALLER), e);
+                VectrasStatus.logInfo(TAG + " > exec timeout " + ProcessLaunch.diagnosticPrefix(LAUNCH_FEATURE, LAUNCH_TAG, LAUNCH_CALLER) + " " + e);
                 return new ExecResult(-1, "", "timeout", true);
             } catch (Exception e) {
-                Log.e(TAG, "exec failed", e);
-                VectrasStatus.logInfo(TAG + " > " + e);
+                Log.e(TAG, "exec failed " + ProcessLaunch.diagnosticPrefix(LAUNCH_FEATURE, LAUNCH_TAG, LAUNCH_CALLER), e);
+                VectrasStatus.logInfo(TAG + " > exec failed " + ProcessLaunch.diagnosticPrefix(LAUNCH_FEATURE, LAUNCH_TAG, LAUNCH_CALLER) + " " + e);
                 return new ExecResult(-1, "", e.toString(), false);
             }
         }
@@ -80,13 +83,13 @@ public class ShellExecutor {
         } catch (TimeoutException e) {
             localFuture.cancel(true);
             callable.cancel();
-            Log.e(TAG, "exec timeout", e);
-            VectrasStatus.logInfo(TAG + " > " + e);
+            Log.e(TAG, "exec timeout " + ProcessLaunch.diagnosticPrefix(LAUNCH_FEATURE, LAUNCH_TAG, LAUNCH_CALLER), e);
+            VectrasStatus.logInfo(TAG + " > exec timeout " + ProcessLaunch.diagnosticPrefix(LAUNCH_FEATURE, LAUNCH_TAG, LAUNCH_CALLER) + " " + e);
             return new ExecResult(-1, "", "timeout", true);
         } catch (Exception e) {
             localFuture.cancel(true);
-            Log.e(TAG, "exec failed", e);
-            VectrasStatus.logInfo(TAG + " > " + e);
+            Log.e(TAG, "exec failed " + ProcessLaunch.diagnosticPrefix(LAUNCH_FEATURE, LAUNCH_TAG, LAUNCH_CALLER), e);
+            VectrasStatus.logInfo(TAG + " > exec failed " + ProcessLaunch.diagnosticPrefix(LAUNCH_FEATURE, LAUNCH_TAG, LAUNCH_CALLER) + " " + e);
             return new ExecResult(-1, "", e.toString(), false);
         }
     }
@@ -154,21 +157,23 @@ public class ShellExecutor {
             int exitCode = -1;
             boolean timedOut = false;
             Process localProcess = null;
+            ProcessLaunch.LaunchTicket launchTicket = null;
+            Thread drainThreadRef = null;
 
             try {
-                localProcess = new ProcessBuilder(shellPath, "-c", command).start();
+                launchTicket = ProcessLaunch.withBudget(
+                        LAUNCH_FEATURE,
+                        LAUNCH_TAG,
+                        LAUNCH_CALLER,
+                        timeoutMs,
+                        () -> new ProcessBuilder(shellPath, "-c", command).start());
+                localProcess = launchTicket.process();
                 shellExecutorProcess = localProcess;
-                // Command is passed as a distinct ProcessBuilder arg; stdin is not used for command injection.
                 try (OutputStream outputStream = localProcess.getOutputStream()) {
                     outputStream.close();
                 }
 
                 Process finalProcess = localProcess;
-                // IMPORTANT: drainerFuture MUST NOT use the shell executor pool.
-                // If 2 execute() calls run concurrently, both shell-executor threads are
-                // occupied in CallableExec.run(); submitting drainer to the same pool
-                // would fill the queue but never execute → deadlock.
-                // Fix: spawn a dedicated daemon thread for draining (low-cost, bounded lifetime).
                 Thread drainThread = new Thread(() -> {
                     try {
                         drainer.drain(finalProcess, (stream, line) -> {
@@ -184,11 +189,9 @@ public class ShellExecutor {
                 }, "shell-drainer");
                 drainThread.setDaemon(true);
                 drainThread.start();
-                // Wrap in a future-compatible handle using drainer.shutdown() for cancellation.
-                @SuppressWarnings("UnnecessaryLocalVariable")
-                final Thread drainThreadRef = drainThread;
+                drainThreadRef = drainThread;
 
-                if (!localProcess.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
+                if (!localProcess.waitFor(launchTicket.timeoutMs(), TimeUnit.MILLISECONDS)) {
                     timedOut = true;
                     drainer.cancel();
                     localProcess.destroy();
@@ -200,28 +203,33 @@ public class ShellExecutor {
                 if (!timedOut) {
                     exitCode = localProcess.exitValue();
                 }
-
-                try {
-                    drainThreadRef.join(2_000L);
-                    if (drainThreadRef.isAlive()) {
-                        drainer.cancel();
-                        drainThreadRef.interrupt();
-                    }
-                } catch (InterruptedException e) {
-                    drainer.cancel();
-                    drainThreadRef.interrupt();
-                    Thread.currentThread().interrupt();
-                }
             } catch (IOException | InterruptedException e) {
                 error = e;
                 if (e instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
             } finally {
+                if (drainThreadRef != null) {
+                    try {
+                        drainThreadRef.join(2_000L);
+                        if (drainThreadRef.isAlive()) {
+                            drainer.cancel();
+                            drainThreadRef.interrupt();
+                        }
+                    } catch (InterruptedException e) {
+                        drainer.cancel();
+                        drainThreadRef.interrupt();
+                        Thread.currentThread().interrupt();
+                    }
+                }
                 if (localProcess != null && localProcess.isAlive()) {
                     localProcess.destroyForcibly();
                 }
                 shellExecutorProcess = null;
+                if (launchTicket != null) {
+                    String releaseReason = timedOut ? "timeout" : (error != null ? "error" : "completed");
+                    launchTicket.release(releaseReason);
+                }
                 drainer.shutdown();
                 result = new ExecResult(exitCode, outBuffer.snapshot(), errBuffer.snapshot(), timedOut);
                 synchronized (monitor) {
