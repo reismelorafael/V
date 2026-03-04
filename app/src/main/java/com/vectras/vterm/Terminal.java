@@ -38,6 +38,7 @@ import com.vectras.vm.utils.DialogUtils;
 import com.vectras.vm.utils.NotificationUtils;
 import com.vectras.vm.core.BoundedStringRingBuffer;
 import com.vectras.vm.core.ProcessOutputDrainer;
+import com.vectras.vm.core.ProcessBudgetRegistry;
 import com.vectras.vm.core.ProcessRuntimeOps;
 import com.vectras.vm.core.ProcessRuntimeOps.ExecutionCategory;
 import com.vectras.vm.core.ProcessRuntimeOps.TimeoutExecutionResult;
@@ -91,14 +92,18 @@ public class Terminal {
         if (VMManager.canRegisterAnotherVmProcess()) {
             return true;
         }
-        int active = VMManager.getActiveSupervisedVmProcessCount();
-        int max = VMManager.getMaxSupervisedVmProcesses();
-        String message = "VM process limit reached for Android 15 compatibility (" + active + "/" + max + "). Stop an active VM process and try again.";
+        String message = buildVmProcessLimitMessage();
         Log.w(TAG, message);
         if (dialogContext != null) {
             new Handler(Looper.getMainLooper()).post(() -> DialogUtils.oneDialog(dialogContext, "Process limit reached", message, R.drawable.round_terminal_24));
         }
         return false;
+    }
+
+    private static String buildVmProcessLimitMessage() {
+        int active = VMManager.getActiveSupervisedVmProcessCount();
+        int max = VMManager.getMaxSupervisedVmProcesses();
+        return "VM process limit reached for Android 15 compatibility (" + active + "/" + max + "). Stop an active VM process and try again.";
     }
 
 
@@ -217,6 +222,7 @@ public class Terminal {
 
         new Thread(() -> {
             Process launchedProcess = null;
+            ProcessBudgetRegistry.SlotToken token = null;
             try {
                 ProcessBuilder processBuilder = new ProcessBuilder();
 
@@ -227,13 +233,23 @@ public class Terminal {
                         .setPulseServer("127.0.0.1");
                 prootCommandBuilder.applyEnvironment(processBuilder.environment());
                 processBuilder.command(prootCommandBuilder.buildCommand());
+                token = ProcessBudgetRegistry.tryAcquireSlot("vterm", "execute-shell-command", "Terminal#executeShellCommand", vmId);
+                if (token == null) {
+                    String limitMessage = buildVmProcessLimitMessage();
+                    output.get().append(limitMessage);
+                    errors.append(limitMessage);
+                    VMManager.clearVmStarting(vmId);
+                    return;
+                }
                 launchedProcess = processBuilder.start();
+                ProcessBudgetRegistry.bindProcess(token, launchedProcess);
                 qemuProcess = launchedProcess;
                 Terminal.resetStreamingStopToken();
                 safeRegisterVmProcess(getContext(), vmId, launchedProcess, errors);
 
                 output.set(streamLog(userCommand, launchedProcess, false, null));
             } catch (IOException e) {
+                ProcessBudgetRegistry.releaseSlot(token, "start_failed");
                 VMManager.clearVmStarting(vmId);
                 rotateTransientVmIdAfterBootstrapFailure(vmId);
                 dismissProgressDialogSafely(progressDialog);
@@ -243,6 +259,7 @@ public class Terminal {
                 safeUnregisterVmProcess(vmId, launchedProcess);
                 com.vectras.vm.utils.FileUtils.closeFdsForVm(vmId);
                 VMManager.clearVmStarting(vmId);
+                ProcessBudgetRegistry.releaseSlot(token, "execute_shell_command_finally");
                 new Handler(Looper.getMainLooper()).post(() -> {
                     dismissProgressDialogSafely(progressDialog);
                     String finalErrors = errors.toString();
@@ -268,6 +285,7 @@ public class Terminal {
         }
         new Thread(() -> {
             Process launchedProcess = null;
+            ProcessBudgetRegistry.SlotToken token = null;
             try {
                 // Set up the qemuProcess builder to start PRoot with environmental variables and commands
                 ProcessBuilder processBuilder = new ProcessBuilder();
@@ -285,13 +303,23 @@ public class Terminal {
                         .setSdlVideoDriver("x11");
                 prootCommandBuilder.applyEnvironment(processBuilder.environment());
                 processBuilder.command(prootCommandBuilder.buildCommand());
+                token = ProcessBudgetRegistry.tryAcquireSlot("vterm", "execute-shell-command2", "Terminal#executeShellCommand2", vmId);
+                if (token == null) {
+                    String limitMessage = buildVmProcessLimitMessage();
+                    output.get().append(limitMessage);
+                    errors.append(limitMessage);
+                    VMManager.clearVmStarting(vmId);
+                    return;
+                }
                 launchedProcess = processBuilder.start();
+                ProcessBudgetRegistry.bindProcess(token, launchedProcess);
                 qemuProcess = launchedProcess;
                 Terminal.resetStreamingStopToken();
                 safeRegisterVmProcess(getContext(), vmId, launchedProcess, errors);
 
                 output.set(streamLog(userCommand, launchedProcess, false, null));
             } catch (IOException e) {
+                ProcessBudgetRegistry.releaseSlot(token, "start_failed");
                 VMManager.clearVmStarting(vmId);
                 rotateTransientVmIdAfterBootstrapFailure(vmId);
                 output.get().append(e.getMessage());
@@ -301,6 +329,7 @@ public class Terminal {
                 safeUnregisterVmProcess(vmId, launchedProcess);
                 com.vectras.vm.utils.FileUtils.closeFdsForVm(vmId);
                 VMManager.clearVmStarting(vmId);
+                ProcessBudgetRegistry.releaseSlot(token, "execute_shell_command2_finally");
                 // Switch to main thread after execution
                 new Handler(Looper.getMainLooper()).post(() -> {
                     String finalErrors = errors.toString();
@@ -332,6 +361,7 @@ public class Terminal {
         com.vectras.vm.logger.VectrasStatus.logError("<font color='#4db6ac'>VTERM: >" + userCommand + "</font>");
 
         Process launchedProcess = null;
+        ProcessBudgetRegistry.SlotToken token = null;
         try {
             ProcessBuilder processBuilder = new ProcessBuilder();
 
@@ -342,13 +372,21 @@ public class Terminal {
                     .setPulseServer("127.0.0.1");
             prootCommandBuilder.applyEnvironment(processBuilder.environment());
             processBuilder.command(prootCommandBuilder.buildCommand());
+            token = ProcessBudgetRegistry.tryAcquireSlot("vterm", "execute-shell-command-with-result", "Terminal#executeShellCommandWithResult", vmId);
+            if (token == null) {
+                String limitMessage = buildVmProcessLimitMessage();
+                VMManager.clearVmStarting(vmId);
+                return limitMessage;
+            }
             launchedProcess = processBuilder.start();
+            ProcessBudgetRegistry.bindProcess(token, launchedProcess);
             qemuProcess = launchedProcess;
             Terminal.resetStreamingStopToken();
             safeRegisterVmProcess(context, vmId, launchedProcess, errors);
 
             output = streamLog(userCommand, launchedProcess, false, null);
         } catch (IOException e) {
+            ProcessBudgetRegistry.releaseSlot(token, "start_failed");
             VMManager.clearVmStarting(vmId);
             rotateTransientVmIdAfterBootstrapFailure(vmId);
             output.append(e.getMessage());
@@ -357,6 +395,7 @@ public class Terminal {
             safeUnregisterVmProcess(vmId, launchedProcess);
             com.vectras.vm.utils.FileUtils.closeFdsForVm(vmId);
             VMManager.clearVmStarting(vmId);
+            ProcessBudgetRegistry.releaseSlot(token, "execute_shell_command_with_result_finally");
         }
         return output.toString();
     }
@@ -394,6 +433,7 @@ public class Terminal {
 
         new Thread(() -> {
             Process launchedProcess = null;
+            ProcessBudgetRegistry.SlotToken token = null;
             try {
                 ProcessBuilder processBuilder = new ProcessBuilder();
 
@@ -404,7 +444,16 @@ public class Terminal {
                         .setPulseServer("127.0.0.1");
                 prootCommandBuilder.applyEnvironment(processBuilder.environment());
                 processBuilder.command(prootCommandBuilder.buildCommand());
+                token = ProcessBudgetRegistry.tryAcquireSlot("vterm", "execute-shell-command-callback", "Terminal#executeShellCommand", vmId);
+                if (token == null) {
+                    String limitMessage = buildVmProcessLimitMessage();
+                    output.get().append(limitMessage);
+                    errors.append(limitMessage);
+                    VMManager.clearVmStarting(vmId);
+                    return;
+                }
                 launchedProcess = processBuilder.start();
+                ProcessBudgetRegistry.bindProcess(token, launchedProcess);
                 qemuProcess = launchedProcess;
                 Terminal.resetStreamingStopToken();
                 safeRegisterVmProcess(getContext(), vmId, launchedProcess, errors);
@@ -412,6 +461,7 @@ public class Terminal {
                 output.set(streamLog(userCommand, launchedProcess, !ProcessRuntimeOps.isLikelyInteractiveCommand(userCommand), null));
 
             } catch (IOException e) {
+                ProcessBudgetRegistry.releaseSlot(token, "start_failed");
                 VMManager.clearVmStarting(vmId);
                 output.get().append(e.getMessage());
                 errors.append(Log.getStackTraceString(e));
@@ -419,6 +469,7 @@ public class Terminal {
                 safeUnregisterVmProcess(vmId, launchedProcess);
                 com.vectras.vm.utils.FileUtils.closeFdsForVm(vmId);
                 VMManager.clearVmStarting(vmId);
+                ProcessBudgetRegistry.releaseSlot(token, "execute_shell_command_callback_finally");
                 dismissProgressDialogSafely(progressDialog);
 
                 // Use callback to return both output and errors
@@ -442,12 +493,23 @@ public class Terminal {
             Log.e(TAG, "PackageManager lookup failed: " + packageName, e);
         }
 
+        ProcessBudgetRegistry.SlotToken token = null;
         try {
+            String vmId = currentVmId();
+            token = ProcessBudgetRegistry.tryAcquireSlot("vterm", "termux-package-check", "Terminal#isPackageInstalled", vmId);
+            if (token == null) {
+                Log.w(TAG, "Termux fallback package check skipped due to process budget: " + buildVmProcessLimitMessage());
+                return false;
+            }
             Process process = new ProcessBuilder("pkg", "list-installed", packageName).start();
+            ProcessBudgetRegistry.bindProcess(token, process);
             StringBuilder output = streamLog("", process, true, ExecutionCategory.QUICK_QUERY);
             return output.toString().contains(packageName);
         } catch (Exception e) {
+            ProcessBudgetRegistry.releaseSlot(token, "termux_package_check_failed");
             Log.e(TAG, "Termux fallback package check failed: " + packageName, e);
+        } finally {
+            ProcessBudgetRegistry.releaseSlot(token, "termux_package_check_finally");
         }
         return false;
     }

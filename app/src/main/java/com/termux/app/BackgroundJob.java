@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A background job launched by .
@@ -34,6 +35,12 @@ public final class BackgroundJob {
     private static final int MAX_LINE_CHARS = 4096;
     private static final String CAPTURE_TRUNCATED_MARKER = BoundedStringRingBuffer.TRUNCATED_MARKER;
     private static final String TERMUX_BG_ID_PREFIX = "termux-bg-";
+    private static final String SLOT_FEATURE = "termux";
+    private static final String SLOT_TAG = "background-job";
+    private static final String SLOT_CALLER = "BackgroundJob::<ctor>";
+    private static final Object SLOT_LOCK = new Object();
+    private static final AtomicLong NEXT_SLOT_ID = new AtomicLong(1L);
+    private static int sReservedSlotCount = 0;
 
     final Process mProcess;
     private final String mRegistryId;
@@ -47,6 +54,19 @@ public final class BackgroundJob {
         String[] env = buildEnvironment(false, cwd);
         if (cwd == null) cwd = TermuxService.HOME_PATH;
 
+        final SlotLease slotLease = tryAcquireSlot();
+        if (slotLease == null) {
+            mProcess = null;
+            mRegistryId = null;
+            mStarted = false;
+            String errorMessage = "Failed running background job: slot limit reached for feature="
+                    + SLOT_FEATURE + ", tag=" + SLOT_TAG + ", caller=" + SLOT_CALLER;
+            Log.w(LOG_TAG, errorMessage);
+            sendResultSafely(service, pendingIntent, Activity.RESULT_CANCELED, -1, "", errorMessage);
+            service.onBackgroundJobExited(this);
+            return;
+        }
+
         final String[] progArray = setupProcessArgs(fileToExecute, args);
         final String processDescription = Arrays.toString(progArray);
 
@@ -57,6 +77,7 @@ public final class BackgroundJob {
             process = Runtime.getRuntime().exec(progArray, env, new File(cwd));
             registryId = buildRegistryId(process);
             VMManager.registerVmProcess(service.getApplicationContext(), registryId, process);
+            slotLease.markBoundToProcess();
             started = true;
         } catch (IOException e) {
             mProcess = null;
@@ -65,19 +86,10 @@ public final class BackgroundJob {
             String errorMessage = "Failed running background job: " + processDescription + ": " + e.getMessage();
             Log.e(LOG_TAG, errorMessage, e);
 
-            Bundle result = new Bundle();
-            result.putInt("exitCode", -1);
-            result.putString("stdout", "");
-            result.putString("stderr", errorMessage);
-
-            if (pendingIntent != null) {
-                Intent data = new Intent();
-                data.putExtra("result", result);
-                try {
-                    pendingIntent.send(service.getApplicationContext(), Activity.RESULT_CANCELED, data);
-                } catch (PendingIntent.CanceledException canceledException) {
-                    // The caller doesn't want the result? That's fine, just ignore.
-                }
+            try {
+                sendResultSafely(service, pendingIntent, Activity.RESULT_CANCELED, -1, "", errorMessage);
+            } finally {
+                releaseSlot(slotLease);
             }
 
             service.onBackgroundJobExited(this);
@@ -99,19 +111,10 @@ public final class BackgroundJob {
             String errorMessage = "Failed registering background job: " + processDescription + ": " + e.getMessage();
             Log.e(LOG_TAG, errorMessage, e);
 
-            Bundle result = new Bundle();
-            result.putInt("exitCode", -1);
-            result.putString("stdout", "");
-            result.putString("stderr", errorMessage);
-
-            if (pendingIntent != null) {
-                Intent data = new Intent();
-                data.putExtra("result", result);
-                try {
-                    pendingIntent.send(service.getApplicationContext(), Activity.RESULT_CANCELED, data);
-                } catch (PendingIntent.CanceledException canceledException) {
-                    // The caller doesn't want the result? That's fine, just ignore.
-                }
+            try {
+                sendResultSafely(service, pendingIntent, Activity.RESULT_CANCELED, -1, "", errorMessage);
+            } finally {
+                releaseSlot(slotLease);
             }
 
             service.onBackgroundJobExited(this);
@@ -189,12 +192,16 @@ public final class BackgroundJob {
                     Intent data = new Intent();
                     data.putExtra("result", result);
 
-                    if(pendingIntent != null) {
-                        try {
-                            pendingIntent.send(service.getApplicationContext(), Activity.RESULT_OK, data);
-                        } catch (PendingIntent.CanceledException e) {
-                            // The caller doesn't want the result? That's fine, just ignore
+                    try {
+                        if (pendingIntent != null) {
+                            try {
+                                pendingIntent.send(service.getApplicationContext(), Activity.RESULT_OK, data);
+                            } catch (PendingIntent.CanceledException e) {
+                                // The caller doesn't want the result? That's fine, just ignore.
+                            }
                         }
+                    } finally {
+                        releaseSlot(slotLease);
                     }
                     safeUnregisterFromGlobalRegistry();
                     service.onBackgroundJobExited(BackgroundJob.this);
@@ -267,6 +274,79 @@ public final class BackgroundJob {
         String value = System.getenv(name);
         if (value != null) {
             environment.add(name + "=" + value);
+        }
+    }
+
+    private static void sendResultSafely(TermuxService service,
+                                         PendingIntent pendingIntent,
+                                         int resultCode,
+                                         int exitCode,
+                                         String stdout,
+                                         String stderr) {
+        if (pendingIntent == null) return;
+        Bundle result = new Bundle();
+        result.putInt("exitCode", exitCode);
+        result.putString("stdout", stdout == null ? "" : stdout);
+        result.putString("stderr", stderr == null ? "" : stderr);
+
+        Intent data = new Intent();
+        data.putExtra("result", result);
+        try {
+            pendingIntent.send(service.getApplicationContext(), resultCode, data);
+        } catch (PendingIntent.CanceledException e) {
+            // The caller doesn't want the result? That's fine, just ignore.
+        }
+    }
+
+    private static SlotLease tryAcquireSlot() {
+        synchronized (SLOT_LOCK) {
+            if (!VMManager.canRegisterAnotherVmProcess()) {
+                return null;
+            }
+            long slotId = NEXT_SLOT_ID.getAndIncrement();
+            sReservedSlotCount++;
+            Log.i(LOG_TAG, "Acquired background slot id=" + slotId
+                    + " feature=" + SLOT_FEATURE
+                    + " tag=" + SLOT_TAG
+                    + " caller=" + SLOT_CALLER
+                    + " reserved=" + sReservedSlotCount);
+            return new SlotLease(slotId);
+        }
+    }
+
+    private static void releaseSlot(SlotLease lease) {
+        if (lease == null || lease.isReleased()) return;
+        synchronized (SLOT_LOCK) {
+            if (lease.isReleased()) return;
+            lease.markReleased();
+            if (sReservedSlotCount > 0) {
+                sReservedSlotCount--;
+            }
+            Log.i(LOG_TAG, "Released background slot id=" + lease.id
+                    + " bound=" + lease.wasBoundToProcess
+                    + " reserved=" + sReservedSlotCount);
+        }
+    }
+
+    private static final class SlotLease {
+        private final long id;
+        private boolean wasBoundToProcess;
+        private boolean released;
+
+        private SlotLease(long id) {
+            this.id = id;
+        }
+
+        private boolean isReleased() {
+            return released;
+        }
+
+        private void markBoundToProcess() {
+            wasBoundToProcess = true;
+        }
+
+        private void markReleased() {
+            released = true;
         }
     }
 
