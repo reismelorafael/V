@@ -167,7 +167,8 @@ public class SetupWizard2Activity extends AppCompatActivity {
     String activeSetupTimestamp = "";
     String lastProotSelfCheckBlock = "";
     boolean rollbackAvailable = false;
-    boolean initialBenchmarkOptIn = false;
+    SetupProfileMode setupProfileMode = SetupProfileMode.WIZARD;
+    boolean setupProfileSelectionRequired = true;
     final ArrayList<HashMap<String, String>> mirrorList = new ArrayList<>();
     ExecutorService executor = Executors.newSingleThreadExecutor();
     private FirstRunPermissionOrchestrator firstRunPermissionOrchestrator;
@@ -270,6 +271,9 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
         ListUtils.setupMirrorListForListmap(mirrorList);
         applySelectedMirror(MainSettingsManager.getSelectedMirror(this));
+        setupProfileMode = MainSettingsManager.getSetupProfileMode(this);
+        setupProfileSelectionRequired = !MainSettingsManager.isSetupProfileFirstSelectionDone(this);
+        updateSetupProfileUi();
 
         String persistedBootstrapLink = MainSettingsManager.getLastSetupBootstrapUrl(this);
         if (isBootstrapLinkValid(persistedBootstrapLink)) {
@@ -288,6 +292,10 @@ public class SetupWizard2Activity extends AppCompatActivity {
         binding.btnAllowPermission.setOnClickListener(v -> requestNextPermissionCapability());
 
         binding.standardSetupOption.setOnClickListener(v -> {
+            if (setupProfileSelectionRequired) {
+                UIUtils.toastShort(this, getString(R.string.setup_profile_select_required));
+                return;
+            }
             if (downloadBootstrapsCommand.isEmpty()) {
                 pendingStandardSetupStart = true;
                 showStandardSetupUnavailableDialog();
@@ -299,7 +307,13 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
         });
 
-        binding.customSetupOption.setOnClickListener(v -> bootstrapFilePicker.launch("*/*"));
+        binding.customSetupOption.setOnClickListener(v -> {
+            if (setupProfileSelectionRequired) {
+                UIUtils.toastShort(this, getString(R.string.setup_profile_select_required));
+                return;
+            }
+            bootstrapFilePicker.launch("*/*");
+        });
 
         initialBenchmarkOptIn = resolveInitialBenchmarkOptInDefault();
         binding.swInitialBenchmarkValidation.setChecked(initialBenchmarkOptIn);
@@ -309,6 +323,14 @@ public class SetupWizard2Activity extends AppCompatActivity {
         });
 
         binding.selectMirrorOption.setOnClickListener(v -> selectMirror());
+
+        binding.setupProfileWizardOption.setOnClickListener(v -> {
+            applySetupProfileMode(SetupProfileMode.WIZARD, true);
+        });
+
+        binding.setupProfileDebuggerOption.setOnClickListener(v -> {
+            applySetupProfileMode(SetupProfileMode.DEBUGGER, true);
+        });
 
         binding.ivOpenTerminal.setOnClickListener(v -> {
             if (DeviceUtils.is64bit() && DeviceUtils.isArm()) {
@@ -490,6 +512,10 @@ public class SetupWizard2Activity extends AppCompatActivity {
     }
 
     private void triggerDebugProotSelfCheck(String triggerOrigin) {
+        if (setupProfileMode != SetupProfileMode.DEBUGGER) {
+            Log.i(TAG, "runProotSelfCheck skipped trigger=" + triggerOrigin + " profile=" + setupProfileMode);
+            return;
+        }
         executor.execute(() -> {
             boolean checkOk = SetupFeatureCore.runProotSelfCheck(this).ok;
             Log.i(TAG, "runProotSelfCheck trigger=" + triggerOrigin + " ok=" + checkOk);
@@ -694,7 +720,9 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
                     runOnUiThread(() -> new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         if (result) {
-                            runAndDisplayProotSelfCheck();
+                            if (setupProfileMode == SetupProfileMode.DEBUGGER) {
+                                runAndDisplayProotSelfCheck();
+                            }
                             SetupFeatureCore.PostInstallCheckResult postInstallCheckResult = SetupFeatureCore.runPostInstallCheck(this);
                             if (postInstallCheckResult.ok) {
                                 getDataForStandardSetup();
@@ -786,7 +814,9 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
         new Thread(() -> {
             if (isCustomSetupMode) {
-                runOnUiThread(() -> appendTextAndScroll(" | " + getString(R.string.checking)));
+                runOnUiThread(() -> appendTextAndScroll(" | " + getString(setupProfileMode == SetupProfileMode.DEBUGGER
+                        ? R.string.checking
+                        : R.string.just_a_sec)));
 
                 try {
                     if (!TarUtils.isAllowExtract(tarPath)) {
@@ -1403,6 +1433,31 @@ public class SetupWizard2Activity extends AppCompatActivity {
         }).start();
     }
 
+    private void applySetupProfileMode(SetupProfileMode mode, boolean markFirstSelection) {
+        setupProfileMode = mode;
+        MainSettingsManager.setSetupProfileMode(this, mode);
+        if (markFirstSelection) {
+            MainSettingsManager.setSetupProfileFirstSelectionDone(this, true);
+            setupProfileSelectionRequired = false;
+        }
+        updateSetupProfileUi();
+    }
+
+    private void updateSetupProfileUi() {
+        if (binding == null) {
+            return;
+        }
+        boolean isDebugger = setupProfileMode == SetupProfileMode.DEBUGGER;
+        if (setupProfileSelectionRequired) {
+            binding.setupProfileWizardCheck.setVisibility(View.GONE);
+            binding.setupProfileDebuggerCheck.setVisibility(View.GONE);
+        } else {
+            binding.setupProfileWizardCheck.setVisibility(isDebugger ? View.GONE : View.VISIBLE);
+            binding.setupProfileDebuggerCheck.setVisibility(isDebugger ? View.VISIBLE : View.GONE);
+        }
+        updateStructuredStatusUi();
+    }
+
     private static void appendValidationOutput(StringBuilder output, String line) {
         synchronized (output) {
             if (output.length() > 0) {
@@ -1643,7 +1698,9 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
         transitionInstallState(InstallState.INIT, "Retry requested by user.");
         if (SetupFeatureCore.isInstalledSystemFiles(this)) {
-            runAndDisplayProotSelfCheck();
+            if (setupProfileMode == SetupProfileMode.DEBUGGER) {
+                runAndDisplayProotSelfCheck();
+            }
             SetupFeatureCore.PostInstallCheckResult postInstallCheckResult = SetupFeatureCore.runPostInstallCheck(this);
             if (postInstallCheckResult.ok) {
                 getDataForStandardSetup();
@@ -1727,11 +1784,17 @@ public class SetupWizard2Activity extends AppCompatActivity {
         binding.tvInstallCurrentStep.setText(installState.name());
         binding.tvInstallLastError.setText(normalizedLastError.isEmpty() ? getString(R.string.setup_status_no_error) : normalizedLastError);
         String action = getString(R.string.setup_action_retry);
-        if (installState == InstallState.FAILED && rollbackAvailable) {
-            action = getString(R.string.setup_action_rollback);
+        if (setupProfileMode == SetupProfileMode.DEBUGGER) {
+            action = getString(R.string.setup_action_export_diagnostic);
+            if (installState == InstallState.FAILED && rollbackAvailable) {
+                action = getString(R.string.setup_action_rollback);
+            }
         }
         binding.tvInstallRecommendedAction.setText(action);
-        binding.btnRollbackSetup.setEnabled(rollbackAvailable);
+        boolean debuggerMode = setupProfileMode == SetupProfileMode.DEBUGGER;
+        binding.btnRollbackSetup.setEnabled(debuggerMode && rollbackAvailable);
+        binding.btnRollbackSetup.setVisibility(debuggerMode ? View.VISIBLE : View.GONE);
+        binding.btnExportDiagnostic.setVisibility(debuggerMode ? View.VISIBLE : View.GONE);
     }
 
     private String normalizeSetupError(String raw) {

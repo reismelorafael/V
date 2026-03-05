@@ -70,6 +70,16 @@
             app:icon="@drawable/round_settings_24" />
 
 
+
+
+        <ListPreference
+            android:key="setupProfileMode"
+            android:title="@string/setup_profile_mode_title"
+            android:entries="@array/setupProfileModeLabels"
+            android:entryValues="@array/setupProfileModeValues"
+            android:defaultValue="wizard"
+            android:summary="@string/setup_profile_mode_wizard_summary"
+            app:icon="@drawable/round_settings_24" />
         <Preference
             android:key="officialcommunitychannel"
             android:title="@string/official_community_channel"

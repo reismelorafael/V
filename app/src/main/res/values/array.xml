@@ -151,4 +151,14 @@
         <item>standard</item>
         <item>intensive</item>
     </string-array>
+
+    <string-array name="setupProfileModeLabels">
+        <item>@string/setup_profile_mode_wizard</item>
+        <item>@string/setup_profile_mode_debugger</item>
+    </string-array>
+    <string-array name="setupProfileModeValues">
+        <item>wizard</item>
+        <item>debugger</item>
+    </string-array>
+
 </resources>
