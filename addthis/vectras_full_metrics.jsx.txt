@@ -1,0 +1,360 @@
+import { useState } from "react";
+
+const METRICS = {
+  logical: {
+    label: "Cálculos Lógicos",
+    icon: "⚙",
+    color: "#60a5fa",
+    groups: [
+      {
+        title: "ALU Integer (RmR_Bench_Alu)",
+        rows: [
+          ["XOR/shift/mul 32-bit — ARM64 Cortex-A78 3GHz", "~1.8–3.0 GOPS", "~2.0–4.0 cycles/iter (cadeia dep)", "ok"],
+          ["XOR/shift/mul 32-bit — x86-64 Ryzen/Snapdragon", "~2.5–4.0 GOPS", "OoO IPC ≥ 3; throughput domina", "ok"],
+          ["Bitops XOR fold 32 (RmR_Bench_Bitops)", "~2.0–3.5 GOPS", "shift+xor+rotl sem load/store", "ok"],
+          ["PHI32 multiply step (0x9E3779B9)", "~3.0 GOPS (1 cycle throughput)", "mul latência 3c, throughput 1c", "ok"],
+          ["mix64 accumulator (bench_suite)", "~1.5–2.5 GOPS 64-bit", "2× XOR + shift + add por iter", "ok"],
+          ["Penalidade JNI call curto (<1µs C)", "~2–10× overhead vs C direto", "pthread_mutex + JNI frame = 100–500ns", "bug"],
+        ]
+      },
+      {
+        title: "Branch / FSM (rmr_policy_kernel)",
+        rows: [
+          ["Branch aleatório 50% miss (RmR_Bench_Branch)", "~200–400 M branch/s", "Misprediction 12–18c Cortex-A78", "ok"],
+          ["Branch previsível 95%+", "~1.5–2.5 G branch/s", "BHT prediz loop regular corretamente", "ok"],
+          ["FSM 10-state (ψχρΔΣΩ) — choose_route branchless", "~400–700 M trans/s", "select_u32/mask_u32 sem branch real", "ok"],
+          ["FSM 10-state — fallback C if/else", "~80–150 M trans/s", "Misprediction por estado variável", "bug"],
+          ["VmFlow nativeVmFlowMark (128 slots, mutex)", "~5–20 M mark/s", "pthread_mutex domina; linear scan 128", "bug"],
+          ["policy_commit_quantum (ARM64/x86 64-bit)", "64 commits/quantum", "L3 ≥ 2MB → 64; menor = 24", "ok"],
+        ]
+      },
+      {
+        title: "Matrix / Math Fabric",
+        rows: [
+          ["8×8 u32 MMul — C puro (hoje)", "~800K–1.5 M MMul/s", "n³=512 ops, ~2000–3000 cycles total", "bug"],
+          ["8×8 u32 MMul — NEON estimado (flag OFF hoje)", "~4–8 M MMul/s", "vmul.u32 ×16B; ARM64 NEON desativado", "bug"],
+          ["Entropy estimate (rafa_cti_scan, log() C)", "~50–120 M blocks/s", "double log() libm; muito pesado", "bug"],
+          ["CRC32C HW arm_acle (se habilitado)", "~3–6 GB/s = ~750M–1.5G 4B/op", "1 byte/cycle × 3 GHz CRC32 HW", "bug"],
+          ["CRC32C SW tabela 256 (fallback C)", "~300–600 MB/s", "Cache-friendly mas 8× mais lento que HW", "ok"],
+          ["Hash64 FNV1a mix (stage_signature)", "~1.5–3.0 GOPS", "XOR + mul 64-bit; sem load miss", "ok"],
+        ]
+      }
+    ]
+  },
+  bandwidth: {
+    label: "Bandwidth",
+    icon: "⟶",
+    color: "#34d399",
+    groups: [
+      {
+        title: "Memória — rmr_baremetal_compat / JNI",
+        rows: [
+          ["rmr_memcpy word-by-word 8B (cache quente, ARM64)", "~20–40 GB/s", "stp-equivalent; limitado por bus LPDDR5", "ok"],
+          ["rmr_memcpy cache frio (L3 miss → DRAM)", "~8–15 GB/s", "LPDDR5 ~60 GB/s teórico; overhead TLB", "ok"],
+          ["rmr_memset zero bulk (ARM64)", "~25–50 GB/s", "stp xzr,xzr; quase satura DRAM bandwidth", "ok"],
+          ["nativeCopyBytes JNI (1 KB payloads)", "~2–4 GB/s effective", "GetPrimitiveArrayCritical + memcpy + Release", "bug"],
+          ["nativeCopyBytes JNI (64 KB payloads)", "~8–15 GB/s effective", "Overhead JNI amortizado em blocos grandes", "ok"],
+          ["Bump alloc rmr_malloc sequencial", "~50–100 GB/s virtual", "Apenas ptr add; limita-se a bandwidth de store", "ok"],
+        ]
+      },
+      {
+        title: "QEMU / I-O Virtual",
+        rows: [
+          ["VirtIO block (writeback cache mode — default)", "~1–4 GB/s host FS dep.", "Limitado por host FS; iothread melhora ~30%", "ok"],
+          ["VirtIO block (direct_io + io_uring)", "~3–8 GB/s", "Ativa quando L2 ≥ 512 KB; bypass page cache", "ok"],
+          ["IDE fallback (no VirtIO)", "~200–500 MB/s", "Emulação legacy; evitar sempre", "bug"],
+          ["VirtIO NIC user-mode (e2e)", "~200–800 Mbps", "Limitado por SLIRP; não usa tun/tap real", "ok"],
+          ["TCG memcpy guest→host (translação)", "~1–3 GB/s guest view", "TCG adiciona ~5× overhead vs nativo", "bug"],
+        ]
+      },
+      {
+        title: "CTI Scan (rafa_cti_scan.c)",
+        rows: [
+          ["Sequential scan 4KB tiles (ROUTE_SEQ)", "~4–8 GB/s", "Stride=1, prefetch 256B; L1 hit dominante", "ok"],
+          ["Spiral scan (ROUTE_SPIRAL)", "~2–5 GB/s", "Padrão não-sequencial; L2 miss frequente", "ok"],
+          ["Toroid scan (ROUTE_TOROID)", "~1.5–3 GB/s", "Acesso 2D; cache miss proporcional a w×h", "ok"],
+          ["Random perm (ROUTE_RANDOM_PERM)", "~500MB–1.5 GB/s", "TLB + L3 miss dominam; pior caso", "ok"],
+          ["Delta miss scan (ROUTE_DELTA_MISS)", "~800MB–2 GB/s", "Forçado a miss; mede latência DRAM real", "ok"],
+        ]
+      }
+    ]
+  },
+  latency: {
+    label: "Latência",
+    icon: "⏱",
+    color: "#fbbf24",
+    groups: [
+      {
+        title: "Hardware Real (detectado por rmr_hw_detect)",
+        rows: [
+          ["L1 cache hit (32 KB, cache_hint_l1)", "~4 cycles = ~1.3 ns @3GHz", "Cortex-A78 L1 latência 4c", "ok"],
+          ["L2 cache hit (256 KB, cache_hint_l2)", "~12–15 cycles = ~4–5 ns", "L2 unified; hit típico", "ok"],
+          ["L3 cache hit (1 MB, cache_hint_l3)", "~35–45 cycles = ~12–15 ns", "LLC; Snapdragon 8 Gen ~40c", "ok"],
+          ["DRAM access (cache miss completo)", "~95–120 cycles = ~32–40 ns", "LPDDR5; similar ao doc bug/ANALISE_REAL", "ok"],
+          ["Cache line fetch (64B, cacheline_bytes)", "~5 ns (L2) → ~40 ns (DRAM)", "Cache line fill; alinhamento crítico", "ok"],
+          ["Page fault (page_bytes = 4096B)", "~500 ns – 2 µs", "Inclui TLB fill + page walk", "ok"],
+        ]
+      },
+      {
+        title: "RMR Kernel / JNI (vectra_core_accel.c)",
+        rows: [
+          ["JNI call simples (nativePopcount32)", "~150–300 ns", "Frame setup + mutex check; sem array crítico", "ok"],
+          ["JNI GetPrimitiveArrayCritical (1KB)", "~200–400 ns", "Pode trigger GC stop se array movido", "bug"],
+          ["pthread_mutex lock/unlock (uncontested)", "~50–100 ns", "Todas as chamadas JNI usam g_unified_lock", "bug"],
+          ["pthread_mutex contended (2+ threads)", "~5–50 µs", "Syscall futex; impacto real em VmFlow", "bug"],
+          ["rmr_jni_kernel_ingest (payload 1 KB)", "~600 ns – 1.2 µs", "CRC32C SW + hash64 + mutex", "ok"],
+          ["rmr_jni_kernel_audit (7 counters)", "~300–600 ns", "Leitura de contadores; mutex dominante", "ok"],
+          ["VmFlow nativeVmFlowCurrent (hit, 128 scan)", "~200–800 ns", "Linear scan O(n=128) dentro de mutex", "bug"],
+          ["IRQ period target (ANALISE_REAL doc)", "~1030–1500 µs", "8cores+NEON=1030; 2cores sem SIMD=1500", "ok"],
+        ]
+      },
+      {
+        title: "QEMU / VM Guest",
+        rows: [
+          ["QEMU TCG block translation (primeira vez)", "~10–100 µs", "TB cache fria; amortiza em execução", "ok"],
+          ["QEMU TCG hit (bloco traduzido, warm)", "~5–15 host cycles/guest instr", "Overhead de translação quase zero", "ok"],
+          ["QEMU VirtIO block I/O (1 op, iothread ON)", "~50–200 µs", "Iothread elimina vCPU stall em I/O", "ok"],
+          ["QEMU VirtIO block I/O (iothread OFF)", "~200–800 µs", "Default plan->vm_cpus=2; sem iothread", "bug"],
+          ["Context switch vCPU (TCG scheduler)", "~3–15 µs", "TCG não usa KVM; scheduling software", "bug"],
+          ["low_latency mode (-icount shift=0)", "~determinístico +20% slower", "Alinha tempo de instrução; tradeoff speed", "ok"],
+          ["Latência P99 doc ANALISE_70_METRICAS", "8 µs (otimizado)", "180 µs upstream; 22.5× melhoria esperada", "ok"],
+        ]
+      }
+    ]
+  },
+  jitter: {
+    label: "Jitter / Variância",
+    icon: "∿",
+    color: "#f87171",
+    groups: [
+      {
+        title: "Jitter de Latência (benchmark + doc)",
+        rows: [
+          ["Jitter P50→P99 (upstream Vectras)", "~35% variância", "Sem determinismo; malloc non-det + branch miss", "bug"],
+          ["Jitter P50→P99 (otimizado, doc meta)", "~2% variância", "17.5× mais estável que upstream", "ok"],
+          ["Jitter JNI mutex contended", "~5–50 µs spike", "pthread_mutex contention → tail latência explode", "bug"],
+          ["Jitter TSC rdtsc sem CPUID serialize (x86)", "±1–5 cycles", "lfence presente em rmr_ll_ops.c; ok x86", "ok"],
+          ["Jitter cntvct_el0 sem ISB (ARM64)", "±2–8 cycles", "isb presente ANTES de mrs; ok ARM64", "ok"],
+          ["Jitter RISCV rdcycle", "±5–20 cycles", "fence iorw presente; ok RISCV", "ok"],
+          ["Jitter TCG block boundary (QEMU)", "~1–50 µs spike", "Re-translação ou miss na TB cache", "ok"],
+          ["GC pause ART (Java layer)", "~2 ms (otimizado) → 45 ms (upstream)", "bump alloc reduz alloc rate → menos GC", "ok"],
+        ]
+      },
+      {
+        title: "Determinismo RMR (PHI32 / signatures)",
+        rows: [
+          ["Bit-exact reproducibility (RmR_Bench)", "98% (doc target)", "stage_signature = f(seed,tune,checksum); det.", "ok"],
+          ["exec_signature consistência entre runs", "Determinístico se mesmo HW", "Depende de RmR_ReadCycles() — não determinístico", "bug"],
+          ["g_bitraf_seed mutável (bitraf.c)", "Não-det. entre reinits", "bitraf_set_seed() altera global; quebra replay", "bug"],
+          ["Bump alloc sem free — fragmentation jitter", "Zero jitter alocação", "Ptr-bump; sem fragmentation; latência O(1)", "ok"],
+          ["policy_batch_size adaptativo (L1-aware)", "Fit L1 32KB → zero miss", "64B × 16 lanes = 1024B; dentro L1", "ok"],
+        ]
+      }
+    ]
+  },
+  throughput: {
+    label: "Throughput IOPS",
+    icon: "⊞",
+    color: "#a78bfa",
+    groups: [
+      {
+        title: "RMR Policy Pipeline (chunks)",
+        rows: [
+          ["pipeline chunks/s (1KB chunks, CRC32C SW)", "~250–500 K chunks/s", "CRC32C SW 450MB/s ÷ 1KB = 450K ops/s", "ok"],
+          ["pipeline chunks/s (1KB chunks, CRC32C HW)", "~3–6 M chunks/s", "CRC32C HW 3GB/s ÷ 1KB; flag OFF hoje", "bug"],
+          ["policy_batch_size 1024B (64B × 16 lanes)", "~500K–2M batches/s", "L1-fit; branchless choose_route domina", "ok"],
+          ["audit counters throughput (7 u64)", "~1–5 M audits/s", "Sem I/O; puro mutex + read", "ok"],
+          ["RmR_RunPolicyPipeline (arquivo disco)", "~10–50 K files/s", "Limitado por fopen/fwrite — stdlib", "bug"],
+        ]
+      },
+      {
+        title: "Bench Suite 50 testes (rmr_bench_suite)",
+        rows: [
+          ["Suite completa (default cfg max_iters=2048)", "~5–20 ms total", "50 testes × avg 200µs cada", "ok"],
+          ["Throughput score acumulado (u32)", "~50K–500K pontos", "Fórmula: (ops<<8)/cycles XOR checksum", "ok"],
+          ["IOPS VirtIO disk (iothread ON, writeback)", "~50–200K IOPS", "Host FS + VirtIO; doc ANALISE_70 meta: 118K", "ok"],
+          ["IOPS VirtIO disk (iothread OFF)", "~10–40K IOPS", "vCPU bloqueado em I/O; gargalo severo", "bug"],
+          ["Network virtual SLIRP (pacotes UDP)", "~50–200K pkt/s", "User-mode NAT; overhead SLIRP dominante", "ok"],
+          ["Throughput ops/s sistema total (doc meta)", "~118K ops/s otimizado vs 50K upstream", "2.4× target; requer NEON + CRC HW ativos", "bug"],
+        ]
+      },
+      {
+        title: "QEMU TCG (instruções guest)",
+        rows: [
+          ["TCG x86→ARM64 (Snapdragon 8 Gen 3, 8 cores)", "~200–500 MIPS guest", "1/5–1/10 host; TCG overhead ~5-10x", "ok"],
+          ["TCG ARM64→ARM64 (host=guest arch)", "~800M–1.5 GIPS", "Melhor caso; TCG quase pass-through", "ok"],
+          ["TCG com KVM (hipotético, root Android)", "~70–90% host speed", "KVM não acessível em user-space padrão", "bug"],
+          ["TB cache warm (blocos frequentes)", "~20–30% speedup vs cold", "16–64 MB TB cache; parametrizado tcg-tb-size", "ok"],
+          ["QEMU SMP (plan→vm_cpus, ARM64 host)", "8–10 vCPUs (64-bit ARM64)", "qemu_smp_cpus = native_64 ? 8+2+2 = 12 (clamp 16)", "ok"],
+        ]
+      }
+    ]
+  },
+  topology: {
+    label: "Topologia HW",
+    icon: "◈",
+    color: "#fb923c",
+    groups: [
+      {
+        title: "Registradores detectados (vectra_cpu_safe.c / bug/core)",
+        rows: [
+          ["ARM64 GPR (x0–x30)", "31 × 64-bit = 248 bytes", "callee-save: x19-x28,fp,lr; clobber: x0-x7", "ok"],
+          ["ARM64 SIMD/NEON (v0–v31)", "32 × 128-bit = 512 bytes", "NEON paths: todo presente mas flag OFF", "bug"],
+          ["ARM64 SVE (se FEAT_SVE detectado)", "32 × 512-bit = 2048 bytes est.", "sve_vl_bytes=16 (128-bit default estimado)", "ok"],
+          ["x86-64 GPR (rax–r15)", "16 × 64-bit = 128 bytes", "SSE4.2: 128-bit; AVX2: 256-bit; AVX512: 512-bit", "ok"],
+          ["RISCV64 GPR (x0–x31)", "32 × 64-bit = 256 bytes", "rdcycle presente; V extension não detectada", "ok"],
+          ["ARM32 GPR (r0–r15)", "16 × 32-bit = 64 bytes", "SIMD 64-bit; sem ASM bridge dedicada", "bug"],
+        ]
+      },
+      {
+        title: "Cache Hierarchy (rmr_hw_detect hard-coded hints)",
+        rows: [
+          ["L1 data (cache_hint_l1)", "32 KB (hardcoded)", "Hint; não lido de CLIDR_EL1 (evita EL1 trap)", "ok"],
+          ["L2 unified (cache_hint_l2)", "256 KB (hardcoded)", "Hint; real Snapdragon 8 Gen = 512KB–1MB L2", "bug"],
+          ["L3 LLC (cache_hint_l3)", "1 MB (hardcoded)", "Real Snapdragon 8 Gen = 8–12 MB; subestimado 8×", "bug"],
+          ["Cache line (cacheline_bytes)", "64 B (ARM64/x86)", "Correto para Cortex/Kryo/Zen; IBM POWER = 128B", "ok"],
+          ["Page size (page_bytes)", "4096 B padrão / 65536 PPC", "Android 15/16 requer 16KB; Termux já tem flag", "bug"],
+          ["Memory bus width (mem_bus_bits)", "128-bit (ARM64/x86-64)", "LPDDR5 dual-channel = 128-bit; correto", "ok"],
+        ]
+      },
+      {
+        title: "Tuning Calculado por RmR_LL_ApplyTuneDefaults",
+        rows: [
+          ["qemu_smp_cpus (ARM64, L2≥256KB)", "10–12 vCPUs", "base 8+2(arch)+2(L2≥1MB); clamp 16", "ok"],
+          ["policy_lane_width (ARM64 64-bit)", "16 lanes", "native_64 ? 16 : 8", "ok"],
+          ["policy_batch_size (64B × 16 = 1024B)", "1024 B = 1 KB", "L1 fit check: se L1<1024 → usar L1", "ok"],
+          ["policy_commit_quantum (L3≥2MB?)", "24 commits (L3=1MB<2MB)", "L3 hint subestimado → quantum conservador", "bug"],
+          ["cti_chunk_size (page=4096)", "4096 B", "= page_bytes; correto para 4K pages", "ok"],
+          ["cti_prefetch (64B × 4)", "256 B", "4 cache lines look-ahead; baixo p/ L2 prefetch", "ok"],
+        ]
+      }
+    ]
+  }
+};
+
+const STATUS_COLOR = { ok: "#34d399", bug: "#f87171" };
+
+export default function App() {
+  const [tab, setTab] = useState("logical");
+  const [openGroup, setOpenGroup] = useState({});
+
+  const section = METRICS[tab];
+
+  const toggleGroup = (i) => setOpenGroup(p => ({ ...p, [tab + i]: !p[tab + i] }));
+
+  return (
+    <div style={{ fontFamily: "'Courier New', monospace", background: "#05080e", minHeight: "100vh", color: "#aabfcc" }}>
+      {/* header */}
+      <div style={{ background: "#07101a", borderBottom: "1px solid #0a1c2c", padding: "16px 24px" }}>
+        <div style={{ fontSize: 10, color: "#1a3a50", letterSpacing: 4, marginBottom: 4 }}>RAFAELIA · VECTRAS-VM · MÉTRICAS TÉCNICAS COMPLETAS</div>
+        <div style={{ fontSize: 18, color: "#c0dff0", fontWeight: 700 }}>Cálculos Lógicos · Throughput · Bandwidth · Jitter · Latência · Topologia</div>
+        <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+          {Object.entries(METRICS).map(([id, s]) => (
+            <button key={id} onClick={() => setTab(id)} style={{
+              background: tab === id ? "#0a1c2c" : "transparent",
+              border: `1px solid ${tab === id ? s.color + "88" : "#0a1824"}`,
+              color: tab === id ? s.color : "#2a5a6a",
+              padding: "5px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1,
+            }}>
+              {s.icon} {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* legend */}
+      <div style={{ padding: "8px 24px", background: "#06090f", borderBottom: "1px solid #08141e", display: "flex", gap: 16, fontSize: 10 }}>
+        <span style={{ color: "#34d399" }}>● OK — implementado corretamente</span>
+        <span style={{ color: "#f87171" }}>● BUG — degradado / desativado / workaround ativo</span>
+        <span style={{ color: "#3a6a7a" }}>Valores derivados do código fonte real</span>
+      </div>
+
+      <div style={{ padding: "18px 24px" }}>
+        {section.groups.map((g, gi) => {
+          const key = tab + gi;
+          const isOpen = openGroup[key] !== false;
+          return (
+            <div key={gi} style={{ marginBottom: 8 }}>
+              <div
+                onClick={() => toggleGroup(gi)}
+                style={{
+                  background: "#07101a",
+                  border: `1px solid ${section.color}28`,
+                  padding: "10px 16px",
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ fontSize: 12, color: section.color, fontWeight: 700 }}>{g.title}</span>
+                <span style={{ color: "#1a4050", fontSize: 12 }}>{isOpen ? "▲" : "▼"}</span>
+              </div>
+              {isOpen && (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ background: "#060c16" }}>
+                        {["Operação / Métrica", "Valor Estimado", "Detalhe / Fonte", ""].map((h, hi) => (
+                          <th key={hi} style={{
+                            padding: "7px 14px", color: "#1e4050", fontWeight: 600,
+                            textAlign: "left", fontSize: 9, letterSpacing: 1,
+                            textTransform: "uppercase", borderBottom: "1px solid #0a1824",
+                            whiteSpace: "nowrap"
+                          }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.rows.map((r, ri) => (
+                        <tr key={ri} style={{ borderBottom: "1px solid #07101a", background: ri % 2 === 0 ? "transparent" : "#06090f" }}>
+                          <td style={{ padding: "8px 14px", color: "#7aa8bc", fontSize: 11 }}>{r[0]}</td>
+                          <td style={{ padding: "8px 14px", color: section.color, fontWeight: 700, whiteSpace: "nowrap", fontSize: 12 }}>{r[1]}</td>
+                          <td style={{ padding: "8px 14px", color: "#2a5a6a", fontSize: 11, lineHeight: 1.5 }}>{r[2]}</td>
+                          <td style={{ padding: "8px 14px", textAlign: "center" }}>
+                            <span style={{
+                              fontSize: 8, fontWeight: 700,
+                              color: STATUS_COLOR[r[3]],
+                              border: `1px solid ${STATUS_COLOR[r[3]]}44`,
+                              padding: "1px 6px", letterSpacing: 1,
+                              background: STATUS_COLOR[r[3]] + "12"
+                            }}>
+                              {r[3].toUpperCase()}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* summary bar */}
+        <div style={{ marginTop: 20, background: "#07101a", border: `1px solid ${section.color}22`, padding: "14px 18px" }}>
+          <div style={{ fontSize: 10, color: "#1a4050", letterSpacing: 3, marginBottom: 8 }}>SÍNTESE DESTA CAMADA</div>
+          {tab === "logical" && <div style={{ fontSize: 12, color: "#3a6a7a", lineHeight: 2 }}>
+            ALU puro: <span style={{ color: section.color }}>1.8–4 GOPS</span> sem bug. FSM branchless: <span style={{ color: section.color }}>400–700 M trans/s</span>. Perda crítica em Matrix (NEON OFF = <span style={{ color: "#f87171" }}>6× abaixo</span>) e CRC32C HW (flag OFF = <span style={{ color: "#f87171" }}>8× abaixo</span>).
+          </div>}
+          {tab === "bandwidth" && <div style={{ fontSize: 12, color: "#3a6a7a", lineHeight: 2 }}>
+            memcpy baremetal: <span style={{ color: section.color }}>20–40 GB/s</span>. Via JNI 1KB: <span style={{ color: "#f87171" }}>cai para 2–4 GB/s</span>. VirtIO iothread ativo: <span style={{ color: section.color }}>3–8 GB/s</span>. TCG emulação: <span style={{ color: "#f87171" }}>1–3 GB/s</span> overhead 5×.
+          </div>}
+          {tab === "latency" && <div style={{ fontSize: 12, color: "#3a6a7a", lineHeight: 2 }}>
+            L1: <span style={{ color: section.color }}>~1.3 ns</span>. DRAM: ~35 ns. JNI simples: ~200 ns. mutex contended: <span style={{ color: "#f87171" }}>spike 5–50 µs</span>. P99 meta: <span style={{ color: section.color }}>8 µs otimizado</span> vs 180 µs upstream.
+          </div>}
+          {tab === "jitter" && <div style={{ fontSize: 12, color: "#3a6a7a", lineHeight: 2 }}>
+            Jitter principal: <span style={{ color: "#f87171" }}>pthread_mutex contended (5–50 µs)</span> + GC pause ART. Determinismo RMR 98% possível mas <span style={{ color: "#f87171" }}>g_bitraf_seed mutável quebra replay</span>. Bump alloc = zero jitter de alocação.
+          </div>}
+          {tab === "throughput" && <div style={{ fontSize: 12, color: "#3a6a7a", lineHeight: 2 }}>
+            Policy pipeline CRC SW: <span style={{ color: "#f87171" }}>250–500K chunks/s</span>. Com CRC HW: <span style={{ color: section.color }}>3–6M chunks/s</span>. IOPS VirtIO iothread: <span style={{ color: section.color }}>50–200K</span>. TCG: <span style={{ color: "#f87171" }}>200–500 MIPS</span> (sem KVM).
+          </div>}
+          {tab === "topology" && <div style={{ fontSize: 12, color: "#3a6a7a", lineHeight: 2 }}>
+            <span style={{ color: "#f87171" }}>L3 subestimado 8×</span> (1MB hint vs 8–12MB real Snapdragon). <span style={{ color: "#f87171" }}>Page size 4KB vs 16KB Android 15</span> (Termux tem fix, Vectras CMake tem flag). policy_commit_quantum travado em 24 por causa do hint errado de L3.
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
+}

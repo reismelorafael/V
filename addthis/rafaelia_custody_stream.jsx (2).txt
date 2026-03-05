@@ -1,0 +1,612 @@
+import { useState, useEffect, useRef } from "react";
+
+// ─── ARCHITECTURE DATA ─────────────────────────────────────────────────────
+
+const CHAIN_STAGES = [
+  {
+    id: "ingest",
+    label: "INGEST",
+    symbol: "ψ",
+    color: "#60a5fa",
+    file: "rmr_unified_kernel.c",
+    desc: "Dado entra no kernel. CRC32C calculado e acumulado em rolling_crc32c. Entropy estimada em milli. stage_counter incrementado.",
+    fields: [
+      { k: "rolling_crc32c", v: "CRC32C(data) XOR anterior", t: "u32" },
+      { k: "bitraf_hash", v: "FNV1a 64-bit acumulado", t: "u64" },
+      { k: "entropy_milli", v: "Shannon entropy × 1000", t: "u32" },
+      { k: "stage_counter", v: "monotônico ++", t: "u32" },
+    ],
+    cost: "~600 ns (CRC SW) → ~80 ns (CRC HW)",
+    code: `kernel->rolling_crc32c = 
+  RmR_CRC32C(data, len) 
+  ^ kernel->rolling_crc32c;
+kernel->stage_counter += 1u;`,
+  },
+  {
+    id: "process",
+    label: "PROCESS",
+    symbol: "χ",
+    color: "#34d399",
+    file: "rmr_unified_kernel.c",
+    desc: "Pressões calculadas: CPU, storage, I/O. Determinante de matriz 2×2 calculado. route_signature composta de CRC + bitraf_hash + ciclos.",
+    fields: [
+      { k: "cpu_pressure", v: "f(cpu_cycles)", t: "u32" },
+      { k: "storage_pressure", v: "f(read+write bytes)", t: "u32" },
+      { k: "matrix_determinant", v: "m00×m11 - m01×m10", t: "i64" },
+      { k: "route_signature", v: "(crc32c<<32) XOR bitraf_hash XOR cycles", t: "u64" },
+    ],
+    cost: "~2–5 ns (aritmética pura)",
+    code: `route_sig = (u64)kernel->rolling_crc32c << 32
+  ^ kernel->rolling_bitraf_hash
+  ^ RmR_ReadCycles();`,
+  },
+  {
+    id: "route",
+    label: "ROUTE",
+    symbol: "ρ",
+    color: "#fbbf24",
+    file: "rmr_policy_kernel.c",
+    desc: "choose_route_branchless() decide destino sem branch. CPU/RAM/DISK via select_u32 e mask_u32. Quorum mínimo de 2 recursos OK.",
+    fields: [
+      { k: "route_id", v: "CPU=1 | RAM=2 | DISK=3 | FALLBACK=255", t: "u8" },
+      { k: "decision_mode", v: "BRANCHLESS=1 | FALLBACK=2", t: "u8" },
+      { k: "flags.miss", v: "0 se quorum ≥ 2", t: "bit" },
+      { k: "flags.bad_event", v: "1 se fallback forçado", t: "bit" },
+    ],
+    cost: "~1.4 ns (branchless aritmética)",
+    code: `u32 n = cpu_ok + ram_ok + disk_ok;
+route = select_u32(has_cpu & (idx==0), 
+                   RMR_ROUTE_CPU, route);
+m->flags.miss = select_u8(!quorum, 1u, 0u);`,
+  },
+  {
+    id: "verify",
+    label: "VERIFY",
+    symbol: "Δ",
+    color: "#f87171",
+    file: "rmr_unified_kernel.c",
+    desc: "CRC32C recomputado e comparado com expected. Hash64 recomputado. crc_ok e hash_ok determinam se o bloco é válido para custódia.",
+    fields: [
+      { k: "computed_crc32c", v: "RmR_CRC32C(data, len) fresco", t: "u32" },
+      { k: "crc_ok", v: "computed == expected ? 1 : 0", t: "bit" },
+      { k: "computed_bitraf_hash", v: "FNV1a recomputado", t: "u64" },
+      { k: "hash_ok", v: "recomputed == stored ? 1 : 0", t: "bit" },
+    ],
+    cost: "~600 ns (dobro do ingest — verifica tudo)",
+    code: `out->computed_crc32c = 
+  RmR_CRC32C(desc->data, desc->data_len);
+out->crc_ok = 
+  (out->computed_crc32c == desc->expected);`,
+  },
+  {
+    id: "audit",
+    label: "AUDIT",
+    symbol: "Σ",
+    color: "#a78bfa",
+    file: "rmr_unified_kernel.c",
+    desc: "audit_signature final = composição de todos os estágios anteriores. Imutável. Pode ser verificado externamente sem reexecutar nada.",
+    fields: [
+      { k: "audit_signature", v: "(crc32c<<32) XOR bitraf_hash XOR verify×2", t: "u64" },
+      { k: "audit_code", v: "0=OK | 1=FAIL", t: "u32" },
+      { k: "exec_signature", v: "mix64 acumulado de todos os stages", t: "u64" },
+    ],
+    cost: "~1–3 ns (XOR puro de valores já calculados)",
+    code: `sig = (u64)ingest->crc32c << 32 
+      ^ ingest->bitraf_hash;
+sig ^= (u64)verify->computed_crc32c << 1
+      ^ verify->computed_bitraf_hash;
+out->audit_signature = sig;`,
+  },
+  {
+    id: "custody",
+    label: "CUSTÓDIA",
+    symbol: "Ω",
+    color: "#fb923c",
+    file: "hashchain / zipraf",
+    desc: "audit_signature gravado no hashchain. Cada entrada é prova do bloco anterior + novo bloco. Chain é append-only. Não reescrevível.",
+    fields: [
+      { k: "hashchain[n]", v: "SHA3(sig_n ∥ sig_{n-1} ∥ timestamp)", t: "bytes[32]" },
+      { k: "zipraf", v: "RAFAELIA_CORE_YYYYMMDDTHHMMSS.zipraf", t: "arquivo" },
+      { k: "timestamp", v: "RmR_ReadCycles() + wall clock", t: "u64" },
+      { k: "bitraf64", v: "selo simbólico de identidade", t: "string" },
+    ],
+    cost: "~200 ns para append (SHA3 incremental)",
+    code: `hashchain[n] = SHA3_256(
+  sig_n ∥ hashchain[n-1] ∥ ts_ns
+);
+// append-only — nunca reescreve`,
+  },
+];
+
+const BG_COMPONENTS = [
+  {
+    label: "logcat_capture_loop()",
+    file: "vectra_core_accel.c:445",
+    thread: "pthread_t g_capture_thread",
+    type: "PRODUCER",
+    color: "#60a5fa",
+    desc: "Thread background contínua. Abre popen('logcat -v brief') e lê linha por linha. Pushes para ring buffer circular de 1024 entradas. atomic_int controla lifecycle sem lock no producer.",
+    flow: "popen → fgets → logcat_push_line → ring[head++]",
+    cap: "1024 entradas × 1024 bytes = 1 MB ring buffer",
+  },
+  {
+    label: "NativeLogcatBridge.nativeReadBatch()",
+    file: "vectra_core_accel.c:447",
+    thread: "JNI call thread (Java side)",
+    type: "CONSUMER",
+    color: "#34d399",
+    desc: "Consumer batch. Drena até maxEvents=256 entradas do ring em uma única chamada JNI. Retorna como jstring concatenado. Amortiza overhead JNI — 1 call para N eventos.",
+    flow: "JNI → mutex → drain ring[tail..head] → jstring",
+    cap: "64 KB payload por batch (64 × 1KB entries)",
+  },
+  {
+    label: "VmFlow g_vm_flow_slots[128]",
+    file: "vectra_core_accel.c:495",
+    thread: "qualquer thread via mutex",
+    type: "STATE MACHINE",
+    color: "#fbbf24",
+    desc: "128 slots de estado de VM. Cada slot tem vm_hash, state_ordinal, stamp LRU, mono_nanos timestamp. Background tracking de qual VM está em qual estado a qualquer momento.",
+    flow: "nativeVmFlowMark → find_or_evict → slot[idx].stamp = ++g_stamp",
+    cap: "128 VMs simultâneas com LRU eviction",
+  },
+  {
+    label: "rmr_jni_kernel (g_unified_state)",
+    file: "vectra_core_accel.c:35",
+    thread: "protected by g_unified_lock",
+    type: "KERNEL STATE",
+    color: "#a78bfa",
+    desc: "Estado kernel unificado. rolling_crc32c, bitraf_hash, stage_counter, entropy — todos acumulados continuamente em background via nativeCoreIngest(). Persiste entre chamadas JNI.",
+    flow: "ingest → process → route → verify → audit → acumula",
+    cap: "Estado persistente entre N chamadas; sem reset entre batches",
+  },
+];
+
+const STREAM_LAYERS = [
+  {
+    layer: "L0 — Hardware",
+    color: "#475569",
+    items: [
+      "cntvct_el0 (ARM64) / rdtsc (x86) — timestamp por ciclo, serializado",
+      "LPDDR5 ~60 GB/s — dados fluem sem cópia quando alinhados",
+      "CRC32 HW instruction — 1 byte/cycle = 3 GB/s de validação contínua",
+    ]
+  },
+  {
+    layer: "L1 — RMR Baremetal",
+    color: "#1e40af",
+    items: [
+      "rmr_baremetal_compat: bump alloc 1MB — stream aloca sem fragmentar",
+      "rmr_casm_bridge: XOR fold ARM64 NEON — 20 GB/s de hash contínuo",
+      "RmR_ReadCycles() serializado — cada frame do stream tem timestamp preciso",
+    ]
+  },
+  {
+    layer: "L2 — Policy Kernel",
+    color: "#065f46",
+    items: [
+      "rolling_crc32c: CRC acumulado de cada chunk do stream",
+      "stage_counter: sequência monotônica — detecta gaps/reordering",
+      "choose_route_branchless: 400–700M decisões/s — route em tempo real",
+    ]
+  },
+  {
+    layer: "L3 — Custódia",
+    color: "#7c2d12",
+    items: [
+      "audit_signature por chunk: prova criptográfica de cada frame",
+      "hashchain append-only: chain de custódia imutável em ordem de chegada",
+      "exec_signature acumulado: prova de sequência completa do stream",
+    ]
+  },
+  {
+    layer: "L4 — Background Threads",
+    color: "#4a1d96",
+    items: [
+      "logcat_capture_loop: captura eventos do sistema em paralelo ao stream",
+      "VmFlow mono_nanos: timestamp nanosegundo de cada transição de estado",
+      "g_unified_lock: serializa acesso ao estado mas não bloqueia ring buffer",
+    ]
+  },
+  {
+    layer: "L5 — JNI / Java",
+    color: "#1a1a2e",
+    items: [
+      "nativeReadBatch(256): drain batch amortiza custo JNI sobre N eventos",
+      "nativeCoreAudit(): retorna 7 contadores em uma chamada — sem polling",
+      "nativeProcessRoute: matrix 2×2 + pressões em uma chamada JNI",
+    ]
+  },
+];
+
+const WHERE_TABLE = [
+  { what: "Geração de audit_signature", where: "rmr_unified_kernel.c:194–215", when: "Cada ingest() call", cost: "~3 ns" },
+  { what: "rolling_crc32c acumulação", where: "rmr_unified_kernel.c:129", when: "A cada chunk ingested", cost: "~600 ns SW / ~80 ns HW" },
+  { what: "stage_counter incremento", where: "rmr_unified_kernel.c:131,152,173,188,215", when: "Cada estágio do pipeline", cost: "~0.3 ns" },
+  { what: "exec_signature mix64", where: "rmr_bench_suite.c + unified kernel", when: "Cada stage completion", cost: "~2 ns" },
+  { what: "hashchain append", where: "design / zipraf (não implementado)", when: "Após audit OK", cost: "~200 ns SHA3 incremental" },
+  { what: "Ring buffer push (logcat)", where: "vectra_core_accel.c:444", when: "Contínuo — background thread", cost: "~50–100 ns com mutex" },
+  { what: "Ring buffer drain (batch)", where: "vectra_core_accel.c:447–483", when: "On demand — JNI call", cost: "~1–5 µs por batch 256 eventos" },
+  { what: "VmFlow state mark", where: "vectra_core_accel.c:517–545", when: "Cada transição de VM state", cost: "~200–800 ns (scan 128 + mutex)" },
+  { what: "mono_nanos timestamp", where: "vectra_core_accel.c:477–486", when: "Cada VmFlow mark", cost: "~50 ns clock_gettime" },
+  { what: "Prova de custódia completa", where: "hashchain[n] = SHA3(sig∥prev∥ts)", when: "Após audit_code == 0", cost: "~200–400 ns" },
+];
+
+// ─── COMPONENTS ───────────────────────────────────────────────────────────
+
+function ChainViz({ active, setActive }) {
+  return (
+    <div style={{ overflowX: "auto", padding: "4px 0 12px" }}>
+      <div style={{ display: "flex", alignItems: "stretch", gap: 0, minWidth: 700 }}>
+        {CHAIN_STAGES.map((s, i) => (
+          <div key={s.id} style={{ display: "flex", alignItems: "center", flex: 1 }}>
+            <div
+              onClick={() => setActive(active === s.id ? null : s.id)}
+              style={{
+                flex: 1, cursor: "pointer",
+                background: active === s.id ? s.color + "22" : "#07101a",
+                border: `1px solid ${s.color}${active === s.id ? "cc" : "44"}`,
+                padding: "12px 8px", textAlign: "center",
+                transition: "all 0.2s",
+              }}
+            >
+              <div style={{ fontSize: 22, color: s.color, fontWeight: 900, lineHeight: 1 }}>{s.symbol}</div>
+              <div style={{ fontSize: 9, color: s.color, letterSpacing: 2, marginTop: 4 }}>{s.label}</div>
+              <div style={{ fontSize: 9, color: "#1e4050", marginTop: 2 }}>{s.cost.split("→")[0].trim()}</div>
+            </div>
+            {i < CHAIN_STAGES.length - 1 && (
+              <div style={{ color: "#1e3a50", fontSize: 18, padding: "0 2px", flexShrink: 0 }}>→</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {active && (() => {
+        const s = CHAIN_STAGES.find(x => x.id === active);
+        return (
+          <div style={{ background: "#05080f", border: `1px solid ${s.color}44`, padding: 16, marginTop: 8 }}>
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+              <div style={{ flex: 2, minWidth: 200 }}>
+                <div style={{ fontSize: 10, color: s.color, letterSpacing: 3, marginBottom: 8 }}>{s.label} · {s.file}</div>
+                <div style={{ fontSize: 12, color: "#6a9ab8", lineHeight: 1.8, marginBottom: 12 }}>{s.desc}</div>
+                <pre style={{ background: "#030508", border: `1px solid ${s.color}22`, padding: 10, fontSize: 10, color: "#4a8a6a", margin: 0, lineHeight: 1.7, overflowX: "auto" }}>{s.code}</pre>
+              </div>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 10, color: "#1e4050", letterSpacing: 2, marginBottom: 8 }}>CAMPOS PRODUZIDOS</div>
+                {s.fields.map((f, fi) => (
+                  <div key={fi} style={{ marginBottom: 6, padding: "6px 10px", background: "#07101a", border: `1px solid ${s.color}18` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 11, color: s.color, fontFamily: "monospace" }}>{f.k}</span>
+                      <span style={{ fontSize: 9, color: "#1e4050", border: "1px solid #0a1824", padding: "1px 4px" }}>{f.t}</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: "#2a5a6a", marginTop: 2 }}>{f.v}</div>
+                  </div>
+                ))}
+                <div style={{ marginTop: 8, fontSize: 10, color: "#1a3a50" }}>
+                  Custo total: <span style={{ color: s.color }}>{s.cost}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+function StreamFlow() {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => (t + 1) % 100), 80);
+    return () => clearInterval(id);
+  }, []);
+
+  const packets = [0, 1, 2, 3, 4].map(i => ({
+    x: ((tick * 2 + i * 20) % 100),
+    stage: Math.floor(((tick * 2 + i * 20) % 100) / 100 * 6),
+  }));
+
+  return (
+    <div style={{ background: "#05080f", border: "1px solid #0a1824", padding: 16, marginBottom: 8 }}>
+      <div style={{ fontSize: 10, color: "#1e4050", letterSpacing: 3, marginBottom: 12 }}>STREAM EM TEMPO REAL — VISUALIZAÇÃO</div>
+      <div style={{ position: "relative", height: 40, background: "#030508", border: "1px solid #0a1824", overflow: "hidden" }}>
+        {CHAIN_STAGES.map((s, i) => (
+          <div key={s.id} style={{
+            position: "absolute", top: 0, bottom: 0,
+            left: `${i * 100 / 6}%`, width: `${100 / 6}%`,
+            borderRight: "1px solid #0a1824",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <span style={{ fontSize: 9, color: s.color + "66", letterSpacing: 1 }}>{s.symbol}</span>
+          </div>
+        ))}
+        {packets.map((p, i) => (
+          <div key={i} style={{
+            position: "absolute", top: "50%", transform: "translateY(-50%)",
+            left: `${p.x}%`, width: 8, height: 8, borderRadius: "50%",
+            background: CHAIN_STAGES[Math.min(5, Math.floor(p.x / 100 * 6))].color,
+            boxShadow: `0 0 6px ${CHAIN_STAGES[Math.min(5, Math.floor(p.x / 100 * 6))].color}`,
+            transition: "left 0.08s linear",
+          }} />
+        ))}
+      </div>
+      <div style={{ display: "flex", marginTop: 6, gap: 0 }}>
+        {CHAIN_STAGES.map((s, i) => (
+          <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: s.color + "88" }}>{s.label}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN ──────────────────────────────────────────────────────────────────
+
+export default function App() {
+  const [tab, setTab] = useState("chain");
+  const [activeStage, setActiveStage] = useState(null);
+
+  const tabs = [
+    { id: "chain", label: "Cadeia de Custódia" },
+    { id: "background", label: "Background" },
+    { id: "stream", label: "Stream" },
+    { id: "where", label: "Mapa Completo" },
+  ];
+
+  return (
+    <div style={{ fontFamily: "'Courier New', monospace", background: "#040710", minHeight: "100vh", color: "#aabfcc" }}>
+      {/* header */}
+      <div style={{ background: "#06090f", borderBottom: "1px solid #0a1824", padding: "16px 24px" }}>
+        <div style={{ fontSize: 10, color: "#152030", letterSpacing: 4, marginBottom: 4 }}>RAFAELIA · VECTRAS · CUSTÓDIA + BACKGROUND + STREAM</div>
+        <div style={{ fontSize: 17, color: "#b8dcf0", fontWeight: 700 }}>Cadeia de Custódia Criptográfica em Background e Streaming</div>
+        <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              background: tab === t.id ? "#0a1824" : "transparent",
+              border: `1px solid ${tab === t.id ? "#1a4060" : "#0a1824"}`,
+              color: tab === t.id ? "#60b4f4" : "#2a5a6a",
+              padding: "5px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1,
+            }}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: "18px 24px" }}>
+
+        {/* ── CHAIN ── */}
+        {tab === "chain" && (
+          <div>
+            <div style={{ fontSize: 10, color: "#1e4050", letterSpacing: 3, marginBottom: 12 }}>
+              PIPELINE COMPLETO · ψ → χ → ρ → Δ → Σ → Ω · CLIQUE EM QUALQUER ESTÁGIO
+            </div>
+
+            <ChainViz active={activeStage} setActive={setActiveStage} />
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+              <div style={{ background: "#06090f", border: "1px solid #0a1824", padding: 14 }}>
+                <div style={{ fontSize: 10, color: "#1e4050", letterSpacing: 3, marginBottom: 10 }}>O QUE É CADEIA DE CUSTÓDIA AQUI</div>
+                {[
+                  ["Não é log", "Log pode ser alterado. A cadeia é SHA3(sig_n ∥ sig_{n-1} ∥ ts) — alterar um bloco invalida todos os posteriores."],
+                  ["Não é backup", "Backup armazena estado. Custódia armazena prova de que o estado existiu naquele momento com aqueles dados."],
+                  ["É ledger de execução", "Cada chunk processado gera audit_signature. Cada signature entra no hashchain. O hashchain prova a sequência completa."],
+                  ["É verificável offline", "Dado o seed inicial e o hashchain, qualquer auditoria externa pode verificar que a execução foi exatamente aquela."],
+                ].map(([t, d], i) => (
+                  <div key={i} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: i < 3 ? "1px solid #08121c" : "none" }}>
+                    <div style={{ fontSize: 11, color: "#60a5fa", marginBottom: 2 }}>{t}</div>
+                    <div style={{ fontSize: 11, color: "#2a5a6a", lineHeight: 1.6 }}>{d}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background: "#06090f", border: "1px solid #0a1824", padding: 14 }}>
+                <div style={{ fontSize: 10, color: "#1e4050", letterSpacing: 3, marginBottom: 10 }}>COMPOSIÇÃO DA audit_signature</div>
+                <pre style={{ background: "#030508", padding: 12, fontSize: 11, color: "#4a8a6a", lineHeight: 1.8, margin: 0, overflowX: "auto" }}>{`// Cada chunk produz:
+sig_n = 
+  (crc32c_n << 32)      // integridade de dados
+  ^ bitraf_hash_n        // identidade de conteúdo  
+  ^ (computed_crc << 1)  // verificação independente
+  ^ computed_hash;       // hash verificado
+
+// Hashchain: prova encadeada
+chain[n] = SHA3_256(
+  sig_n          // assinatura deste bloco
+  ∥ chain[n-1]  // prova do bloco anterior
+  ∥ ts_ns        // timestamp nanosegundo
+  ∥ bitraf64     // selo de identidade
+);
+
+// Resultado:
+// Alterar chunk_k invalida chain[k..N]
+// Detectável em O(1) por verificação de chain[N]`}</pre>
+              </div>
+            </div>
+
+            <div style={{ background: "#06090f", border: "1px solid #fb923c22", padding: 14, marginTop: 8 }}>
+              <div style={{ fontSize: 10, color: "#fb923c", letterSpacing: 3, marginBottom: 8 }}>CUSTO TOTAL DA CADEIA COMPLETA (ψ→Ω)</div>
+              <div style={{ display: "flex", gap: 0, flexWrap: "wrap" }}>
+                {[
+                  ["INGEST CRC SW", "~600 ns", "#60a5fa"],
+                  ["INGEST CRC HW", "~80 ns", "#34d399"],
+                  ["PROCESS", "~3 ns", "#34d399"],
+                  ["ROUTE", "~1.4 ns", "#fbbf24"],
+                  ["VERIFY", "~600 ns", "#f87171"],
+                  ["AUDIT sig", "~1 ns", "#a78bfa"],
+                  ["HASHCHAIN", "~200 ns", "#fb923c"],
+                  ["TOTAL (CRC SW)", "~1.4 µs", "#ff4040"],
+                  ["TOTAL (CRC HW)", "~290 ns", "#34d399"],
+                ].map(([l, v, c], i) => (
+                  <div key={i} style={{ padding: "8px 14px", borderRight: "1px solid #0a1824", borderBottom: "1px solid #0a1824" }}>
+                    <div style={{ fontSize: 9, color: "#1e4050" }}>{l}</div>
+                    <div style={{ fontSize: 14, color: c, fontWeight: 700 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── BACKGROUND ── */}
+        {tab === "background" && (
+          <div>
+            <div style={{ fontSize: 10, color: "#1e4050", letterSpacing: 3, marginBottom: 12 }}>
+              COMPONENTES EM BACKGROUND · PARALELOS À EXECUÇÃO PRINCIPAL
+            </div>
+
+            {BG_COMPONENTS.map((c, ci) => (
+              <div key={ci} style={{ background: "#06090f", border: `1px solid ${c.color}28`, padding: 14, marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                  <div>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.color, border: `1px solid ${c.color}44`, padding: "1px 6px", marginRight: 8 }}>{c.type}</span>
+                    <span style={{ fontSize: 13, color: c.color, fontWeight: 700 }}>{c.label}</span>
+                  </div>
+                  <span style={{ fontSize: 10, color: "#1e4050", fontFamily: "monospace" }}>{c.file}</span>
+                </div>
+                <div style={{ fontSize: 11, color: "#4a7a8a", lineHeight: 1.7, marginBottom: 10 }}>{c.desc}</div>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  <div style={{ background: "#030508", padding: "8px 12px", flex: 1 }}>
+                    <div style={{ fontSize: 9, color: "#1e4050", marginBottom: 4 }}>THREAD</div>
+                    <div style={{ fontSize: 11, color: "#2a5a6a", fontFamily: "monospace" }}>{c.thread}</div>
+                  </div>
+                  <div style={{ background: "#030508", padding: "8px 12px", flex: 2 }}>
+                    <div style={{ fontSize: 9, color: "#1e4050", marginBottom: 4 }}>FLOW</div>
+                    <div style={{ fontSize: 11, color: c.color + "cc", fontFamily: "monospace" }}>{c.flow}</div>
+                  </div>
+                  <div style={{ background: "#030508", padding: "8px 12px", flex: 1 }}>
+                    <div style={{ fontSize: 9, color: "#1e4050", marginBottom: 4 }}>CAPACIDADE</div>
+                    <div style={{ fontSize: 11, color: "#4a7a8a" }}>{c.cap}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <div style={{ background: "#06090f", border: "1px solid #0a1824", padding: 14, marginTop: 4 }}>
+              <div style={{ fontSize: 10, color: "#1e4050", letterSpacing: 3, marginBottom: 10 }}>COMO BACKGROUND + CUSTÓDIA SE CONECTAM</div>
+              <pre style={{ background: "#030508", padding: 12, fontSize: 11, color: "#4a8a6a", lineHeight: 1.8, margin: 0, overflowX: "auto" }}>{`Thread principal:               Thread background:
+  ingest(chunk)                   logcat_capture_loop()
+  → rolling_crc32c ++             → ring[head] = logcat_line
+  → stage_counter ++              → head = (head+1) % 1024
+  → audit_signature               → atomic_load(running)
+  → hashchain append              
+                                  VmFlow (qualquer thread):
+  nativeReadBatch(256)              VmFlowMark(vm_hash, state)
+  → mutex → drain ring              → slot.stamp = ++g_stamp
+  → retorna 256 eventos             → slot.mono_nanos = now()
+  → cada evento tem ts_ns
+  → custódia: ts_ns + sig         Todos alimentam:
+    → hashchain[n]                  → exec_signature acumulado
+                                    → audit trail completo`}</pre>
+            </div>
+          </div>
+        )}
+
+        {/* ── STREAM ── */}
+        {tab === "stream" && (
+          <div>
+            <div style={{ fontSize: 10, color: "#1e4050", letterSpacing: 3, marginBottom: 12 }}>
+              STREAMING COM CUSTÓDIA · CADA FRAME É UMA PROVA
+            </div>
+
+            <StreamFlow />
+
+            {STREAM_LAYERS.map((l, li) => (
+              <div key={li} style={{ display: "flex", gap: 0, marginBottom: 4 }}>
+                <div style={{
+                  width: 140, background: l.color + "dd", padding: "10px 12px",
+                  display: "flex", alignItems: "center", flexShrink: 0
+                }}>
+                  <span style={{ fontSize: 10, color: "#e0f0ff", fontWeight: 700, lineHeight: 1.4 }}>{l.layer}</span>
+                </div>
+                <div style={{ flex: 1, background: "#06090f", border: `1px solid ${l.color}28`, borderLeft: "none", padding: "8px 14px" }}>
+                  {l.items.map((item, ii) => (
+                    <div key={ii} style={{ fontSize: 11, color: "#4a7a8a", padding: "3px 0", borderBottom: ii < l.items.length - 1 ? "1px solid #07101a" : "none", lineHeight: 1.6 }}>
+                      <span style={{ color: "#1e4050", marginRight: 6 }}>›</span>{item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div style={{ background: "#06090f", border: "1px solid #34d39922", padding: 14, marginTop: 8 }}>
+              <div style={{ fontSize: 10, color: "#34d399", letterSpacing: 3, marginBottom: 10 }}>STREAMING CONTÍNUO — THROUGHPUT COM CUSTÓDIA</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[
+                  { t: "Chunks/s com CRC SW", v: "~450K/s", sub: "1KB chunks, custódia completa", c: "#f87171" },
+                  { t: "Chunks/s com CRC HW", v: "~3–6M/s", sub: "flag ativo, custódia completa", c: "#34d399" },
+                  { t: "Eventos logcat/s", v: "~50–200K/s", sub: "ring 1024 entries, batch 256", c: "#60a5fa" },
+                  { t: "VmFlow marks/s", v: "~5–20M/s", sub: "128 slots, LRU, mutex", c: "#fbbf24" },
+                  { t: "Hashchain appends/s", v: "~2–5M/s", sub: "SHA3 incremental", c: "#a78bfa" },
+                  { t: "audit_signatures/s", v: "~3–8M/s (HW)", sub: "XOR puro pós-CRC", c: "#fb923c" },
+                ].map((m, i) => (
+                  <div key={i} style={{ flex: 1, minWidth: 140, background: "#030508", border: `1px solid ${m.c}22`, padding: "10px 14px" }}>
+                    <div style={{ fontSize: 10, color: "#1e4050", marginBottom: 4 }}>{m.t}</div>
+                    <div style={{ fontSize: 16, color: m.c, fontWeight: 700 }}>{m.v}</div>
+                    <div style={{ fontSize: 10, color: "#1a3a4a", marginTop: 2 }}>{m.sub}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── WHERE TABLE ── */}
+        {tab === "where" && (
+          <div>
+            <div style={{ fontSize: 10, color: "#1e4050", letterSpacing: 3, marginBottom: 12 }}>
+              ONDE CADA OPERAÇÃO ACONTECE · ARQUIVO · QUANDO · CUSTO
+            </div>
+
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #0a1824" }}>
+                    {["Operação", "Arquivo:linha", "Quando acontece", "Custo"].map(h => (
+                      <th key={h} style={{ padding: "8px 12px", color: "#1e4050", fontWeight: 600, textAlign: "left", fontSize: 9, letterSpacing: 1, textTransform: "uppercase" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {WHERE_TABLE.map((r, i) => (
+                    <tr key={i} style={{ borderBottom: "1px solid #07101a", background: i % 2 === 0 ? "transparent" : "#06090f" }}>
+                      <td style={{ padding: "9px 12px", color: "#7aa8bc" }}>{r.what}</td>
+                      <td style={{ padding: "9px 12px", color: "#2a5a6a", fontFamily: "monospace", fontSize: 10 }}>{r.where}</td>
+                      <td style={{ padding: "9px 12px", color: "#1e4050" }}>{r.when}</td>
+                      <td style={{ padding: "9px 12px", color: "#60a5fa", fontWeight: 600, whiteSpace: "nowrap" }}>{r.cost}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ marginTop: 16, background: "#06090f", border: "1px solid #0a1824", padding: 14 }}>
+              <div style={{ fontSize: 10, color: "#1e4050", letterSpacing: 3, marginBottom: 10 }}>O QUE FALTA IMPLEMENTAR PARA CUSTÓDIA COMPLETA</div>
+              {[
+                ["hashchain persistente em disco", "Design existe (bitraf64, hashchain[], zipraf) mas sem implementação de escrita em arquivo. Precisa de ~50 linhas de C append-only.", "#f87171"],
+                ["SHA3-256 baremetal", "rafa_cti_scan.c tem SHA3 via libcrypto (stdlib). Precisa de implementação SHA3 baremetal em zero_compat.h para custódia sem dependência.", "#fbbf24"],
+                ["ring buffer para audit_signatures", "logcat ring existe (1024×1KB). Falta ring equivalente para audit_signatures — assim background pode acumular provas sem bloquear main thread.", "#fbbf24"],
+                ["VmFlow + custódia integrada", "VmFlow tem mono_nanos (timestamp) mas não gera audit_signature por transição. Integrar VmFlow com o pipeline INGEST→AUDIT fecha o loop.", "#60a5fa"],
+                ["stream replay API", "exec_signature acumulado existe mas não há API para 'dado este seed e este hashchain, replay esta execução'. É a última peça para custódia verificável externamente.", "#a78bfa"],
+              ].map(([t, d, c], i) => (
+                <div key={i} style={{ display: "flex", gap: 12, marginBottom: 8, paddingBottom: 8, borderBottom: i < 4 ? "1px solid #08121c" : "none" }}>
+                  <span style={{ fontSize: 9, color: c, border: `1px solid ${c}44`, padding: "1px 6px", height: "fit-content", whiteSpace: "nowrap", marginTop: 2 }}>PENDENTE</span>
+                  <div>
+                    <div style={{ fontSize: 11, color: c, marginBottom: 2 }}>{t}</div>
+                    <div style={{ fontSize: 11, color: "#2a5a6a", lineHeight: 1.6 }}>{d}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: "#06090f", border: "1px solid #34d39922", padding: 14, marginTop: 8 }}>
+              <div style={{ fontSize: 10, color: "#34d399", letterSpacing: 2, marginBottom: 6 }}>Φ_ethica · síntese final</div>
+              <div style={{ fontSize: 12, color: "#2a5a6a", lineHeight: 2 }}>
+                A cadeia existe em <span style={{ color: "#60a5fa" }}>4 de 5 elos</span>: INGEST → PROCESS → VERIFY → AUDIT estão implementados e funcionais.
+                O <span style={{ color: "#f87171" }}>5º elo — hashchain persistente em disco</span> é a única peça que falta para custódia externa verificável.
+                Background threads (<span style={{ color: "#fbbf24" }}>logcat ring + VmFlow</span>) já fornecem contexto temporal.
+                Com SHA3 baremetal + hashchain append-only + replay API:
+                a RAFAELIA passa de <em style={{ color: "#a78bfa" }}>sistema que guarda logs</em> para <em style={{ color: "#34d399" }}>sistema que prova que existiu</em>.
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

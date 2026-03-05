@@ -1,0 +1,315 @@
+import { useState } from "react";
+
+const files = [
+  // ─── ENGINE/RMR/SRC ───────────────────────────────────────────────────────
+  {
+    path: "engine/rmr/src/rafa_cti_scan.c",
+    sev: "CRÍTICO",
+    errors: [
+      { tag: "STDLIB×8", text: "#include <stdio.h/stdlib.h/string.h/math.h/time.h/errno.h/inttypes.h> — 8 headers stdlib, o arquivo inteiro depende de libc." },
+      { tag: "LIBC", text: "Usa printf, malloc implícito via structs, time(), clock_gettime() — impossível compilar sem OS." },
+      { tag: "MISSING_ASM", text: "CRC32C feito em tabela C com loop — deveria chamar rmr_casm_bridge para arm64/x86 em runtime." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_unified_kernel.c",
+    sev: "CRÍTICO",
+    errors: [
+      { tag: "MALLOC_DEFAULT", text: "RMR_JNI_BUILD=ON (default) → #define rmr_malloc(sz) malloc(sz) — bump allocator é bypassado por padrão." },
+      { tag: "C_KEYWORDS", text: "20+ if/for/while nos paths de init e dispatch — regra hot-path ASM branches não seguida." },
+      { tag: "FREE_NOOP", text: "rmr_free(p) = free(p) em JNI build, mas bump allocator é no-op — comportamento diverge por flag de compile." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_neon_simd.c",
+    sev: "CRÍTICO",
+    errors: [
+      { tag: "MALLOC_JNI", text: "JNI path: #define rmr_malloc malloc + #define rmr_free free — NEON paths alocam via bionic, não baremetal." },
+      { tag: "STDLIB", text: "#include <stdlib.h> + #include <string.h> no branch JNI — contamina o módulo SIMD com dependência de OS." },
+      { tag: "ARM64_OFF", text: "NEON intrinsics presentes mas RMR_ASM_CORE_ARM64_VALIDATED=OFF default → código NEON nunca ativa em builds normais." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_policy_kernel.c",
+    sev: "ALTO",
+    errors: [
+      { tag: "STDLIB_JNI", text: "JNI path inclui <stdio.h>, <stdlib.h>, <string.h>, <sys/stat.h> — 4 headers OS no kernel de política." },
+      { tag: "arm_acle.h", text: "#include <arm_acle.h> para CRC32 HW direto no .c — deveria estar isolado no casm_bridge, não no kernel." },
+      { tag: "PHI32_LITERAL", text: "RMR_PHI32 usado em 6 operações mas não inclui zero.h — valor hardcoded via header próprio, não fonte única." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_qemu_bridge.c",
+    sev: "ALTO",
+    errors: [
+      { tag: "STDIO", text: "#include <stdio.h> + #include <string.h> + #include <limits.h> — módulo de bridge QEMU depende de libc completamente." },
+      { tag: "FOPEN_FWRITE", text: "Usa FILE*, fopen(), fwrite(), fclose() para gerar strings de comando — impossível em contexto baremetal/no-OS." },
+      { tag: "SNPRINTF", text: "snprintf() para compor command line QEMU — stdlib sprintf, proibido no-libc; deveria usar rmr_corelib." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/bitomega.c",
+    sev: "ALTO",
+    errors: [
+      { tag: "MATH_H", text: "#include <math.h> — única dependência mas suficiente para quebrar baremetal: puxa libm do OS." },
+      { tag: "FLOAT_OPS", text: "clamp01(), classify() usam float com NaN check (x!=x) — UB em alguns targets baremetal sem FPU soft." },
+      { tag: "NO_COMPAT", text: "Não inclui rmr_baremetal_compat.h — usa tipos float/int genéricos sem garantia de width em freestanding." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/bitraf.c",
+    sev: "ALTO",
+    errors: [
+      { tag: "MUTABLE_GLOBAL", text: "static uint64_t g_bitraf_seed — seed global mutável: bitraf_set_seed() o altera, quebrando determinismo entre instâncias." },
+      { tag: "PHI64_LITERAL", text: "0x9E3779B97F4A7C15ULL hardcoded 4× no arquivo — deveria ser #define PHI64 em zero.h (arquivo inexistente)." },
+      { tag: "HEADER_DEP", text: "Depende de bitraf_version.h que expõe MAJOR/MINOR/PATCH como inteiros — shift overflow se versão >255." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_casm_bridge.c",
+    sev: "ALTO",
+    errors: [
+      { tag: "ASM_DEAD", text: "Requer RMR_ASM_CORE_EXPERIMENTAL=1 AND RMR_ASM_CORE_ARM64_VALIDATED=1 para ativar ARM64 — ambos OFF por default, ASM nunca executa." },
+      { tag: "C_FALLBACK", text: "Fallback C rmr_casm_mix_tail() usa while() loop — viola hot-path ASM branch rule no exato ponto de fallback." },
+      { tag: "NO_RISCV_DETECT", text: "RISCV64 branch exige __riscv_xlen==64 em compile time — sem runtime detect; falha silenciosa em cross-compile." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_bench.c",
+    sev: "MÉDIO",
+    errors: [
+      { tag: "FOR_HOTPATH", text: "Todos os microbenchmarks usam for(u32 i=0;…) em C — os próprios loops de medição violam a regra de hot-path sem C keywords." },
+      { tag: "RmR_Bench_Alu", text: "seed ^= <<5, += >>3, *=3 são ALU ops C puras — deveria chamar rmr_ll_ops para garantir que mede ASM, não C compiler output." },
+      { tag: "NO_FENCE", text: "Sem memory fence / isb antes de RmR_ReadCycles() — medições de ciclo não são serializadas, resultados não determinísticos." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_bench_suite.c",
+    sev: "MÉDIO",
+    errors: [
+      { tag: "FOR_NESTED", text: "Loops for aninhados (i/j/k) para matrix bench — >50 C keywords em suite que deveria ser delegada a ASM." },
+      { tag: "STATIC_BUF", text: "Buffers de bench declarados static dentro de funções — não thread-safe, quebra em execução paralela." },
+      { tag: "RmR_Mix64_LITERAL", text: "0x9E3779B97F4A7C15ull hardcoded em RmR_Mix64 — 3ª ocorrência dispersa, sem zero.h centralizado." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_ll_ops.c",
+    sev: "MÉDIO",
+    errors: [
+      { tag: "WHILE_FALLBACK", text: "rmr_popcount32_fallback() e rmr_popcount64_fallback() usam while(v) C — fallback legítimo mas não sinalizado como não-baremetal." },
+      { tag: "INTRIN_H", text: "#include <intrin.h> para MSVC — pull de header Windows em arquivo que se declara baremetal cross-platform." },
+      { tag: "RDTSC_INLINE", text: "RmR_LL_ReadCycles() tem implementação inline __asm__ rdtsc mas sem CPUID serialize antes — TSC não-ordenado em OoO CPUs." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_ll_tuning.c",
+    sev: "MÉDIO",
+    errors: [
+      { tag: "MEMSET_SYMBOL", text: "Chama memset(plan, 0, sizeof(*plan)) — em JNI path usa string.h memset; em baremetal usa rmr_memset via macro, mas macro não definida aqui." },
+      { tag: "STRING_H_JNI", text: "#include <string.h> no branch JNI — tuning de latência/IOPS depende de OS string lib para zerar structs." },
+      { tag: "CLAMP_C", text: "clamp_u32() em C com if/if — função utilitária trivial que poderia ser rmr_ll_ops intrinsic para garantir sem branch." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_lowlevel_reduce.c",
+    sev: "MÉDIO",
+    errors: [
+      { tag: "FOR_HOTPATH", text: "rmr_lowlevel_reduce_xor() e rmr_lowlevel_checksum32() usam for(size_t i…) — hot paths de checksum em C puro sem ASM bridge." },
+      { tag: "SIZE_T", text: "Usa size_t sem #include nem typedef própria — depende do compilador inferir size_t de contexto (UB em freestanding)." },
+      { tag: "CONST_0x9E", text: "0x9Eu e 0xA5A5A5A5u hardcoded em checksum32 — constantes PHI deveriam vir de zero.h." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_isorf.c",
+    sev: "MÉDIO",
+    errors: [
+      { tag: "FOR_LOOPS×8", text: "8 loops for(u32 i=0…) em funções de page management — toda lógica de alocação lógica em C, sem ASM." },
+      { tag: "MANIFEST_MAGIC", text: "0x49534F52464D414EuLL hardcoded como #define — outro literal 64-bit sem zero.h; inconsistente com PHI32 style." },
+      { tag: "NULL_NO_COMPAT", text: "Checa !st / !pages / !data_words com if — sem rmr_baremetal_compat.h, NULL assume valor do compilador, não 0x0 garantido." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_corelib.c",
+    sev: "MÉDIO",
+    errors: [
+      { tag: "SIZE_T_IMPLICIT", text: "size_t e uintptr_t usados extensivamente mas declarados via rmr_corelib.h — se header não inclui compat, tipos ficam indefinidos em freestanding." },
+      { tag: "WHILE_STRLEN", text: "rmr_len_u8() usa while(*p != 0) word-aligned — implementação correta mas em C; candidato a ASM LDRB loop em ARM64." },
+      { tag: "NO_INCLUDE_GUARD_CHECK", text: "Depende de rmr_corelib.h para todos os tipos — se incluído após zero_compat.h (inexistente) os typedefs colidem." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_math_fabric.c",
+    sev: "BAIXO",
+    errors: [
+      { tag: "ARCH_MAGIC_NUMS", text: "arch==2u, arch==4u, arch==9u como literais nas comparações — valores de arch_code sem enum nomeado nem constante em zero.h." },
+      { tag: "ROTL_DUPE", text: "rmr_rotl32() reimplementado localmente — duplicata de rmr_lowlevel_portable.c; sem header único, pode divergir." },
+      { tag: "rmr_mix32_DUPE", text: "rmr_mix32() idêntico ao bitomega.c clamp logic — mesma função de avalanche em 3 arquivos diferentes sem shared inline." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_cycles.c",
+    sev: "BAIXO",
+    errors: [
+      { tag: "WRAPPER_TRIVIAL", text: "Arquivo inteiro é uma wrapper de 1 linha sobre RmR_LL_ReadCycles() — compilador inline-iza de qualquer forma, arquivo desnecessário." },
+      { tag: "NO_SERIALIZE", text: "Sem instrução de barreira (isb/lfence) antes da leitura — ciclos podem ser reordenados pelo OoO pipeline." },
+      { tag: "TYPE_CAST", text: "(u64) cast de RmR_LL_ReadCycles() que já retorna u64 — cast redundante, indício de inconsistência de tipos entre módulos." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_lowlevel_mix.c",
+    sev: "BAIXO",
+    errors: [
+      { tag: "EXTERN_UNGUARDED", text: "extern rmr_lowlevel_mix_step_x86_64() declarado apenas para __x86_64__ — sem equivalente ARM64 extern; fold32 usa C fallback em ARM." },
+      { tag: "MAGIC_LITERALS", text: "0x9E3779B9u, 0x85EBCA6Bu, 0x7FEB352Du, 0x846CA68Bu hardcoded — 4 constantes de avalanche sem nomes nem zero.h." },
+      { tag: "ROTL_3RD_COPY", text: "Chama rmr_lowlevel_rotl32() que está em rmr_lowlevel_portable.c — 3ª dependência cruzada de rotl sem header único." },
+    ],
+  },
+  {
+    path: "engine/rmr/src/rmr_lowlevel_portable.c",
+    sev: "BAIXO",
+    errors: [
+      { tag: "SHIFT_UB", text: "v >> (32u - s) quando s==0 → 32u - 0 = 32 → UB em C99 (shift por width exato é undefined behavior)." },
+      { tag: "IF_GUARD", text: "if(s==0u) return v — guard correto mas é C branch no hot path de rotl que deveria ser conditional ASM select." },
+      { tag: "FILENAME_LIE", text: "Nome 'portable' implica sem deps — mas tamanho de u32/uint32_t assumido 32-bit sem static_assert ou compat typedef." },
+    ],
+  },
+  // ─── APP/SRC/MAIN/CPP ────────────────────────────────────────────────────
+  {
+    path: "app/src/main/cpp/vectra_core_accel.c",
+    sev: "ALTO",
+    errors: [
+      { tag: "STDLIB+PTHREAD", text: "#include <stdlib.h>, <string.h>, <pthread.h> — JNI bridge de aceleração usa threads do OS, não baremetal." },
+      { tag: "MALLOC_DIRECT", text: "malloc() direto para buffers de aceleração — não usa rmr_baremetal_compat, break de arquitetura zero-deps." },
+      { tag: "JNI_ONLY", text: "Depende de <jni.h> sem fallback — impossível compilar para targets CLI/baremetal fora do Android NDK." },
+    ],
+  },
+  {
+    path: "app/src/main/cpp/lowlevel_bridge.c",
+    sev: "MÉDIO",
+    errors: [
+      { tag: "JNI_LOCK", text: "#include <jni.h> + #include <stdint.h> — bridge low-level hardcodada para JNI, sem ABI alternativo." },
+      { tag: "NO_ARCH_DISPATCH", text: "Não chama rmr_hw_detect para selecionar path — expõe funções genéricas ao Java sem otimização por arq." },
+      { tag: "MISSING_IMPL", text: "Arquivo declarado no CMakeLists mas funções de dispatch não vinculam aos .S files — linkagem incompleta." },
+    ],
+  },
+  {
+    path: "app/src/main/cpp/hardware_profile_bridge.c",
+    sev: "BAIXO",
+    errors: [
+      { tag: "JNI_ONLY", text: "#include <jni.h> sem fallback CLI — não compilável fora do NDK." },
+      { tag: "DUPLICATE_DETECT", text: "Re-implementa subset de rmr_hw_detect.c para retornar ao Java — lógica duplicada, pode divergir." },
+      { tag: "NO_CACHE_INFO", text: "Retorna arch/cores mas não L1/L2/L3 cache sizes — HWCAP/CPUID incompleto para tuning real." },
+    ],
+  },
+  // ─── DEMO_CLI ─────────────────────────────────────────────────────────────
+  {
+    path: "demo_cli/src/main.c",
+    sev: "ALTO",
+    errors: [
+      { tag: "FOPEN_FWRITE", text: "#include <stdio.h> — usa FILE*, fopen(), fwrite(), fclose() para criar arquivos de demo — OS I/O direto." },
+      { tag: "STRING_H", text: "#include <string.h> — strlen/memcpy do OS para payloads de teste." },
+      { tag: "DEMO_AS_PROD", text: "Demo CLI é o único ponto de integração testável — sem framework de test puro baremetal, demo vira produção por acidente." },
+    ],
+  },
+  // ─── BUG/CORE ─────────────────────────────────────────────────────────────
+  {
+    path: "bug/core/rmr_unified_kernel.c",
+    sev: "CRÍTICO",
+    errors: [
+      { tag: "DIVERGE_ENGINE", text: "Arquivo em bug/core/ é versão diferente do engine/rmr/src/ — dois kernels unificados distintos no mesmo repo, sem merge." },
+      { tag: "PATCH_NOT_APPLIED", text: "Este é o arquivo com patches _incoming/ — mas os 3 ZIPs ainda não foram aplicados, estado real é incerto." },
+      { tag: "DUPLICATE_ROOT", text: "Ter kernel em bug/ E em engine/ significa que qualquer fix aplicado num precisa ser replicado manualmente no outro." },
+    ],
+  },
+];
+
+const SEV_ORDER = ["CRÍTICO", "ALTO", "MÉDIO", "BAIXO"];
+const SEV_COLOR = { CRÍTICO: "#ff3b3b", ALTO: "#ff8c00", MÉDIO: "#f0c040", BAIXO: "#4fc3f7" };
+
+function count(sev) { return files.filter(f => f.sev === sev).length; }
+
+export default function App() {
+  const [filter, setFilter] = useState("TODOS");
+  const [open, setOpen] = useState(null);
+
+  const shown = filter === "TODOS" ? files : files.filter(f => f.sev === filter);
+
+  return (
+    <div style={{ fontFamily: "'Courier New', monospace", background: "#080c12", minHeight: "100vh", color: "#b8ccd8" }}>
+      {/* header */}
+      <div style={{ background: "#090e18", borderBottom: "1px solid #0e2030", padding: "20px 28px" }}>
+        <div style={{ fontSize: 11, color: "#2a5a7a", letterSpacing: 4, marginBottom: 4 }}>RAFAELIA · VECTRAS-VM-ANDROID · AUDITORIA</div>
+        <h1 style={{ margin: 0, fontSize: 18, color: "#d0e8ff", fontWeight: 700 }}>
+          Arquivos com Erros — {files.length} ficheiros · {files.reduce((a,f)=>a+f.errors.length,0)} problemas
+        </h1>
+        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          {["TODOS", ...SEV_ORDER].map(s => (
+            <button key={s} onClick={() => { setFilter(s); setOpen(null); }} style={{
+              background: filter === s ? "#0d1e30" : "transparent",
+              border: `1px solid ${filter === s ? "#1a4060" : "#0e1e2c"}`,
+              color: SEV_COLOR[s] || "#6a9ab8",
+              padding: "4px 14px", cursor: "pointer", fontSize: 11, letterSpacing: 1,
+            }}>
+              {s}{s !== "TODOS" ? ` (${count(s)})` : ` (${files.length})`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: "20px 28px" }}>
+        {shown.map((f, fi) => {
+          const isOpen = open === fi;
+          const col = SEV_COLOR[f.sev];
+          return (
+            <div key={fi} style={{ marginBottom: 6 }}>
+              <div
+                onClick={() => setOpen(isOpen ? null : fi)}
+                style={{
+                  background: "#090e18", border: `1px solid ${col}28`,
+                  padding: "11px 16px", cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 12
+                }}
+              >
+                <span style={{
+                  fontSize: 9, fontWeight: 700, color: col, background: `${col}16`,
+                  border: `1px solid ${col}44`, padding: "2px 7px", letterSpacing: 1,
+                  minWidth: 54, textAlign: "center"
+                }}>{f.sev}</span>
+                <span style={{ flex: 1, fontSize: 12, color: "#90b8d0", fontFamily: "monospace" }}>
+                  {f.path}
+                </span>
+                <span style={{ fontSize: 10, color: "#1a4060" }}>{f.errors.length} erros</span>
+                <span style={{ color: "#1a4060", fontSize: 11 }}>{isOpen ? "▲" : "▼"}</span>
+              </div>
+
+              {isOpen && (
+                <div style={{ background: "#05080f", border: `1px solid ${col}18`, borderTop: "none", padding: "10px 16px 14px" }}>
+                  {f.errors.map((e, ei) => (
+                    <div key={ei} style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: ei < f.errors.length - 1 ? "1px solid #0a1520" : "none" }}>
+                      <span style={{
+                        fontSize: 9, color: col, border: `1px solid ${col}44`,
+                        padding: "1px 6px", height: "fit-content", whiteSpace: "nowrap",
+                        marginTop: 2, minWidth: 90, textAlign: "center"
+                      }}>{e.tag}</span>
+                      <span style={{ fontSize: 12, color: "#7a9ab8", lineHeight: 1.7 }}>{e.text}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ padding: "0 28px 28px", maxWidth: 800 }}>
+        <div style={{ background: "#090e18", border: "1px solid #0e2030", padding: 14, fontSize: 11, color: "#3a6a8a", lineHeight: 2 }}>
+          <span style={{ color: "#4fc3f7" }}>F_gap síntese: </span>
+          <span style={{ color: "#ff3b3b" }}>zero_compat.h ausente</span> é o root cause de 60% dos erros —
+          sem ele cada arquivo resolve stdlib por conta própria criando divergência.
+          <span style={{ color: "#ff8c00" }}> JNI_BUILD=ON default</span> mascara todos os erros baremetal em build normal.
+          Fix mínimo: criar zero.h + zero_compat.h + setar RMR_JNI_BUILD=OFF em target baremetal.
+        </div>
+      </div>
+    </div>
+  );
+}
