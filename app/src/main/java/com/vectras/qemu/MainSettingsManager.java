@@ -1,14 +1,19 @@
 package com.vectras.qemu;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.net.UriPermission;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.util.Log;
@@ -19,6 +24,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
@@ -32,6 +38,7 @@ import com.vectras.vm.R;
 import com.vectras.vm.SplashActivity;
 import com.vectras.vm.VectrasApp;
 import com.vectras.vm.settings.ThemeActivity;
+import com.vectras.vm.utils.UIUtils;
 
 import java.util.Locale;
 import java.util.Objects;
@@ -216,6 +223,30 @@ public class MainSettingsManager extends AppCompatActivity
             ListPreference languagePref = findPreference("language");
             if (languagePref != null) {
                 languagePref.setOnPreferenceChangeListener(this);
+            }
+
+            SwitchPreferenceCompat reviewEnabledPref = findPreference("onboardingPermissionsReviewEnabled");
+            if (reviewEnabledPref != null) {
+                reviewEnabledPref.setChecked(getOnboardingPermissionsReviewEnabled(requireContext()));
+                reviewEnabledPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                    setOnboardingPermissionsReviewEnabled(requireContext(), (Boolean) newValue);
+                    return true;
+                });
+            }
+
+            Preference reviewNowPref = findPreference("reviewOnboardingPermissionsNow");
+            if (reviewNowPref != null) {
+                reviewNowPref.setOnPreferenceClickListener(preference -> {
+                    reevaluateOnboardingPermissionsSnapshot(requireContext());
+                    OnboardingPermissionsSnapshot snapshot = getOnboardingPermissionsSnapshot(requireContext());
+                    reviewNowPref.setSummary(getOnboardingPermissionsSnapshotSummary(snapshot));
+                    UIUtils.toastShort(requireContext(), getString(R.string.permissions_review_updated));
+                    return true;
+                });
+
+                reevaluateOnboardingPermissionsSnapshot(requireContext());
+                reviewNowPref.setSummary(getOnboardingPermissionsSnapshotSummary(
+                        getOnboardingPermissionsSnapshot(requireContext())));
             }
 
 //            SwitchPreferenceCompat switchPreferenceCompat = findPreference("updateVersionPrompt");
@@ -1348,5 +1379,226 @@ public class MainSettingsManager extends AppCompatActivity
     public static Boolean getShowVirtualMouse(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         return prefs.getBoolean("showVirtualMouse", false);
+    }
+
+    public static final String ONBOARDING_PERMISSION_GRANTED = "GRANTED";
+    public static final String ONBOARDING_PERMISSION_SKIPPED = "SKIPPED";
+    public static final String ONBOARDING_PERMISSION_FAILED = "FAILED";
+    private static final int ONBOARDING_PERMISSION_SCHEMA_VERSION = 1;
+    private static final String KEY_ONBOARDING_PERM_STORAGE_SAF = "onboardingPermStorageSaf";
+    private static final String KEY_ONBOARDING_PERM_NOTIFICATIONS = "onboardingPermNotifications";
+    private static final String KEY_ONBOARDING_PERM_BATTERY = "onboardingPermBattery";
+    private static final String KEY_ONBOARDING_PERM_OVERLAY = "onboardingPermOverlay";
+    private static final String KEY_ONBOARDING_PERM_MEDIA_READ = "onboardingPermMediaRead";
+    private static final String KEY_ONBOARDING_PERM_SCHEMA_VERSION = "onboardingPermSchemaVersion";
+    private static final String KEY_ONBOARDING_PERM_UPDATED_AT = "onboardingPermUpdatedAt";
+    private static final String KEY_ONBOARDING_PERMISSIONS_REVIEW_ENABLED = "onboardingPermissionsReviewEnabled";
+
+    public static class OnboardingPermissionsSnapshot {
+        public final String storageSaf;
+        public final String notifications;
+        public final String battery;
+        public final String overlay;
+        public final String mediaRead;
+        public final int schemaVersion;
+        public final long updatedAt;
+
+        public OnboardingPermissionsSnapshot(String storageSaf,
+                                             String notifications,
+                                             String battery,
+                                             String overlay,
+                                             String mediaRead,
+                                             int schemaVersion,
+                                             long updatedAt) {
+            this.storageSaf = storageSaf;
+            this.notifications = notifications;
+            this.battery = battery;
+            this.overlay = overlay;
+            this.mediaRead = mediaRead;
+            this.schemaVersion = schemaVersion;
+            this.updatedAt = updatedAt;
+        }
+    }
+
+    private static void setOnboardingPermissionStatus(Context context, String key, String status) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        prefs.edit()
+                .putString(key, normalizeOnboardingPermissionStatus(status))
+                .putInt(KEY_ONBOARDING_PERM_SCHEMA_VERSION, ONBOARDING_PERMISSION_SCHEMA_VERSION)
+                .putLong(KEY_ONBOARDING_PERM_UPDATED_AT, System.currentTimeMillis())
+                .apply();
+    }
+
+    private static String getOnboardingPermissionStatus(Context context, String key) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return normalizeOnboardingPermissionStatus(prefs.getString(key, ONBOARDING_PERMISSION_SKIPPED));
+    }
+
+    public static void setOnboardingPermStorageSaf(Context context, String status) {
+        setOnboardingPermissionStatus(context, KEY_ONBOARDING_PERM_STORAGE_SAF, status);
+    }
+
+    public static String getOnboardingPermStorageSaf(Context context) {
+        return getOnboardingPermissionStatus(context, KEY_ONBOARDING_PERM_STORAGE_SAF);
+    }
+
+    public static void setOnboardingPermNotifications(Context context, String status) {
+        setOnboardingPermissionStatus(context, KEY_ONBOARDING_PERM_NOTIFICATIONS, status);
+    }
+
+    public static String getOnboardingPermNotifications(Context context) {
+        return getOnboardingPermissionStatus(context, KEY_ONBOARDING_PERM_NOTIFICATIONS);
+    }
+
+    public static void setOnboardingPermBattery(Context context, String status) {
+        setOnboardingPermissionStatus(context, KEY_ONBOARDING_PERM_BATTERY, status);
+    }
+
+    public static String getOnboardingPermBattery(Context context) {
+        return getOnboardingPermissionStatus(context, KEY_ONBOARDING_PERM_BATTERY);
+    }
+
+    public static void setOnboardingPermOverlay(Context context, String status) {
+        setOnboardingPermissionStatus(context, KEY_ONBOARDING_PERM_OVERLAY, status);
+    }
+
+    public static String getOnboardingPermOverlay(Context context) {
+        return getOnboardingPermissionStatus(context, KEY_ONBOARDING_PERM_OVERLAY);
+    }
+
+    public static void setOnboardingPermMediaRead(Context context, String status) {
+        setOnboardingPermissionStatus(context, KEY_ONBOARDING_PERM_MEDIA_READ, status);
+    }
+
+    public static String getOnboardingPermMediaRead(Context context) {
+        return getOnboardingPermissionStatus(context, KEY_ONBOARDING_PERM_MEDIA_READ);
+    }
+
+    public static OnboardingPermissionsSnapshot getOnboardingPermissionsSnapshot(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return new OnboardingPermissionsSnapshot(
+                getOnboardingPermStorageSaf(context),
+                getOnboardingPermNotifications(context),
+                getOnboardingPermBattery(context),
+                getOnboardingPermOverlay(context),
+                getOnboardingPermMediaRead(context),
+                prefs.getInt(KEY_ONBOARDING_PERM_SCHEMA_VERSION, 0),
+                prefs.getLong(KEY_ONBOARDING_PERM_UPDATED_AT, 0L)
+        );
+    }
+
+    public static void clearOnboardingPermissionsSnapshot(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        prefs.edit()
+                .remove(KEY_ONBOARDING_PERM_STORAGE_SAF)
+                .remove(KEY_ONBOARDING_PERM_NOTIFICATIONS)
+                .remove(KEY_ONBOARDING_PERM_BATTERY)
+                .remove(KEY_ONBOARDING_PERM_OVERLAY)
+                .remove(KEY_ONBOARDING_PERM_MEDIA_READ)
+                .remove(KEY_ONBOARDING_PERM_SCHEMA_VERSION)
+                .remove(KEY_ONBOARDING_PERM_UPDATED_AT)
+                .apply();
+    }
+
+    public static void reevaluateOnboardingPermissionsSnapshot(Context context) {
+        setOnboardingPermStorageSaf(context, evaluateStorageSafPermission(context));
+        setOnboardingPermNotifications(context, evaluateNotificationsPermission(context));
+        setOnboardingPermBattery(context, evaluateBatteryPermission(context));
+        setOnboardingPermOverlay(context, evaluateOverlayPermission(context));
+        setOnboardingPermMediaRead(context, evaluateMediaReadPermission(context));
+    }
+
+    public static void setOnboardingPermissionsReviewEnabled(Context context, boolean enabled) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        prefs.edit().putBoolean(KEY_ONBOARDING_PERMISSIONS_REVIEW_ENABLED, enabled).apply();
+    }
+
+    public static boolean getOnboardingPermissionsReviewEnabled(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getBoolean(KEY_ONBOARDING_PERMISSIONS_REVIEW_ENABLED, false);
+    }
+
+    public static String getOnboardingPermissionsSnapshotSummary(OnboardingPermissionsSnapshot snapshot) {
+        return "Storage(SAF): " + snapshot.storageSaf
+                + " • Notifications: " + snapshot.notifications
+                + " • Battery: " + snapshot.battery
+                + " • Overlay: " + snapshot.overlay
+                + " • Media: " + snapshot.mediaRead;
+    }
+
+    private static String evaluateStorageSafPermission(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    == PackageManager.PERMISSION_GRANTED
+                    ? ONBOARDING_PERMISSION_GRANTED
+                    : ONBOARDING_PERMISSION_FAILED;
+        }
+        for (UriPermission permission : context.getContentResolver().getPersistedUriPermissions()) {
+            if (permission != null && permission.isReadPermission()) {
+                return ONBOARDING_PERMISSION_GRANTED;
+            }
+        }
+        return ONBOARDING_PERMISSION_FAILED;
+    }
+
+    private static String evaluateNotificationsPermission(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return ONBOARDING_PERMISSION_GRANTED;
+        }
+        return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED
+                ? ONBOARDING_PERMISSION_GRANTED
+                : ONBOARDING_PERMISSION_FAILED;
+    }
+
+    private static String evaluateBatteryPermission(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return ONBOARDING_PERMISSION_GRANTED;
+        }
+        PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        if (powerManager == null) {
+            return ONBOARDING_PERMISSION_FAILED;
+        }
+        return powerManager.isIgnoringBatteryOptimizations(context.getPackageName())
+                ? ONBOARDING_PERMISSION_GRANTED
+                : ONBOARDING_PERMISSION_FAILED;
+    }
+
+    private static String evaluateOverlayPermission(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return ONBOARDING_PERMISSION_GRANTED;
+        }
+        return Settings.canDrawOverlays(context)
+                ? ONBOARDING_PERMISSION_GRANTED
+                : ONBOARDING_PERMISSION_FAILED;
+    }
+
+    private static String evaluateMediaReadPermission(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            boolean mediaGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES)
+                    == PackageManager.PERMISSION_GRANTED
+                    || ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO)
+                    == PackageManager.PERMISSION_GRANTED
+                    || ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_AUDIO)
+                    == PackageManager.PERMISSION_GRANTED;
+            return mediaGranted ? ONBOARDING_PERMISSION_GRANTED : ONBOARDING_PERMISSION_FAILED;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE)
+                    == PackageManager.PERMISSION_GRANTED
+                    ? ONBOARDING_PERMISSION_GRANTED
+                    : ONBOARDING_PERMISSION_FAILED;
+        }
+        return ONBOARDING_PERMISSION_GRANTED;
+    }
+
+    private static String normalizeOnboardingPermissionStatus(String status) {
+        if (ONBOARDING_PERMISSION_GRANTED.equals(status)
+                || ONBOARDING_PERMISSION_SKIPPED.equals(status)
+                || ONBOARDING_PERMISSION_FAILED.equals(status)) {
+            return status;
+        }
+        return ONBOARDING_PERMISSION_SKIPPED;
     }
 }

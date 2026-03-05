@@ -56,6 +56,19 @@
             app:isPreferenceVisible="true"
             app:icon="@drawable/round_language_24" />
 
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="onboardingPermissionsReviewEnabled"
+            android:summary="@string/permissions_review_flag_summary"
+            android:title="@string/permissions_review_flag_title"
+            app:icon="@drawable/round_settings_24" />
+
+        <Preference
+            android:key="reviewOnboardingPermissionsNow"
+            android:summary="@string/permissions_review_now_summary"
+            android:title="@string/permissions_review_now_title"
+            app:icon="@drawable/round_settings_24" />
+
 
         <Preference
             android:key="officialcommunitychannel"

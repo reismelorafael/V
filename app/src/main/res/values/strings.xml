@@ -1094,4 +1094,9 @@ CPU1 %3$d%% · CPUm %4$d%% · MEM %5$d%% · IO %6$d%% · INT %7$d%% · EMU %8$d%
     <string name="setup_action_rollback">Restore previous version</string>
     <string name="setup_action_export_diagnostic">Export diagnostic</string>
     <string name="setup_rollback_not_available">Rollback is not available yet for this session.</string>
+    <string name="permissions_review_flag_title">Review permissions in onboarding</string>
+    <string name="permissions_review_flag_summary">Show permission review shortcut in setup/settings flows.</string>
+    <string name="permissions_review_now_title">Review permissions now</string>
+    <string name="permissions_review_now_summary">Re-check real system permission state and refresh cached onboarding status.</string>
+    <string name="permissions_review_updated">Permission review status updated.</string>
 </resources>

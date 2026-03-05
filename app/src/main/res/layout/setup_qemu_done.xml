@@ -85,6 +85,17 @@
             android:text="@string/later"
             android:background="?attr/selectableItemBackgroundBorderless" />
 
+        <TextView
+            android:id="@+id/tv_review_permissions"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:text="@string/permissions_review_now_title"
+            android:textColor="?attr/colorPrimary"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:visibility="gone" />
+
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
