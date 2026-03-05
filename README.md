@@ -98,6 +98,7 @@ find . -maxdepth 2 -type d | sort
 ## Setup rápido de build
 - Copie `local.properties.example` para `local.properties` e ajuste `sdk.dir`.
 - Ajuste versões via `gradle.properties` (`COMPILE_API`, `TOOLS_VERSION`, `JAVA_LANGUAGE_VERSION`, `CMAKE_VERSION`, `NDK_VERSION`).
+- Baseline único de CMake para host + Android: `3.22.1`. O `CMakeLists.txt` da raiz e o CMake do app JNI compartilham esse baseline para evitar drift entre build local/CI e NDK.
 - Política de JVM do Gradle: execute preferencialmente com **JDK 17** (alinhado com `JAVA_LANGUAGE_VERSION=17`).
 - Defina explicitamente `JAVA_HOME` para o JDK 17/21 ou configure `org.gradle.java.home=<path-do-jdk17-ou-jdk21>` em `~/.gradle/gradle.properties`.
 - Use sempre o wrapper `./tools/gradle_with_jdk21.sh` (local e CI) para evitar regressão com JDK 22+.

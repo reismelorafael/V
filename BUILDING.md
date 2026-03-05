@@ -6,6 +6,8 @@
 - NDK 27.2.12479018
 - CMake 3.22.1
 
+> Baseline único de CMake: host (raiz) e Android JNI usam 3.22.1 para manter paridade de toolchain.
+
 ## Setup environment (example)
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64

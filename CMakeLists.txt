@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.16)
+# Baseline único de CMake alinhado ao pipeline Android JNI/Gradle.
+cmake_minimum_required(VERSION 3.22.1)
 project(rafaelia_rmr C ASM)
 
 set(CMAKE_C_STANDARD 11)
