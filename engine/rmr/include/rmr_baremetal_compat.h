@@ -131,7 +131,34 @@ static inline int       rmr_stat_stub(const char *p, void *s)     { (void)p;(voi
 struct stat { int st_size; };
 
 /* stdlib.h abort/exit stubs */
-static inline void rmr_abort(void) { for(;;) { __asm__("wfi"); } }
+#if defined(__has_attribute)
+#  if __has_attribute(noreturn)
+#    define RMR_NORETURN __attribute__((noreturn))
+#  else
+#    define RMR_NORETURN
+#  endif
+#elif defined(__GNUC__) || defined(__clang__)
+#  define RMR_NORETURN __attribute__((noreturn))
+#else
+#  define RMR_NORETURN
+#endif
+
+/* Portabilidade: cada arquitetura usa a instrução de idle/halt mais apropriada
+   quando disponível; fallback mantém loop puro com barreira de memória para
+   evitar otimizações agressivas e preservar comportamento seguro sem libc. */
+static inline RMR_NORETURN void rmr_abort(void) {
+    for (;;) {
+#if defined(__aarch64__) || defined(__arm__)
+        __asm__ __volatile__("wfi");
+#elif defined(__x86_64__) || defined(__i386__)
+        __asm__ __volatile__("hlt");
+#elif defined(__riscv)
+        __asm__ __volatile__("wfi");
+#else
+        __asm__ __volatile__("" ::: "memory");
+#endif
+    }
+}
 #define abort()   rmr_abort()
 #define exit(c)   rmr_abort()
 
