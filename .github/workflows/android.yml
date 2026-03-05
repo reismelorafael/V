@@ -2,6 +2,7 @@ name: Android CI
 
 on:
   push:
+    branches: [main, master, dev, release/**]
     paths:
       - 'app/**'
       - 'terminal-emulator/**'
@@ -110,6 +111,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       has_signing_secrets: ${{ steps.release_mode.outputs.has_signing_secrets }}
+      has_telegram_secrets: ${{ steps.release_mode.outputs.has_telegram_secrets }}
 
     steps:
       - uses: actions/checkout@v4
@@ -124,6 +126,18 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
           cache: gradle
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Android SDK state
+        uses: actions/cache@v4
+        with:
+          path: ~/.android
+          key: android-sdk-${{ runner.os }}-${{ env.COMPILE_API }}-${{ env.TOOLS_VERSION }}-${{ env.NDK_VERSION }}-${{ env.CMAKE_VERSION }}
+          restore-keys: |
+            android-sdk-${{ runner.os }}-${{ env.COMPILE_API }}-${{ env.TOOLS_VERSION }}-
+            android-sdk-${{ runner.os }}-
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -178,6 +192,13 @@ jobs:
             echo "has_signing_secrets=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_signing_secrets=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+            && ( -n "${{ secrets.TELEGRAM_CHAT_ID }}" || -n "${{ secrets.TELEGRAM_CHAT_ID_VEC }}" ) ]]; then
+            echo "has_telegram_secrets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_telegram_secrets=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Validate release version metadata consistency
@@ -254,6 +275,18 @@ jobs:
           distribution: temurin
           cache: gradle
 
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Android SDK state
+        uses: actions/cache@v4
+        with:
+          path: ~/.android
+          key: android-sdk-${{ runner.os }}-${{ env.COMPILE_API }}-${{ env.TOOLS_VERSION }}-${{ env.NDK_VERSION }}-${{ env.CMAKE_VERSION }}
+          restore-keys: |
+            android-sdk-${{ runner.os }}-${{ env.COMPILE_API }}-${{ env.TOOLS_VERSION }}-
+            android-sdk-${{ runner.os }}-
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -317,6 +350,12 @@ jobs:
           ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
         run: ./gradlew verifyRepoFileDependencies ${{ env.GRADLE_ARGS }}
 
+      - name: Verify bootstrap assets and non-Markdown inventory
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: ./gradlew verifyBootstrapAssets auditNonMdInventory ${{ env.GRADLE_ARGS }}
+
       - name: Native ABI matrix gate
         run: ./gradlew checkNativeAllMatrix ${{ env.GRADLE_ARGS }}
 
@@ -349,7 +388,7 @@ jobs:
         echo "event_name=${GITHUB_EVENT_NAME}"
         echo "build_debug=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_debug || 'true' }}"
         echo "build_release=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_release || 'true' }}"
-        echo "sign_release=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sign_release || 'true' }}"
+        echo "sign_release=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sign_release || 'false' }}"
         echo "upload_telegram=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram || 'false' }}"
         echo "compile_api=${COMPILE_API}"
         echo "tools_version=${TOOLS_VERSION}"
@@ -584,7 +623,7 @@ jobs:
       run: ./gradlew assembleRelease -PCOMPILE_API=${COMPILE_API} -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION}
 
     - name: Build Release APK (signed via CI secrets)
-      if: ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true') && ((github.event_name == 'workflow_dispatch' && github.event.inputs.sign_release == 'true') || needs.preflight.outputs.has_signing_secrets == 'true') }}
+      if: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true') && ((github.event_name == 'workflow_dispatch' && github.event.inputs.sign_release == 'true') || needs.preflight.outputs.has_signing_secrets == 'true') }}
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
@@ -638,21 +677,7 @@ jobs:
         path: ${{ steps.release_artifact.outputs.path }}
 
     - name: Stage Release APKs for Telegram upload
-      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram == 'true' && github.event.inputs.build_release == 'true' }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        shopt -s nullglob
-        mkdir -p artifacts/release
-        release_apks=(app/build/outputs/apk/release/*.apk)
-        if [[ ${#release_apks[@]} -eq 0 ]]; then
-          echo "No APK files found under app/build/outputs/apk/release for Telegram staging." >&2
-          exit 1
-        fi
-        cp app/build/outputs/apk/release/*.apk artifacts/release/
-
-    - name: Stage Release APKs for Telegram upload
-      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram == 'true' && github.event.inputs.build_release == 'true' }}
+      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram == 'true' && github.event.inputs.build_release == 'true' && needs.preflight.outputs.has_telegram_secrets == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -666,7 +691,7 @@ jobs:
         cp app/build/outputs/apk/release/*.apk artifacts/release/
 
     - name: Upload to Telegram
-      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram == 'true' && github.event.inputs.build_release == 'true' }}
+      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram == 'true' && github.event.inputs.build_release == 'true' && needs.preflight.outputs.has_telegram_secrets == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -683,9 +708,7 @@ jobs:
           exit 1
         fi
 
-        caption="Done! Note that this is a version that is automatically built when there are changes in the GitHub repository, not the official version. Please only install it if you really want to see what is new.
-Explore beta releases here: https://github.com/AnBui2004/Vectras-VM-Emu-Android/releases
-Run ID: ${GITHUB_RUN_ID}"
+        caption="Done! Note that this is a version that is automatically built when there are changes in the GitHub repository, not the official version. Please only install it if you really want to see what is new.\nExplore beta releases here: https://github.com/AnBui2004/Vectras-VM-Emu-Android/releases\nRun ID: ${GITHUB_RUN_ID}"
 
         for file in "${release_apks[@]}"; do
           if [[ -n "${{ secrets.TELEGRAM_CHAT_ID }}" ]]; then

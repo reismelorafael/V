@@ -3,6 +3,9 @@ name: android-build-manual
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   android-debug:
     runs-on: ubuntu-latest
@@ -43,5 +46,19 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon verifyGradleRuntimeJvm verifyTargetApiBaseline verifyMinApiAbiCompatibility verifyArm64ToolchainCompatibility verifyBootstrapAssets verifyRepoFileDependencies
 
-      - name: Assemble app debug
-        run: ./gradlew --no-daemon :app:assembleDebug -PcheckVariant=debug
+      - name: Lint + Assemble app debug
+        run: ./gradlew --no-daemon lintDebug :app:assembleDebug -PcheckVariant=debug --stacktrace
+
+      - name: Run native matrix (reduced)
+        run: ./gradlew --no-daemon checkNativeAllMatrix -PbuildStrict=false --stacktrace
+
+      - name: Upload APK and Gradle reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-manual-artifacts
+          path: |
+            app/build/outputs/apk/**/*.apk
+            **/build/reports/**
+            **/build/test-results/**
+          if-no-files-found: warn

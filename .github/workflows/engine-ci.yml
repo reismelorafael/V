@@ -28,7 +28,12 @@ concurrency:
 
 jobs:
   engine-build-bench:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04]
+        compiler: [gcc, clang]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     defaults:
       run:
@@ -45,7 +50,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential cmake make ninja-build pkg-config graphviz python3
+          sudo apt-get install -y --no-install-recommends build-essential cmake make ninja-build pkg-config graphviz python3 ccache clang
 
       - name: Validate native toolchain dependencies
         run: |
@@ -59,17 +64,32 @@ jobs:
             echo "OK: $tool -> $(command -v "$tool")"
           done
 
+      - name: Prepare compiler + ccache
+        run: |
+          echo "CC=${{ matrix.compiler }}" >> "$GITHUB_ENV"
+          echo "CXX=${{ matrix.compiler == 'clang' && 'clang++' || 'g++' }}" >> "$GITHUB_ENV"
+          mkdir -p ~/.ccache
+          ccache --max-size=500M
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ matrix.compiler }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ matrix.compiler }}-
+
       - name: Prepare output directories
         run: |
           mkdir -p bench/results
           mkdir -p reports/baremetal
 
       - name: Build with Make
-        run: make clean && make all
+        run: make clean && make all CC="$CC" CXX="$CXX"
 
       - name: Build with CMake
         run: |
-          cmake -S . -B build-cmake
+          cmake -S . -B build-cmake -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX"
           cmake --build build-cmake -j"$(nproc)"
 
       - name: Run BitΩ smoke test (Make)
@@ -109,3 +129,14 @@ jobs:
           name: baremetal-reports
           path: reports/baremetal/*
           if-no-files-found: warn
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build clang
+      - name: ASAN+UBSAN smoke build
+        run: |
+          cmake -S . -B build-sanitizers -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          cmake --build build-sanitizers -j"$(nproc)"

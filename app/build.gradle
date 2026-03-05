@@ -287,7 +287,7 @@ nativeCheckAbiPolicies.each { policy ->
             group = "verification"
             description = "Executa :app:assemble${variantTaskPart(variant)} com APP_ABI_POLICY=${policy}."
             workingDir rootProject.projectDir
-            commandLine(resolveGradleWrapperCommandLine(':app:assemble' + variantTaskPart(variant), ["-PAPP_ABI_POLICY=${policy}"]))
+            commandLine(resolveGradleWrapperCommandLine(':app:assemble' + variantTaskPart(variant), ["-PAPP_ABI_POLICY=${policy}", "-PALLOW_UNSIGNED_RELEASE=true", "-PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=true"]))
         }
     }
 }

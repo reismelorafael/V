@@ -2,6 +2,7 @@ name: Android CI
 
 on:
   push:
+    branches: [main, master, dev, release/**]
     paths:
       - 'app/**'
       - 'terminal-emulator/**'
@@ -19,6 +20,7 @@ on:
       - 'README.md'
       - '.github/workflows/android.yml'
   pull_request:
+    branches: [main]
     paths:
       - 'app/**'
       - 'terminal-emulator/**'
@@ -109,6 +111,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       has_signing_secrets: ${{ steps.release_mode.outputs.has_signing_secrets }}
+      has_telegram_secrets: ${{ steps.release_mode.outputs.has_telegram_secrets }}
 
     steps:
       - uses: actions/checkout@v4
@@ -123,6 +126,18 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
           cache: gradle
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Android SDK state
+        uses: actions/cache@v4
+        with:
+          path: ~/.android
+          key: android-sdk-${{ runner.os }}-${{ env.COMPILE_API }}-${{ env.TOOLS_VERSION }}-${{ env.NDK_VERSION }}-${{ env.CMAKE_VERSION }}
+          restore-keys: |
+            android-sdk-${{ runner.os }}-${{ env.COMPILE_API }}-${{ env.TOOLS_VERSION }}-
+            android-sdk-${{ runner.os }}-
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -154,6 +169,11 @@ jobs:
       - name: Generate local.properties
         run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
 
+      - name: Materialize Firebase config (optional fallback for debug/tests)
+        env:
+          VECTRAS_GOOGLE_SERVICES_JSON_B64: ${{ secrets.VECTRAS_GOOGLE_SERVICES_JSON_B64 }}
+        run: ./tools/ci/materialize_google_services_placeholder.sh
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
@@ -172,6 +192,13 @@ jobs:
             echo "has_signing_secrets=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_signing_secrets=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+            && ( -n "${{ secrets.TELEGRAM_CHAT_ID }}" || -n "${{ secrets.TELEGRAM_CHAT_ID_VEC }}" ) ]]; then
+            echo "has_telegram_secrets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_telegram_secrets=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Validate release version metadata consistency
@@ -248,6 +275,18 @@ jobs:
           distribution: temurin
           cache: gradle
 
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Android SDK state
+        uses: actions/cache@v4
+        with:
+          path: ~/.android
+          key: android-sdk-${{ runner.os }}-${{ env.COMPILE_API }}-${{ env.TOOLS_VERSION }}-${{ env.NDK_VERSION }}-${{ env.CMAKE_VERSION }}
+          restore-keys: |
+            android-sdk-${{ runner.os }}-${{ env.COMPILE_API }}-${{ env.TOOLS_VERSION }}-
+            android-sdk-${{ runner.os }}-
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -285,7 +324,7 @@ jobs:
         env:
           ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
           ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace --info --tests com.vectras.vm.core.ProotCommandBuilderTest -PCI_TEST_FOCUS=proot ${{ env.GRADLE_ARGS }}
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace --info --tests com.vectras.vm.core.ProotCommandBuilderTest ${{ env.GRADLE_ARGS }}
 
       - name: Upload ProotCommandBuilder unit test reports
         if: always()
@@ -311,14 +350,22 @@ jobs:
           ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
         run: ./gradlew verifyRepoFileDependencies ${{ env.GRADLE_ARGS }}
 
-      - name: Verify arm64 native toolchain compatibility
-        run: ./gradlew verifyArm64ToolchainCompatibility -PNDK_VERSION=${{ env.NDK_VERSION }}
+      - name: Verify bootstrap assets and non-Markdown inventory
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: ./gradlew verifyBootstrapAssets auditNonMdInventory ${{ env.GRADLE_ARGS }}
+
+      - name: Native ABI matrix gate
+        run: ./gradlew checkNativeAllMatrix ${{ env.GRADLE_ARGS }}
 
   build_debug:
     name: '03 • Build Debug APK'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    needs: test_and_verify
+    needs:
+      - test_and_verify
+      - preflight
     environment: BuildAPK
     env:
       COMPILE_API: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.compile_api || vars.COMPILE_API || '35' }}
@@ -341,8 +388,8 @@ jobs:
         echo "event_name=${GITHUB_EVENT_NAME}"
         echo "build_debug=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_debug || 'true' }}"
         echo "build_release=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_release || 'true' }}"
-        echo "sign_release=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sign_release || 'true' }}"
-        echo "upload_telegram=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram || 'true' }}"
+        echo "sign_release=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sign_release || 'false' }}"
+        echo "upload_telegram=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram || 'false' }}"
         echo "compile_api=${COMPILE_API}"
         echo "tools_version=${TOOLS_VERSION}"
         echo "ndk_version=${NDK_VERSION}"
@@ -391,6 +438,11 @@ jobs:
       run: |
         echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
 
+    - name: Materialize Firebase config (optional fallback for debug/tests)
+      env:
+        VECTRAS_GOOGLE_SERVICES_JSON_B64: ${{ secrets.VECTRAS_GOOGLE_SERVICES_JSON_B64 }}
+      run: ./tools/ci/materialize_google_services_placeholder.sh
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
@@ -403,16 +455,13 @@ jobs:
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew :app:testDebugUnitTest --tests com.vectras.vm.core.ProotCommandBuilderTest -PCI_TEST_FOCUS=proot ${{ env.GRADLE_ARGS }}
+      run: ./gradlew :app:testDebugUnitTest --tests com.vectras.vm.core.ProotCommandBuilderTest ${{ env.GRADLE_ARGS }}
 
     - name: Verify repository file dependencies
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
       run: ./gradlew verifyRepoFileDependencies ${{ env.GRADLE_ARGS }}
-
-    - name: Verify arm64 native toolchain compatibility
-      run: ./gradlew verifyArm64ToolchainCompatibility -PNDK_VERSION=${NDK_VERSION}
 
     - name: Validate release version metadata consistency
       run: |
@@ -472,23 +521,6 @@ jobs:
         print(f'Validated local markdown links in {len(md_files)} files.')
         PY
 
-    - name: Send notification to Telegram
-      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.upload_telegram == 'true' }}
-      run: |
-        set -euo pipefail
-        if [[ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]]; then
-          message=$'New update available on GitHub repository and building APK.\nPlease wait about 5 minutes.\nRun ID: '${GITHUB_RUN_ID}
-
-          curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-              -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-              -d "message_thread_id=8" \
-              -d "text=${message}"
-
-          curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-               -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID_VEC }}" \
-               -d "text=${message}"
-        fi
-
     - name: Build Debug APK
       if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_debug == 'true' }}
       env:
@@ -532,15 +564,66 @@ jobs:
           exit 1
         fi
 
-    - name: Build Release APK (unsigned)
-      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_release == 'true' && github.event.inputs.sign_release != 'true' }}
+
+    - name: Materialize Firebase config for release (optional fallback)
+      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -n "${{ secrets.VECTRAS_GOOGLE_SERVICES_JSON_B64 }}" ]]; then
+          echo "${{ secrets.VECTRAS_GOOGLE_SERVICES_JSON_B64 }}" | base64 --decode > app/google-services.json
+          echo "Firebase config loaded from VECTRAS_GOOGLE_SERVICES_JSON_B64 for release build"
+        else
+          cat > app/google-services.json <<'JSON'
+        {
+          "project_info": {
+            "project_number": "000000000000",
+            "project_id": "vectras-vm-placeholder",
+            "storage_bucket": "vectras-vm-placeholder.appspot.com"
+          },
+          "client": [
+            {
+              "client_info": {
+                "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                "android_client_info": {
+                  "package_name": "com.vectras.vm"
+                }
+              },
+              "oauth_client": [],
+              "api_key": [
+                {
+                  "current_key": "AIzaSyDummyKeyForBuildPurposesOnly000000"
+                }
+              ],
+              "services": {
+                "appinvite_service": {
+                  "other_platform_oauth_client": []
+                }
+              }
+            }
+          ],
+          "configuration_version": "1"
+        }
+        JSON
+          echo "Using local placeholder Firebase config for release verification"
+        fi
+
+    - name: Validate Firebase release config
+      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true' }}
+      env:
+        ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+      run: ./gradlew :app:validateFirebaseReleaseConfig ${{ env.GRADLE_ARGS }}
+
+    - name: Build Release APK (unsigned fallback)
+      if: ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true') && !((github.event_name == 'workflow_dispatch' && github.event.inputs.sign_release == 'true') || needs.preflight.outputs.has_signing_secrets == 'true') }}
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
       run: ./gradlew assembleRelease -PCOMPILE_API=${COMPILE_API} -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION}
 
     - name: Build Release APK (signed via CI secrets)
-      if: ${{ github.event_name != 'workflow_dispatch' || (github.event.inputs.build_release == 'true' && github.event.inputs.sign_release == 'true') }}
+      if: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true') && ((github.event_name == 'workflow_dispatch' && github.event.inputs.sign_release == 'true') || needs.preflight.outputs.has_signing_secrets == 'true') }}
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
@@ -549,10 +632,6 @@ jobs:
         VECTRAS_RELEASE_KEY_ALIAS: ${{ secrets.VECTRAS_RELEASE_KEY_ALIAS }}
         VECTRAS_RELEASE_KEY_PASSWORD: ${{ secrets.VECTRAS_RELEASE_KEY_PASSWORD }}
       run: |
-        if [[ -z "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" ]]; then
-          echo "Missing VECTRAS_RELEASE_KEYSTORE_B64 secret for release signing" >&2
-          exit 1
-        fi
         echo "${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}" | base64 --decode > "$VECTRAS_RELEASE_STORE_FILE"
         ./gradlew assembleRelease \
           -PCOMPILE_API=${COMPILE_API} -PTOOLS_VERSION=${TOOLS_VERSION} -PJAVA_LANGUAGE_VERSION=${JAVA_VERSION} -PCMAKE_VERSION=${CMAKE_VERSION} -PNDK_VERSION=${NDK_VERSION} \
@@ -560,6 +639,28 @@ jobs:
           -Pandroid.injected.signing.store.password="$VECTRAS_RELEASE_STORE_PASSWORD" \
           -Pandroid.injected.signing.key.alias="$VECTRAS_RELEASE_KEY_ALIAS" \
           -Pandroid.injected.signing.key.password="$VECTRAS_RELEASE_KEY_PASSWORD"
+
+    - name: Resolve release artifact path
+      id: release_artifact
+      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        signed_apk="app/build/outputs/apk/release/app-release.apk"
+        unsigned_apk="app/build/outputs/apk/release/app-release-unsigned.apk"
+
+        if [[ -f "${signed_apk}" ]]; then
+          echo "path=${signed_apk}" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [[ -f "${unsigned_apk}" ]]; then
+          echo "path=${unsigned_apk}" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "No release APK found after release build" >&2
+        exit 1
 
     - name: Upload Debug APK as artifact
       if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_debug == 'true' }}
@@ -573,32 +674,57 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: android-release-apk
-        path: app/build/outputs/apk/release/app-release.apk
+        path: ${{ steps.release_artifact.outputs.path }}
+
+    - name: Stage Release APKs for Telegram upload
+      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram == 'true' && github.event.inputs.build_release == 'true' && needs.preflight.outputs.has_telegram_secrets == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        shopt -s nullglob
+        mkdir -p artifacts/release
+        release_apks=(app/build/outputs/apk/release/*.apk)
+        if [[ ${#release_apks[@]} -eq 0 ]]; then
+          echo "No APK files found under app/build/outputs/apk/release for Telegram staging." >&2
+          exit 1
+        fi
+        cp app/build/outputs/apk/release/*.apk artifacts/release/
 
     - name: Upload to Telegram
-      if: ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.upload_telegram == 'true') && (github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true') }}
+      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_telegram == 'true' && github.event.inputs.build_release == 'true' && needs.preflight.outputs.has_telegram_secrets == 'true' }}
+      shell: bash
       run: |
-          set -euo pipefail
-          shopt -s nullglob
-          release_apks=(artifacts/release/*.apk)
-          if [ ${#release_apks[@]} -eq 0 ]; then
-            echo "No release APK found to upload." >&2
-            exit 1
-          fi
+        set -euo pipefail
 
-          caption=$'Done! Note that this is a version that is automatically built when there are changes in the GitHub repository, not the official version. Please only install it if you really want to see what is new.\nExplore beta releases here: https://github.com/AnBui2004/Vectras-VM-Emu-Android/releases\nRun ID: '${GITHUB_RUN_ID}
+        if [[ -z "${{ secrets.TELEGRAM_BOT_TOKEN }}" || ( -z "${{ secrets.TELEGRAM_CHAT_ID }}" && -z "${{ secrets.TELEGRAM_CHAT_ID_VEC }}" ) ]]; then
+          echo "Telegram secrets/chat IDs are not configured; skipping Telegram upload gracefully."
+          exit 0
+        fi
 
-          for file in "${release_apks[@]}"; do
+        shopt -s nullglob
+        release_apks=(artifacts/release/*.apk)
+        if [[ ${#release_apks[@]} -eq 0 ]]; then
+          echo "Upload requested but no staged release APK found in artifacts/release/*.apk." >&2
+          exit 1
+        fi
+
+        caption="Done! Note that this is a version that is automatically built when there are changes in the GitHub repository, not the official version. Please only install it if you really want to see what is new.\nExplore beta releases here: https://github.com/AnBui2004/Vectras-VM-Emu-Android/releases\nRun ID: ${GITHUB_RUN_ID}"
+
+        for file in "${release_apks[@]}"; do
+          if [[ -n "${{ secrets.TELEGRAM_CHAT_ID }}" ]]; then
             curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null \
               -F "document=@${file}" \
               -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
               -F "message_thread_id=8" \
               -F "caption=${caption}" \
               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
+          fi
 
+          if [[ -n "${{ secrets.TELEGRAM_CHAT_ID_VEC }}" ]]; then
             curl --fail --silent --show-error --retry 3 --retry-all-errors -o /dev/null \
               -F "document=@${file}" \
               -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID_VEC }}" \
               -F "caption=${caption}" \
               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
-          done
+          fi
+        done

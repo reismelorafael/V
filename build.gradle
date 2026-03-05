@@ -317,9 +317,10 @@ tasks.register("verifyRepoFileDependencies") {
 }
 
 
-tasks.register("auditNonMdInventory", Exec) {
+tasks.register("auditNonMdInventory") {
     group = "verification"
     description = "Gera inventário forense de arquivos não-Markdown"
-    workingDir rootDir
-    commandLine "python3", "tools/audit_non_md_inventory.py"
+    doLast {
+        runPythonVerificationScript("tools/audit_non_md_inventory.py")
+    }
 }
