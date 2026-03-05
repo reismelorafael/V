@@ -32,11 +32,12 @@ allprojects {
 
 ext {
     toolsVersion = properties.get('TOOLS_VERSION', '35.0.0')
-    compileApi = Integer.parseInt(properties.get('COMPILE_API', '35').toString())
-    targetApi = Integer.parseInt(properties.get('TARGET_API', '35').toString())
+    sdkBaselineApi = Integer.parseInt(properties.get('SDK_BASELINE_API', '35').toString())
+    compileApi = Integer.parseInt(properties.get('COMPILE_API', sdkBaselineApi.toString()).toString())
+    targetApi = Integer.parseInt(properties.get('TARGET_API', sdkBaselineApi.toString()).toString())
     // Política atual: ARM64-only com baseline coerente para ABIs 64-bit.
     minApi = Integer.parseInt(properties.get('MIN_API', '23').toString())
-    releaseMinTargetApi = Integer.parseInt(properties.get('RELEASE_MIN_TARGET_API', '34').toString())
+    releaseMinTargetApi = Integer.parseInt(properties.get('RELEASE_MIN_TARGET_API', sdkBaselineApi.toString()).toString())
     javaLanguageVersion = Integer.parseInt(properties.get('JAVA_LANGUAGE_VERSION', '17').toString())
     ndkVersion = properties.get('NDK_VERSION', '27.2.12479018')
     cmakeVersion = properties.get('CMAKE_VERSION', '3.22.1')
@@ -53,7 +54,7 @@ ext {
 
 def validateReleaseTargetApi() {
     if (targetApi < releaseMinTargetApi) {
-        throw new GradleException("TARGET_API (${targetApi}) must be >= RELEASE_MIN_TARGET_API (${releaseMinTargetApi}) for release builds.")
+        throw new GradleException("TARGET_API (${targetApi}) must be >= RELEASE_MIN_TARGET_API (${releaseMinTargetApi}) and aligned with official SDK baseline (${sdkBaselineApi}) for release builds.")
     }
 }
 
@@ -95,10 +96,10 @@ def validateMinApiAbiCompatibility() {
 
 tasks.register("verifyTargetApiBaseline") {
     group = "verification"
-    description = "Falha quando TARGET_API está abaixo do mínimo para release"
+    description = "Falha quando TARGET_API está abaixo do baseline oficial de SDK para release"
     doLast {
         validateReleaseTargetApi()
-        println "TARGET_API=${targetApi} atende ao baseline de release (${releaseMinTargetApi})."
+        println "TARGET_API=${targetApi} atende ao baseline oficial de SDK (${sdkBaselineApi}) e ao mínimo de release (${releaseMinTargetApi})."
     }
 }
 
