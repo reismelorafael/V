@@ -160,16 +160,20 @@ def validateGradleRuntimeJavaVersion() {
     def maxSupportedRuntime = Integer.parseInt(properties.get('GRADLE_MAX_RUNTIME_JAVA_VERSION', '21').toString())
 
     def configuredJavaVersion = JavaVersion.toVersion(configuredRuntime)
-    if (currentJava != configuredJavaVersion) {
-        throw new GradleException("Gradle runtime JVM incompatível. Esperado Java ${configuredRuntime} (JAVA_HOME/org.gradle.java.home), detectado ${currentJava}. Configure JAVA_HOME ou org.gradle.java.home para JDK ${configuredRuntime}.")
+    if (currentJava < configuredJavaVersion) {
+        throw new GradleException("Gradle runtime JVM incompatível. Mínimo requerido Java ${configuredRuntime} (JAVA_HOME/org.gradle.java.home), detectado ${currentJava}. Configure JAVA_HOME ou org.gradle.java.home para JDK ${configuredRuntime}+.")
     }
 
     def maxSupportedJavaVersion = JavaVersion.toVersion(maxSupportedRuntime)
     if (currentJava > maxSupportedJavaVersion) {
-        throw new GradleException("Gradle runtime JVM acima do máximo suportado para este baseline. Detectado ${currentJava}, máximo suportado ${maxSupportedRuntime}. Use JDK ${configuredRuntime} ou atualize wrapper/AGP para suportar oficialmente esta JVM.")
+        throw new GradleException("Gradle runtime JVM acima do máximo suportado para este baseline. Detectado ${currentJava}, máximo suportado ${maxSupportedRuntime}. Use JDK ${configuredRuntime}-${maxSupportedRuntime} ou atualize wrapper/AGP para suportar oficialmente esta JVM.")
     }
 
-    println "Gradle runtime JVM validada: ${currentJava} (esperado=${configuredRuntime}, máximo=${maxSupportedRuntime})."
+    if (currentJava != configuredJavaVersion) {
+        logger.lifecycle("Gradle runtime JVM mais nova que o baseline configurado: detectado ${currentJava}, baseline ${configuredRuntime}. Prosseguindo por compatibilidade de faixa.")
+    }
+
+    println "Gradle runtime JVM validada: ${currentJava} (mínimo=${configuredRuntime}, máximo=${maxSupportedRuntime})."
 }
 
 tasks.register("verifyGradleRuntimeJvm") {

@@ -145,7 +145,8 @@ android {
 
 def checkVariant = (providers.gradleProperty("checkVariant").orElse("debug").get() ?: "debug").trim()
 if (!checkVariant) {
-    throw new GradleException("checkVariant não pode ser vazio")
+    logger.lifecycle("checkVariant vazio detectado; aplicando fallback determinístico para 'debug'.")
+    checkVariant = "debug"
 }
 
 def checkVariantTaskSuffix = checkVariant.substring(0, 1).toUpperCase() + checkVariant.substring(1)
@@ -203,6 +204,34 @@ tasks.matching { task ->
     task.name in ["preReleaseBuild", "prePerfReleaseBuild"]
 }.configureEach {
     dependsOn(tasks.named("validateFirebaseReleaseConfig"))
+}
+
+
+tasks.register("validateReleaseSigningConfig") {
+    group = "verification"
+    description = "Falha builds release/perfRelease quando assinatura de produção obrigatória não foi configurada."
+
+    doLast {
+        def allowUnsignedRelease = providers.gradleProperty("ALLOW_UNSIGNED_RELEASE").orElse("false").get().toBoolean()
+        def hasReleaseSigning = android.signingConfigs.findByName('release') != null
+
+        if (!hasReleaseSigning && !allowUnsignedRelease) {
+            throw new GradleException("Release/perfRelease requer signingConfig 'release'. Defina credenciais de assinatura ou use -PALLOW_UNSIGNED_RELEASE=true apenas em validação interna.")
+        }
+
+        if (!hasReleaseSigning && allowUnsignedRelease) {
+            logger.lifecycle("[validateReleaseSigningConfig] assinatura de produção ausente, mas ALLOW_UNSIGNED_RELEASE=true habilitado para validação interna.")
+            return
+        }
+
+        logger.lifecycle("[validateReleaseSigningConfig] signingConfig de produção detectada (ok).")
+    }
+}
+
+tasks.matching { task ->
+    task.name in ["preReleaseBuild", "prePerfReleaseBuild"]
+}.configureEach {
+    dependsOn(tasks.named("validateReleaseSigningConfig"))
 }
 
 

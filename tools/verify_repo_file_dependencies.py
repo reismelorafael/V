@@ -23,6 +23,7 @@ GRADLE_FILES = [
 ]
 
 FILE_CALL_RE = re.compile(r"file\((['\"])(.+?)\1\)")
+ROOT_FILE_CALL_RE = re.compile(r"rootProject\.file\((['\"])(.+?)\1\)")
 PROJECT_INCLUDE_RE = re.compile(r"include\s+(.+)")
 PROJECT_TOKEN_RE = re.compile(r"['\"](:[^'\"]+)['\"]")
 
@@ -32,13 +33,25 @@ def normalize_project_path(project_token: str) -> Path:
     return ROOT / project_token.lstrip(":").replace(":", "/")
 
 
-def collect_references(text: str) -> list[str]:
-    refs: list[str] = []
-    for match in FILE_CALL_RE.finditer(text):
+def collect_references(text: str) -> list[tuple[str, bool]]:
+    refs: list[tuple[str, bool]] = []
+    root_file_ranges: list[tuple[int, int]] = []
+
+    for match in ROOT_FILE_CALL_RE.finditer(text):
         path = match.group(2).strip()
         if not path or path.startswith("$"):
             continue
-        refs.append(path)
+        refs.append((path, True))
+        root_file_ranges.append((match.start(), match.end()))
+
+    for match in FILE_CALL_RE.finditer(text):
+        if any(start <= match.start() and match.end() <= end for start, end in root_file_ranges):
+            continue
+        path = match.group(2).strip()
+        if not path or path.startswith("$"):
+            continue
+        refs.append((path, False))
+
     return refs
 
 
@@ -53,13 +66,15 @@ def verify_gradle_files() -> tuple[list[str], list[str]]:
 
         text = gradle_file.read_text(encoding="utf-8")
 
-        for ref in collect_references(text):
+        for ref, from_root in collect_references(text):
             if "*" in ref:
                 continue
-            target = (gradle_file.parent / ref).resolve()
+            base_dir = ROOT if from_root else gradle_file.parent
+            target = (base_dir / ref).resolve()
             checked.append(str(target.relative_to(ROOT)))
             if not target.exists():
-                missing.append(f"{target.relative_to(ROOT)} (referenciado em {gradle_file.relative_to(ROOT)})")
+                source_hint = "rootProject.file" if from_root else "file"
+                missing.append(f"{target.relative_to(ROOT)} (referenciado via {source_hint} em {gradle_file.relative_to(ROOT)})")
 
         if gradle_file.name == "settings.gradle":
             for line in text.splitlines():
