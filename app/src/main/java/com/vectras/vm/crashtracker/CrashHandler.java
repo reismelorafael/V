@@ -85,22 +85,21 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
 
         if (defaultHandler != null) {
             try {
+                Log.i(TAG, "crash_termination_path: stage=delegate_to_default_handler thread=" + (t != null ? t.getName() : "unknown"));
                 defaultHandler.uncaughtException(t, e);
                 return;
             } catch (Throwable handlerError) {
-                Log.e(TAG, "Default uncaught exception handler failed", handlerError);
+                Log.e(TAG, "crash_termination_path: stage=default_handler_failed fallback=kill_process", handlerError);
             }
+        } else {
+            Log.w(TAG, "crash_termination_path: stage=no_default_handler fallback=kill_process");
         }
 
         terminateProcess(Process.myPid());
-        exitProcess(10);
     }
 
     void terminateProcess(int pid) {
+        Log.e(TAG, "crash_termination_path: stage=kill_process pid=" + pid);
         Process.killProcess(pid);
-    }
-
-    void exitProcess(int code) {
-        System.exit(code);
     }
 }

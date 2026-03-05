@@ -54,7 +54,10 @@ final class TermuxInstaller {
         boolean isPrimaryUser = um.getSerialNumberForUser(android.os.Process.myUserHandle()) == 0;
         if (!isPrimaryUser) {
             new AlertDialog.Builder(activity).setTitle(R.string.bootstrap_error_title).setMessage(R.string.bootstrap_error_not_primary_user_message)
-                .setOnDismissListener(dialog -> System.exit(0)).setPositiveButton(android.R.string.ok, null).show();
+                .setOnDismissListener(dialog -> {
+                    Log.i(EmulatorDebug.LOG_TAG, "bootstrap_setup_exit: reason=not_primary_user action=finishAffinity");
+                    activity.finishAffinity();
+                }).setPositiveButton(android.R.string.ok, null).show();
             return;
         }
 

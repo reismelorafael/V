@@ -49,8 +49,11 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
     }
 
     CmdEntryPoint(String[] args) {
-        if (!start(args))
-            System.exit(1);
+        if (!start(args)) {
+            String message = "cmd_entrypoint_start_failure: native start(args) returned false";
+            Log.e("CmdEntryPoint", message);
+            throw new IllegalStateException(message);
+        }
 
         spawnListeningThread();
         sendBroadcastDelayed();
@@ -227,15 +230,18 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
             try {
                 System.load(libPath);
             } catch (Exception e) {
-                Log.e("CmdEntryPoint", "Failed to dlopen " + libPath, e);
+                String message = "cmd_entrypoint_native_library_failure: failed_to_load path=" + libPath;
+                Log.e("CmdEntryPoint", message, e);
                 System.err.println("Failed to load native library. Did you install the right apk? Try the universal one.");
-                System.exit(134);
+                throw new IllegalStateException(message, e);
             }
         } else {
             // It is critical only when it is not running in Android application process
             if (X11Activity.getInstance() == null) {
+                String message = "cmd_entrypoint_native_library_failure: resource_not_found path=" + path;
+                Log.e("CmdEntryPoint", message);
                 System.err.println("Failed to acquire native library. Did you install the right apk? Try the universal one.");
-                System.exit(134);
+                throw new IllegalStateException(message);
             }
         }
     }
