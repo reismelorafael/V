@@ -11,6 +11,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.transition.TransitionManager;
 import android.text.TextUtils;
 import android.util.Log;
@@ -154,13 +156,14 @@ public class SetupWizard2Activity extends AppCompatActivity {
     boolean rollbackAvailable = false;
     final ArrayList<HashMap<String, String>> mirrorList = new ArrayList<>();
     ExecutorService executor = Executors.newSingleThreadExecutor();
-    private FirstRunPermissionOrchestrator permissionOrchestrator;
-    private Runnable pendingPermissionContinuation;
+    private SetupCapabilityOrchestrator orchestrator;
     private final ActivityResultLauncher<Uri> storagePermissionLauncher =
             PermissionUtils.registerOpenDocumentTreeLauncher(this, uri -> {
-                if (uri != null) {
+        if (uri != null) {
                     Toast.makeText(this, getString(R.string.done), Toast.LENGTH_SHORT).show();
-                    permissionOrchestrator.refresh();
+                    if (currentStep == STEP_REQUEST_PERMISSION && ensureEssentialCapabilitiesOrReturnPermission()) {
+                        extractSystemFiles();
+                    }
                 } else {
                     permissionOrchestrator.markFailed(FirstRunPermissionOrchestrator.CAPABILITY_STORAGE);
                     UIUtils.toastShort(this, getString(R.string.storage_permission_explanation_android11));
@@ -178,6 +181,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
         bindingFinalSteps = binding.layoutFinalSteps;
         setContentView(binding.getRoot());
         UIUtils.setOnApplyWindowInsetsListener(findViewById(R.id.main));
+        orchestrator = new SetupCapabilityOrchestrator();
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -198,10 +202,9 @@ public class SetupWizard2Activity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         restoreSetupSnapshot();
-        if (currentStep == STEP_REQUEST_PERMISSION) {
-            permissionOrchestrator.refresh();
-            renderEssentialPermissionUi();
-            continueAfterEssentialPermissionResolution();
+        orchestrator.evaluateAll();
+        if (currentStep == STEP_REQUEST_PERMISSION && ensureEssentialCapabilitiesOrReturnPermission()) {
+            extractSystemFiles();
         }
     }
 
@@ -247,8 +250,8 @@ public class SetupWizard2Activity extends AppCompatActivity {
         if (!DeviceUtils.is64bit()) binding.ln32BitWarning.setVisibility(View.VISIBLE);
 
         binding.btnLetStart.setOnClickListener(v -> {
-            pendingPermissionContinuation = this::extractSystemFiles;
-            if (permissionOrchestrator.isEssentialResolved()) {
+            orchestrator.evaluateAll();
+            if (ensureEssentialCapabilitiesOrReturnPermission()) {
                 extractSystemFiles();
             } else {
                 uiController(STEP_REQUEST_PERMISSION);
@@ -256,13 +259,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
             }
         });
 
-        binding.btnAllowPermission.setOnClickListener(v -> {
-            if (permissionOrchestrator.isEssentialResolved()) {
-                continueAfterEssentialPermissionResolution();
-            } else {
-                requestEssentialPermissions();
-            }
-        });
+        binding.btnAllowPermission.setOnClickListener(v -> requestNextCapabilityPermission());
 
         binding.standardSetupOption.setOnClickListener(v -> {
             if (downloadBootstrapsCommand.isEmpty()) {
@@ -488,7 +485,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
     }
 
     private void extractSystemFiles() {
-        if (!ensureEssentialPermissionsResolved(this::extractSystemFiles)) {
+        if (!ensureEssentialCapabilitiesOrReturnPermission()) {
             return;
         }
 
@@ -584,7 +581,7 @@ public class SetupWizard2Activity extends AppCompatActivity {
     }
 
     private void startSetup() {
-        if (!ensureEssentialPermissionsResolved(this::startSetup)) {
+        if (!ensureEssentialCapabilitiesOrReturnPermission()) {
             return;
         }
 
@@ -1518,7 +1515,105 @@ public class SetupWizard2Activity extends AppCompatActivity {
         rollbackAvailable = !TextUtils.isEmpty(activeSetupTimestamp)
                 && installState != InstallState.COMPLETED
                 && installState != InstallState.INIT;
+        if (!orchestrator.isEssentialResolved()) {
+            uiController(STEP_REQUEST_PERMISSION);
+        }
         updateStructuredStatusUi();
+    }
+
+    private boolean ensureEssentialCapabilitiesOrReturnPermission() {
+        orchestrator.evaluateAll();
+        if (orchestrator.isEssentialResolved()) {
+            return true;
+        }
+        uiController(STEP_REQUEST_PERMISSION);
+        return false;
+    }
+
+    private void requestNextCapabilityPermission() {
+        orchestrator.evaluateAll();
+        if (orchestrator.isEssentialResolved()) {
+            extractSystemFiles();
+            return;
+        }
+
+        if (!orchestrator.hasAllFilesAccess()) {
+            PermissionUtils.openAllFilesAccessSettings(this);
+            return;
+        }
+
+        if (!orchestrator.isBatteryOptimizationIgnored() && orchestrator.isBatteryEssential()) {
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + getPackageName()));
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                startActivity(intent);
+            } else {
+                startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+            }
+            return;
+        }
+
+        if (!orchestrator.canDrawOverlay() && orchestrator.isOverlayEssential()) {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+            return;
+        }
+
+        PermissionUtils.requestStoragePermission(this, storagePermissionLauncher);
+    }
+
+    private final class SetupCapabilityOrchestrator {
+        private boolean hasAllFilesAccess;
+        private boolean canDrawOverlay;
+        private boolean batteryOptimizationIgnored;
+        private boolean batteryEssential;
+        private boolean overlayEssential;
+
+        void evaluateAll() {
+            String vmUi = MainSettingsManager.getVmUi(SetupWizard2Activity.this);
+            boolean isVnc = "VNC".equalsIgnoreCase(vmUi);
+
+            hasAllFilesAccess = PermissionUtils.isAllFilesAccessGranted();
+            canDrawOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(SetupWizard2Activity.this);
+
+            PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            batteryOptimizationIgnored = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                    || (powerManager != null && powerManager.isIgnoringBatteryOptimizations(getPackageName()));
+
+            batteryEssential = !isVnc;
+            overlayEssential = false;
+        }
+
+        boolean isEssentialResolved() {
+            if (!hasAllFilesAccess) {
+                return false;
+            }
+            if (batteryEssential && !batteryOptimizationIgnored) {
+                return false;
+            }
+            return !overlayEssential || canDrawOverlay;
+        }
+
+        boolean hasAllFilesAccess() {
+            return hasAllFilesAccess;
+        }
+
+        boolean canDrawOverlay() {
+            return canDrawOverlay;
+        }
+
+        boolean isBatteryOptimizationIgnored() {
+            return batteryOptimizationIgnored;
+        }
+
+        boolean isBatteryEssential() {
+            return batteryEssential;
+        }
+
+        boolean isOverlayEssential() {
+            return overlayEssential;
+        }
     }
 
     private void clearSetupSnapshot() {
