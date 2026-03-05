@@ -1120,6 +1120,18 @@ public class MainSettingsManager extends AppCompatActivity
         return prefs.getString("setupInstallTimestamp", "");
     }
 
+    public static void setFirstRunPermissionState(Context context, String capabilityKey, String state) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences.Editor edit = prefs.edit();
+        edit.putString(capabilityKey, state);
+        edit.apply();
+    }
+
+    public static String getFirstRunPermissionState(Context context, String capabilityKey) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getString(capabilityKey, "PENDING");
+    }
+
     public static void clearSetupInstallSnapshot(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         SharedPreferences.Editor edit = prefs.edit();

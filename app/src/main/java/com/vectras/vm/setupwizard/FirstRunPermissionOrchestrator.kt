@@ -1,254 +1,139 @@
 package com.vectras.vm.setupwizard
 
-import android.Manifest
 import android.app.Activity
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
-import android.os.PowerManager
-import android.provider.Settings
-import androidx.core.content.ContextCompat
+import com.vectras.qemu.MainSettingsManager
 import com.vectras.vm.utils.PermissionUtils
 
-enum class Capability {
-    STORAGE_SAF,
-    NOTIFICATIONS,
-    BATTERY_OPTIMIZATION,
-    OVERLAY,
-    MEDIA_READ
-}
+class FirstRunPermissionOrchestrator(private val activity: Activity) {
 
-enum class CapabilityState {
-    PENDING,
-    GRANTED,
-    SKIPPED,
-    FAILED
-}
+    enum class Capability {
+        STORAGE_SAF,
+        NOTIFICATIONS,
+        BATTERY_OPTIMIZATION,
+        OVERLAY,
+        MEDIA_ACCESS
+    }
 
-data class CapabilityItem(
-    val capability: Capability,
-    val required: Boolean,
-    val state: CapabilityState,
-    val reason: String?
-)
+    enum class StepState {
+        PENDING,
+        GRANTED,
+        SKIPPED,
+        FAILED
+    }
 
-class FirstRunPermissionOrchestrator {
-
-    data class RequestLaunchers(
-        val requestStorageSaf: (() -> Unit)? = null,
-        val requestNotifications: (() -> Unit)? = null,
-        val requestMediaRead: (() -> Unit)? = null,
-        val requestBatteryOptimization: (() -> Unit)? = null,
-        val requestOverlay: (() -> Unit)? = null
+    data class CapabilityStep(
+        val capability: Capability,
+        val required: Boolean,
+        val state: StepState
     )
 
-    private var appContext: Context? = null
-    private val capabilities = linkedMapOf<Capability, CapabilityItem>()
+    private val orderedCapabilities = listOf(
+        Capability.STORAGE_SAF,
+        Capability.NOTIFICATIONS,
+        Capability.BATTERY_OPTIMIZATION,
+        Capability.OVERLAY,
+        Capability.MEDIA_ACCESS
+    )
 
-    fun buildCapabilities(context: Context, vmUiMode: String?): List<CapabilityItem> {
-        appContext = context
-        capabilities.clear()
-
-        val normalizedMode = vmUiMode?.trim()?.uppercase() ?: ""
-        val requiresOverlay = normalizedMode == "X11"
-
-        putCapability(Capability.STORAGE_SAF, required = true)
-        putCapability(Capability.NOTIFICATIONS, required = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-        putCapability(Capability.BATTERY_OPTIMIZATION, required = true)
-        putCapability(Capability.MEDIA_READ, required = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-        putCapability(Capability.OVERLAY, required = requiresOverlay)
-
-        return getUiModel()
+    fun getSteps(): List<CapabilityStep> {
+        return orderedCapabilities
+            .filter { isApplicable(it) }
+            .map {
+                CapabilityStep(
+                    capability = it,
+                    required = isRequired(it),
+                    state = resolveState(it)
+                )
+            }
     }
 
-    fun evaluate(capability: Capability): CapabilityState {
-        val context = appContext ?: return CapabilityState.FAILED
-        val current = capabilities[capability] ?: return CapabilityState.FAILED
-
-        if (!current.required) {
-            updateState(capability, CapabilityState.SKIPPED, "Not required for this flow")
-            return CapabilityState.SKIPPED
-        }
-
-        val granted = when (capability) {
-            Capability.STORAGE_SAF -> isStorageGranted(context)
-            Capability.NOTIFICATIONS -> isNotificationGranted(context)
-            Capability.BATTERY_OPTIMIZATION -> isBatteryOptimizationGranted(context)
-            Capability.OVERLAY -> isOverlayGranted(context)
-            Capability.MEDIA_READ -> isMediaReadGranted(context)
-        }
-
-        val state = if (granted) CapabilityState.GRANTED else CapabilityState.PENDING
-        val reason = when {
-            granted -> null
-            else -> "Awaiting capability grant"
-        }
-        updateState(capability, state, reason)
-        return state
+    fun getNextPendingRequired(): Capability? {
+        return getSteps().firstOrNull { it.required && it.state == StepState.PENDING }?.capability
     }
 
-    fun request(capability: Capability, activity: Activity, launchers: RequestLaunchers): Boolean {
-        val item = capabilities[capability] ?: return false
-        if (!item.required) {
-            updateState(capability, CapabilityState.SKIPPED, "Not required for this flow")
-            return true
+    fun areRequiredCapabilitiesGranted(): Boolean {
+        return getSteps().none { it.required && it.state != StepState.GRANTED }
+    }
+
+    fun refreshPersistedStates() {
+        for (capability in orderedCapabilities) {
+            if (!isApplicable(capability)) {
+                persistState(capability, StepState.SKIPPED)
+                continue
+            }
+
+            if (isCapabilityGranted(capability)) {
+                persistState(capability, StepState.GRANTED)
+            } else {
+                val current = getPersistedState(capability)
+                if (current != StepState.FAILED && current != StepState.SKIPPED) {
+                    persistState(capability, StepState.PENDING)
+                }
+            }
+        }
+    }
+
+    fun markSkipped(capability: Capability) {
+        persistState(capability, StepState.SKIPPED)
+    }
+
+    fun markFailed(capability: Capability) {
+        persistState(capability, StepState.FAILED)
+    }
+
+    fun markGranted(capability: Capability) {
+        persistState(capability, StepState.GRANTED)
+    }
+
+    private fun resolveState(capability: Capability): StepState {
+        if (isCapabilityGranted(capability)) {
+            persistState(capability, StepState.GRANTED)
+            return StepState.GRANTED
         }
 
-        val dispatched = when (capability) {
-            Capability.STORAGE_SAF -> {
-                launchers.requestStorageSaf?.invoke()
-                    ?: run {
-                        PermissionUtils.requestStoragePermission(activity)
-                        true
-                    }
-            }
+        return getPersistedState(capability)
+    }
 
-            Capability.NOTIFICATIONS -> {
-                launchers.requestNotifications?.invoke()
-                    ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2001)
-                        true
-                    } else {
-                        true
-                    }
-            }
+    private fun isCapabilityGranted(capability: Capability): Boolean {
+        return when (capability) {
+            Capability.STORAGE_SAF -> PermissionUtils.hasStorageCapability(activity)
+            Capability.NOTIFICATIONS -> PermissionUtils.hasNotificationCapability(activity)
+            Capability.BATTERY_OPTIMIZATION -> PermissionUtils.isBatteryOptimizationIgnored(activity)
+            Capability.OVERLAY -> PermissionUtils.hasOverlayCapability(activity)
+            Capability.MEDIA_ACCESS -> PermissionUtils.hasMediaReadCapability(activity)
+        }
+    }
 
-            Capability.BATTERY_OPTIMIZATION -> {
-                launchers.requestBatteryOptimization?.invoke()
-                    ?: openSettingsIntent(
-                        activity,
-                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                            data = Uri.parse("package:${activity.packageName}")
-                        }
-                    )
-            }
+    private fun isRequired(capability: Capability): Boolean {
+        return capability == Capability.STORAGE_SAF
+    }
 
+    private fun isApplicable(capability: Capability): Boolean {
+        return when (capability) {
+            Capability.NOTIFICATIONS -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+            Capability.MEDIA_ACCESS -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
             Capability.OVERLAY -> {
-                launchers.requestOverlay?.invoke()
-                    ?: openSettingsIntent(
-                        activity,
-                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                            data = Uri.parse("package:${activity.packageName}")
-                        }
-                    )
+                val vmUi = MainSettingsManager.getVmUi(activity)
+                vmUi.equals("X11", ignoreCase = true) || vmUi.equals("VNC", ignoreCase = true)
             }
-
-            Capability.MEDIA_READ -> {
-                launchers.requestMediaRead?.invoke()
-                    ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        activity.requestPermissions(
-                            arrayOf(
-                                Manifest.permission.READ_MEDIA_IMAGES,
-                                Manifest.permission.READ_MEDIA_VIDEO,
-                                Manifest.permission.READ_MEDIA_AUDIO
-                            ),
-                            2002
-                        )
-                        true
-                    } else {
-                        true
-                    }
-            }
-        }
-
-        if (!dispatched) {
-            updateState(capability, CapabilityState.FAILED, "Unable to dispatch capability request")
-        }
-        return dispatched
-    }
-
-    fun isEssentialResolved(): Boolean {
-        if (capabilities.isEmpty()) {
-            return false
-        }
-        return capabilities.values
-            .filter { it.required }
-            .all { it.state == CapabilityState.GRANTED || it.state == CapabilityState.SKIPPED }
-    }
-
-    fun getUiModel(): List<CapabilityItem> {
-        val snapshot = ArrayList<CapabilityItem>(capabilities.size)
-        capabilities.keys.forEach { capability ->
-            evaluate(capability)
-            capabilities[capability]?.let { snapshot.add(it) }
-        }
-        return snapshot
-    }
-
-    private fun putCapability(capability: Capability, required: Boolean) {
-        capabilities[capability] = CapabilityItem(
-            capability = capability,
-            required = required,
-            state = CapabilityState.PENDING,
-            reason = null
-        )
-    }
-
-    private fun updateState(capability: Capability, state: CapabilityState, reason: String?) {
-        val previous = capabilities[capability] ?: return
-        capabilities[capability] = previous.copy(state = state, reason = reason)
-    }
-
-    private fun isStorageGranted(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            (context as? Activity)?.let { PermissionUtils.hasPersistedTreePermission(it) } ?: false
-        } else {
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
+            else -> true
         }
     }
 
-    private fun isNotificationGranted(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            return true
-        }
-        return ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
+    private fun keyFor(capability: Capability): String {
+        return "firstRunPermissionState_${capability.name}"
     }
 
-    private fun isBatteryOptimizationGranted(context: Context): Boolean {
-        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        return powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
+    private fun persistState(capability: Capability, state: StepState) {
+        MainSettingsManager.setFirstRunPermissionState(activity, keyFor(capability), state.name)
     }
 
-    private fun isOverlayGranted(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            return true
-        }
-        return Settings.canDrawOverlays(context)
-    }
-
-    private fun isMediaReadGranted(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            return true
-        }
-        val imageGranted = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_MEDIA_IMAGES
-        ) == PackageManager.PERMISSION_GRANTED
-        val videoGranted = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_MEDIA_VIDEO
-        ) == PackageManager.PERMISSION_GRANTED
-        val audioGranted = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_MEDIA_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-        return imageGranted && videoGranted && audioGranted
-    }
-
-    private fun openSettingsIntent(activity: Activity, intent: Intent): Boolean {
-        return if (intent.resolveActivity(activity.packageManager) != null) {
-            activity.startActivity(intent)
-            true
-        } else {
-            false
+    private fun getPersistedState(capability: Capability): StepState {
+        val persisted = MainSettingsManager.getFirstRunPermissionState(activity, keyFor(capability))
+        return try {
+            StepState.valueOf(persisted)
+        } catch (_: IllegalArgumentException) {
+            StepState.PENDING
         }
     }
-}
