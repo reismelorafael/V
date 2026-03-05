@@ -164,8 +164,14 @@ public class NotificationUtils {
         return true;
     }
 
+    /**
+     * Notification runtime permission matrix:
+     * API <= 32 -> no runtime POST_NOTIFICATIONS request.
+     * API >= 33 -> request POST_NOTIFICATIONS only when still denied.
+     */
     public static void requestPermission(Activity activity) {
-        if (Build.VERSION.SDK_INT >= 33 && !isPermissionGranted(activity))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isPermissionGranted(activity)) {
             ActivityCompat.requestPermissions(activity, new String[] {Manifest.permission.POST_NOTIFICATIONS}, 1000);
+        }
     }
 }

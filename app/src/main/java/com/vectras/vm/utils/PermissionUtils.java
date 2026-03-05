@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.widget.Toast;
 
@@ -23,6 +24,9 @@ import com.vectras.vm.R;
 
 public class PermissionUtils {
     public static final int REQUEST_LEGACY_STORAGE = 1000;
+
+    public static final int REQUEST_CODE_OVERLAY_SETTINGS = 1001;
+    public static final int REQUEST_CODE_BATTERY_OPTIMIZATION_SETTINGS = 1002;
 
     public interface OnDocumentTreePermissionResult {
         void onResult(@Nullable Uri uri);
@@ -91,7 +95,17 @@ public class PermissionUtils {
         requestLegacyStoragePermission(activity);
     }
 
+    /**
+     * Runtime storage permission matrix:
+     * API <= 28  -> request WRITE_EXTERNAL_STORAGE.
+     * API 29-32  -> no runtime storage permission request (Scoped Storage / SAF path).
+     * API >= 33  -> no WRITE/READ_EXTERNAL runtime request here; use SAF or READ_MEDIA_* flows as needed.
+     */
     private static void requestLegacyStoragePermission(Activity activity) {
+        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+            return;
+        }
+
         if (activity.shouldShowRequestPermissionRationale(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
             Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
             intent.setData(Uri.parse("package:" + activity.getPackageName()));
@@ -142,6 +156,52 @@ public class PermissionUtils {
     public static DocumentFile resolveTree(Activity activity, Uri uri) {
         if (uri == null) return null;
         return DocumentFile.fromTreeUri(activity, uri);
+    }
+
+    /**
+     * Special access matrix (Settings-based, no requestPermissions):
+     * Overlay (SYSTEM_ALERT_WINDOW): API >= 23 via ACTION_MANAGE_OVERLAY_PERMISSION + post-return check with canDrawOverlays().
+     * Battery optimization whitelist (REQUEST_IGNORE_BATTERY_OPTIMIZATIONS): API >= 23 via ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS +
+     * post-return check with isIgnoringBatteryOptimizations().
+     */
+    public static boolean canDrawOverlays(Activity activity) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        return Settings.canDrawOverlays(activity);
+    }
+
+    public static void openOverlayPermissionSettings(Activity activity, int requestCode) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || canDrawOverlays(activity)) {
+            return;
+        }
+
+        Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + activity.getPackageName()));
+        if (intent.resolveActivity(activity.getPackageManager()) == null) {
+            intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + activity.getPackageName()));
+        }
+        activity.startActivityForResult(intent, requestCode);
+    }
+
+    public static boolean isIgnoringBatteryOptimizations(Activity activity) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        PowerManager pm = (PowerManager) activity.getSystemService(Activity.POWER_SERVICE);
+        return pm != null && pm.isIgnoringBatteryOptimizations(activity.getPackageName());
+    }
+
+    public static void openBatteryOptimizationSettings(Activity activity, int requestCode) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || isIgnoringBatteryOptimizations(activity)) {
+            return;
+        }
+
+        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+        intent.setData(Uri.parse("package:" + activity.getPackageName()));
+        if (intent.resolveActivity(activity.getPackageManager()) == null) {
+            intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+        }
+        activity.startActivityForResult(intent, requestCode);
     }
 
     /**

@@ -258,6 +258,8 @@ public class LoriePreferences extends AppCompatActivity {
                         .show();
             }
 
+            // Runtime permission matrix: POST_NOTIFICATIONS exists only on API 33+.
+            // Keep requests gated to TIRAMISU+ to avoid non-applicable permission requests.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && "requestNotificationPermission".contentEquals(preference.getKey()))
                 ActivityCompat.requestPermissions(requireActivity(), new String[]{ POST_NOTIFICATIONS }, 101);
 
