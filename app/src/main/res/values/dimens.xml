@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Default screen margins, per the Android Design guidelines. -->
-
+    <dimen name="setup_wizard_screen_padding">16dp</dimen>
+    <dimen name="setup_wizard_content_padding_small">8dp</dimen>
+    <dimen name="setup_wizard_section_spacing">16dp</dimen>
+    <dimen name="setup_wizard_option_spacing">4dp</dimen>
+    <dimen name="setup_wizard_card_padding">12dp</dimen>
+    <dimen name="setup_wizard_progress_circular_size">200dp</dimen>
+    <dimen name="setup_wizard_step_badge_size">32dp</dimen>
+    <dimen name="setup_wizard_step_badge_spacing">8dp</dimen>
+    <dimen name="setup_wizard_step_badge_radius">16dp</dimen>
+    <dimen name="setup_wizard_step_badge_text_size">14sp</dimen>
+    <dimen name="setup_wizard_title_text_size">36sp</dimen>
+    <dimen name="setup_wizard_option_title_text_size">18sp</dimen>
+    <dimen name="setup_wizard_option_body_text_size">14sp</dimen>
 </resources>

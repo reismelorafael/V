@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/ln_welcome"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:visibility="visible">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="match_parent"
+            android:orientation="vertical"
+            android:padding="@dimen/setup_wizard_screen_padding">
+
+            <ImageView
+                style="@style/Widget.Vectras.SetupWizard.HeaderIcon"
+                android:src="@drawable/vectrasvm200"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no" />
+
+            <TextView
+                style="@style/TextAppearance.Vectras.SetupWizard.Title"
+                android:text="@string/app_name" />
+
+            <TextView
+                style="@style/TextAppearance.Vectras.SetupWizard.Body"
+                android:text="@string/welcome_to_vectras_vm_lets_get_started" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="bottom|end">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_let_start"
+                    style="@style/Widget.Vectras.SetupWizard.Button.Primary"
+                    android:text="@string/letstart" />
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</merge>

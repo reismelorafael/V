@@ -37,6 +37,7 @@ import androidx.preference.PreferenceManager;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import com.google.android.material.color.MaterialColors;
 import com.termux.app.TermuxActivity;
 import com.vectras.qemu.MainSettingsManager;
 import com.vectras.vm.AppConfig;
@@ -552,9 +553,61 @@ public class SetupWizard2Activity extends AppCompatActivity {
             bindingFinalSteps.main.setVisibility(View.VISIBLE);
         }
 
+        binding.includeWizardProgress.setVisibility(step == STEP_PATERON || step == STEP_FINISH ? View.GONE : View.VISIBLE);
+        updateStepProgressUi(step);
+
         loadingIndicatorController(step);
 
         currentStep = step;
+    }
+
+    private void updateStepProgressUi(int step) {
+        int visualStep;
+        String stepLabel;
+
+        if (step == STEP_SYSTEM_UPDATE) {
+            visualStep = 5;
+            stepLabel = getString(R.string.setup_step_label_update);
+        } else if (step == STEP_ERROR) {
+            visualStep = 5;
+            stepLabel = getString(R.string.setup_step_label_issue);
+        } else if (step == STEP_REQUEST_PERMISSION) {
+            visualStep = 1;
+            stepLabel = getString(R.string.setup_step_label_permissions);
+        } else if (step == STEP_EXTRACTING_SYSTEM_FILES) {
+            visualStep = 2;
+            stepLabel = getString(R.string.setup_step_label_system_files);
+        } else if (step == STEP_GETTING_DATA) {
+            visualStep = 3;
+            stepLabel = getString(R.string.setup_step_label_connecting);
+        } else if (step == STEP_SETUP_OPTIONS) {
+            visualStep = 4;
+            stepLabel = getString(R.string.setup_step_label_options);
+        } else if (step == STEP_INSTALLING_PACKAGES) {
+            visualStep = 5;
+            stepLabel = getString(R.string.setup_step_label_installing);
+        } else {
+            visualStep = 0;
+            stepLabel = getString(R.string.setup_step_label_welcome);
+        }
+
+        binding.wizardStepProgress.setProgressCompat(visualStep, true);
+        binding.tvStepStatus.setText(getString(R.string.setup_step_status_format, visualStep, stepLabel));
+
+        android.widget.TextView[] badges = new android.widget.TextView[]{binding.tvStep1, binding.tvStep2, binding.tvStep3, binding.tvStep4, binding.tvStep5};
+        for (int i = 0; i < badges.length; i++) {
+            int stepNumber = i + 1;
+            if (stepNumber < visualStep) {
+                badges[i].setBackgroundResource(R.drawable.bg_setup_wizard_step_badge_done);
+                badges[i].setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnPrimary, 0));
+            } else if (stepNumber == visualStep) {
+                badges[i].setBackgroundResource(R.drawable.bg_setup_wizard_step_badge_current);
+                badges[i].setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnPrimaryContainer, 0));
+            } else {
+                badges[i].setBackgroundResource(R.drawable.bg_setup_wizard_step_badge_pending);
+                badges[i].setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0));
+            }
+        }
     }
 
     private void loadingIndicatorController(int step) {

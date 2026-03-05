@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <LinearLayout
+        android:id="@+id/ln_setup_options"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="@dimen/setup_wizard_screen_padding"
+        android:visibility="gone">
+
+        <ImageView
+            style="@style/Widget.Vectras.SetupWizard.HeaderIcon"
+            android:src="@drawable/mobile_arrow_down_100px"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no" />
+
+        <TextView
+            style="@style/TextAppearance.Vectras.SetupWizard.Title"
+            android:text="@string/how_do_you_want_to_install" />
+
+        <TextView
+            style="@style/TextAppearance.Vectras.SetupWizard.Body"
+            android:text="@string/how_do_you_want_to_install_note" />
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="@dimen/setup_wizard_section_spacing"
+            android:layout_weight="1"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/standard_setup_option"
+                    style="@style/Widget.Vectras.SetupWizard.OptionCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/setup_wizard_option_spacing">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/TextAppearance.Vectras.SetupWizard.OptionTitle"
+                                android:text="@string/standard" />
+
+                            <TextView
+                                style="@style/TextAppearance.Vectras.SetupWizard.OptionBody"
+                                android:text="@string/standard_note" />
+                        </LinearLayout>
+
+                        <ImageView
+                            android:id="@+id/standard_setup_option_arrow"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@null"
+                            android:importantForAccessibility="no"
+                            android:src="@drawable/keyboard_arrow_right_24px" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/custom_setup_option"
+                    style="@style/Widget.Vectras.SetupWizard.OptionCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/setup_wizard_option_spacing">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/TextAppearance.Vectras.SetupWizard.OptionTitle"
+                                android:text="@string/custom" />
+
+                            <TextView
+                                style="@style/TextAppearance.Vectras.SetupWizard.OptionBody"
+                                android:text="@string/custom_note" />
+                        </LinearLayout>
+
+                        <ImageView
+                            android:id="@+id/custom_setup_option_arrow"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@null"
+                            android:importantForAccessibility="no"
+                            android:src="@drawable/keyboard_arrow_right_24px" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/select_mirror_option"
+                    style="@style/Widget.Vectras.SetupWizard.OptionCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                style="@style/TextAppearance.Vectras.SetupWizard.OptionTitle"
+                                android:text="@string/mirror" />
+
+                            <TextView
+                                style="@style/TextAppearance.Vectras.SetupWizard.OptionBody"
+                                android:text="@string/mirror_note" />
+                        </LinearLayout>
+
+                        <ImageView
+                            android:id="@+id/select_mirror_option_arrow"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@null"
+                            android:importantForAccessibility="no"
+                            android:src="@drawable/keyboard_arrow_right_24px" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <LinearLayout
+                    android:id="@+id/ln_32_bit_warning"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/setup_wizard_section_spacing"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <ImageView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@null"
+                        android:importantForAccessibility="no"
+                        android:paddingBottom="@dimen/setup_wizard_content_padding_small"
+                        android:src="@drawable/warning_24px"
+                        app:tint="?attr/colorError" />
+
+                    <TextView
+                        style="@style/TextAppearance.Vectras.SetupWizard.Body"
+                        android:text="@string/cpu_not_support_64" />
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
+</merge>

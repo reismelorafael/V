@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/ln_system_update"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="match_parent"
+            android:orientation="vertical"
+            android:padding="@dimen/setup_wizard_screen_padding">
+
+            <ImageView
+                style="@style/Widget.Vectras.SetupWizard.HeaderIcon"
+                android:src="@drawable/mobile_arrow_down_100px"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no" />
+
+            <TextView
+                style="@style/TextAppearance.Vectras.SetupWizard.Title"
+                android:text="@string/system_update" />
+
+            <TextView
+                style="@style/TextAppearance.Vectras.SetupWizard.Body"
+                android:text="@string/system_update_note" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="bottom"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_skip_system_update"
+                    style="@style/Widget.Vectras.SetupWizard.Button.Secondary"
+                    android:text="@string/later" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_system_update"
+                    style="@style/Widget.Vectras.SetupWizard.Button.Primary"
+                    android:text="@string/update" />
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</merge>
