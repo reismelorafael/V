@@ -46,7 +46,16 @@ public final class TerminalRow {
         final int x1 = line.findStartOfColumn(sourceX1);
         final int x2 = line.findStartOfColumn(sourceX2);
         boolean startingFromSecondHalfOfWideChar = (sourceX1 > 0 && line.wideDisplayCharacterStartingAt(sourceX1 - 1));
-        final char[] sourceChars = (this == line) ? Arrays.copyOf(line.mText, line.mText.length) : line.mText;
+
+        int opsCapacity = Math.max(1, x2 - x1);
+        int opsCount = 0;
+        int[] codePoints = new int[opsCapacity];
+        int[] destinationColumns = new int[opsCapacity];
+        long[] styles = new long[opsCapacity];
+
+        final char[] sourceChars = line.mText;
+        int currentDestinationX = destinationX;
+        int currentSourceX = sourceX1;
         int latestNonCombiningWidth = 0;
         for (int i = x1; i < x2; i++) {
             char sourceChar = sourceChars[i];
@@ -58,11 +67,35 @@ public final class TerminalRow {
             }
             int w = WcWidth.width(codePoint);
             if (w > 0) {
-                destinationX += latestNonCombiningWidth;
-                sourceX1 += latestNonCombiningWidth;
+                currentDestinationX += latestNonCombiningWidth;
+                currentSourceX += latestNonCombiningWidth;
                 latestNonCombiningWidth = w;
             }
-            setChar(destinationX, codePoint, line.getStyle(sourceX1));
+
+            if (opsCount == opsCapacity) {
+                opsCapacity <<= 1;
+                codePoints = Arrays.copyOf(codePoints, opsCapacity);
+                destinationColumns = Arrays.copyOf(destinationColumns, opsCapacity);
+                styles = Arrays.copyOf(styles, opsCapacity);
+            }
+
+            codePoints[opsCount] = codePoint;
+            destinationColumns[opsCount] = currentDestinationX;
+            styles[opsCount] = line.getStyle(currentSourceX);
+            opsCount++;
+        }
+
+        final int copiedColumns = sourceX2 - sourceX1;
+        final boolean overlap = this == line && destinationX < sourceX2 && sourceX1 < destinationX + copiedColumns;
+        final boolean reverse = overlap && destinationX > sourceX1;
+        if (reverse) {
+            for (int i = opsCount - 1; i >= 0; i--) {
+                setChar(destinationColumns[i], codePoints[i], styles[i]);
+            }
+        } else {
+            for (int i = 0; i < opsCount; i++) {
+                setChar(destinationColumns[i], codePoints[i], styles[i]);
+            }
         }
     }
 

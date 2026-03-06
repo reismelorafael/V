@@ -450,4 +450,37 @@ public class TerminalRowTest extends TestCase {
 		assertEquals(' ', row.mText[1]);
 	}
 
+	public void testCopyIntervalSelfOverlapRightUsesMemmoveSemantics() {
+		row.setChar(0, 'a', 11);
+		row.setChar(1, ONE_JAVA_CHAR_DISPLAY_WIDTH_TWO_1, 22);
+		row.setChar(3, 'b', 33);
+		row.setChar(4, 'c', 44);
+
+		row.copyInterval(row, 0, 4, 1);
+
+		assertEquals('a', row.mText[row.findStartOfColumn(0)]);
+		assertEquals('a', row.mText[row.findStartOfColumn(1)]);
+		assertEquals(ONE_JAVA_CHAR_DISPLAY_WIDTH_TWO_1, row.mText[row.findStartOfColumn(2)]);
+		assertEquals('b', row.mText[row.findStartOfColumn(4)]);
+		assertEquals(11L, row.getStyle(1));
+		assertEquals(22L, row.getStyle(2));
+		assertEquals(33L, row.getStyle(4));
+	}
+
+	public void testCopyIntervalSelfOverlapLeftWithWideChar() {
+		row.setChar(0, 'x', 100);
+		row.setChar(1, ONE_JAVA_CHAR_DISPLAY_WIDTH_TWO_2, 200);
+		row.setChar(3, 'y', 300);
+		row.setChar(4, 'z', 400);
+
+		row.copyInterval(row, 1, 5, 0);
+
+		assertEquals(ONE_JAVA_CHAR_DISPLAY_WIDTH_TWO_2, row.mText[row.findStartOfColumn(0)]);
+		assertEquals('y', row.mText[row.findStartOfColumn(2)]);
+		assertEquals('z', row.mText[row.findStartOfColumn(3)]);
+		assertEquals(200L, row.getStyle(0));
+		assertEquals(300L, row.getStyle(2));
+		assertEquals(400L, row.getStyle(3));
+	}
+
 }
