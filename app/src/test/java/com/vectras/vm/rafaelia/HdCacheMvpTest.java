@@ -136,6 +136,20 @@ public class HdCacheMvpTest {
     }
 
     @Test
+    public void tierCachePutNoEvictAllowsOverflowUntilExternalEviction() {
+        HdCacheMvp.TierCache cache = new HdCacheMvp.TierCache(10);
+        HdCacheMvp.EventKey k1 = new HdCacheMvp.EventKey("layer", "eid1");
+        HdCacheMvp.EventKey k2 = new HdCacheMvp.EventKey("layer", "eid2");
+
+        cache.putNoEvict(k1, new byte[8]);
+        cache.putNoEvict(k2, new byte[8]);
+
+        assertTrue(cache.getUsed() > cache.getBudget());
+        assertNotNull(cache.get(k1));
+        assertNotNull(cache.get(k2));
+    }
+
+    @Test
     public void tierCachePopOldestReturnsCorrectItem() {
         HdCacheMvp.TierCache cache = new HdCacheMvp.TierCache(1024);
         
@@ -153,18 +167,20 @@ public class HdCacheMvpTest {
     // ========== L123Cache Tests ==========
     
     @Test
-    public void l123CacheGetPromotesFromL3ToL2() {
+    public void l123CacheGetPromotesFromL3ToL1AndClearsLowerTiers() {
         HdCacheMvp.L123Cache cache = new HdCacheMvp.L123Cache(100, 100, 100);
         HdCacheMvp.EventKey k = new HdCacheMvp.EventKey("layer", "eid");
         byte[] data = new byte[]{1, 2, 3};
         
         // Put directly in L3
-        cache.getL3().put(k, data);
+        cache.getL3().putNoEvict(k, data);
         
-        // Get should promote to L2
+        // Get should promote to L1 and clear duplicates from lower tiers
         byte[] retrieved = cache.get(k);
         assertArrayEquals(data, retrieved);
-        assertNotNull(cache.getL2().get(k));
+        assertNotNull(cache.getL1().get(k));
+        assertNull(cache.getL2().get(k));
+        assertNull(cache.getL3().get(k));
     }
 
     @Test
@@ -196,6 +212,50 @@ public class HdCacheMvpTest {
         
         // L1 should now be at or under budget
         assertTrue(cache.getL1().getUsed() <= cache.getL1().getBudget());
+    }
+
+    @Test
+    public void l123CacheDemoteCycleSpillsDeterministicallyAcrossTiers() {
+        HdCacheMvp.L123Cache cache = new HdCacheMvp.L123Cache(10, 10, 10);
+
+        HdCacheMvp.EventKey k1 = new HdCacheMvp.EventKey("layer", "eid1");
+        HdCacheMvp.EventKey k2 = new HdCacheMvp.EventKey("layer", "eid2");
+        HdCacheMvp.EventKey k3 = new HdCacheMvp.EventKey("layer", "eid3");
+        HdCacheMvp.EventKey k4 = new HdCacheMvp.EventKey("layer", "eid4");
+
+        cache.putHot(k1, new byte[10]);
+        cache.putHot(k2, new byte[10]);
+        cache.putHot(k3, new byte[10]);
+        cache.putHot(k4, new byte[10]);
+
+        assertNotNull(cache.getL1().get(k4));
+        assertNull(cache.getL1().get(k1));
+        assertNull(cache.getL1().get(k2));
+        assertNull(cache.getL1().get(k3));
+
+        assertNotNull(cache.getL2().get(k3));
+        assertNull(cache.getL2().get(k1));
+        assertNull(cache.getL2().get(k2));
+
+        assertNotNull(cache.getL3().get(k2));
+        assertNull(cache.getL3().get(k1));
+    }
+
+    @Test
+    public void l123CachePromotionToL1RemovesDuplicatesFromLowerTiers() {
+        HdCacheMvp.L123Cache cache = new HdCacheMvp.L123Cache(100, 100, 100);
+        HdCacheMvp.EventKey k = new HdCacheMvp.EventKey("layer", "eid");
+        byte[] data = new byte[]{1, 2, 3};
+
+        cache.getL2().putNoEvict(k, data);
+        cache.getL3().putNoEvict(k, data);
+
+        byte[] retrieved = cache.get(k);
+
+        assertArrayEquals(data, retrieved);
+        assertNotNull(cache.getL1().get(k));
+        assertNull(cache.getL2().get(k));
+        assertNull(cache.getL3().get(k));
     }
 
     // ========== HarmonicScheduler Tests ==========

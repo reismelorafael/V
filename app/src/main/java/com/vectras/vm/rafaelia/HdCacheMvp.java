@@ -402,19 +402,35 @@ public final class HdCacheMvp {
         public void put(EventKey k, byte[] v) {
             lock.lock();
             try {
-                if (items.containsKey(k)) {
-                    // Replace existing
-                    used -= items.get(k).length;
-                    items.put(k, v);
-                    used += v.length;
-                } else {
-                    items.put(k, v);
-                    queue.addLast(k);
-                    used += v.length;
-                }
+                putNoEvictLocked(k, v);
                 evict();
             } finally {
                 lock.unlock();
+            }
+        }
+
+        /**
+         * Puts an item into the cache without triggering local eviction.
+         */
+        public void putNoEvict(EventKey k, byte[] v) {
+            lock.lock();
+            try {
+                putNoEvictLocked(k, v);
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        private void putNoEvictLocked(EventKey k, byte[] v) {
+            if (items.containsKey(k)) {
+                // Replace existing
+                used -= items.get(k).length;
+                items.put(k, v);
+                used += v.length;
+            } else {
+                items.put(k, v);
+                queue.addLast(k);
+                used += v.length;
             }
         }
 
@@ -512,7 +528,10 @@ public final class HdCacheMvp {
          * Puts an item directly into L1 (hot cache).
          */
         public void putHot(EventKey k, byte[] v) {
-            l1.put(k, v);
+            l1.putNoEvict(k, v);
+            l2.remove(k);
+            l3.remove(k);
+            demoteCycle();
         }
 
         /**
@@ -525,12 +544,18 @@ public final class HdCacheMvp {
             }
             v = l2.get(k);
             if (v != null) {
-                l1.put(k, v); // Promote to L1
+                l2.remove(k);
+                l3.remove(k);
+                l1.putNoEvict(k, v); // Promote to L1
+                demoteCycle();
                 return v;
             }
             v = l3.get(k);
             if (v != null) {
-                l2.put(k, v); // Promote to L2
+                l3.remove(k);
+                l2.remove(k);
+                l1.putNoEvict(k, v); // Promote to L1
+                demoteCycle();
                 return v;
             }
             return null;
@@ -544,13 +569,14 @@ public final class HdCacheMvp {
             while (l1.getUsed() > l1.getBudget()) {
                 Map.Entry<EventKey, byte[]> item = l1.popOldest();
                 if (item == null) break;
-                l2.put(item.getKey(), item.getValue());
+                l3.remove(item.getKey());
+                l2.putNoEvict(item.getKey(), item.getValue());
             }
             // Move overflow from L2 -> L3
             while (l2.getUsed() > l2.getBudget()) {
                 Map.Entry<EventKey, byte[]> item = l2.popOldest();
                 if (item == null) break;
-                l3.put(item.getKey(), item.getValue());
+                l3.putNoEvict(item.getKey(), item.getValue());
             }
             // Evict from L3 if over budget
             while (l3.getUsed() > l3.getBudget()) {
