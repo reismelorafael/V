@@ -4,29 +4,61 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "zero.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef enum {
-  RMR_STAGE_PLAN = 1,
-  RMR_STAGE_DIFF = 2,
-  RMR_STAGE_APPLY = 3,
-  RMR_STAGE_VERIFY = 4,
-  RMR_STAGE_AUDIT = 5
+  RMR_STAGE_PLAN = RMR_ZERO_STAGE_PSI_U8,
+  RMR_STAGE_DIFF = RMR_ZERO_STAGE_CHI_U8,
+  RMR_STAGE_APPLY = RMR_ZERO_STAGE_RHO_U8,
+  RMR_STAGE_VERIFY = RMR_ZERO_STAGE_DELTA_U8,
+  RMR_STAGE_AUDIT = RMR_ZERO_STAGE_SIGMA_U8
 } RmR_Stage;
 
 typedef enum {
-  RMR_ROUTE_CPU = 1,
-  RMR_ROUTE_RAM = 2,
-  RMR_ROUTE_DISK = 3,
-  RMR_ROUTE_FALLBACK = 255
+  RMR_ROUTE_CPU = RMR_ZERO_ROUTE_CPU_U8,
+  RMR_ROUTE_RAM = RMR_ZERO_ROUTE_RAM_U8,
+  RMR_ROUTE_DISK = RMR_ZERO_ROUTE_DISK_U8,
+  RMR_ROUTE_FALLBACK = RMR_ZERO_ROUTE_FALLBACK_U8
 } RmR_RouteId;
 
 typedef enum {
   RMR_DECISION_MODE_BRANCHLESS = 1,
   RMR_DECISION_MODE_FALLBACK = 2
 } RmR_DecisionMode;
+
+#if defined(__cplusplus)
+#define RMR_POLICY_STATIC_ASSERT(COND, MSG) static_assert((COND), MSG)
+#elif defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
+#define RMR_POLICY_STATIC_ASSERT(COND, MSG) _Static_assert((COND), MSG)
+#else
+#define RMR_POLICY_STATIC_ASSERT(COND, MSG) typedef char rmr_policy_static_assertion_##__LINE__[(COND) ? 1 : -1]
+#endif
+
+RMR_POLICY_STATIC_ASSERT(RMR_STAGE_PLAN == RMR_ZERO_STAGE_PSI_U8,
+                         "RmR_Stage mismatch: PLAN");
+RMR_POLICY_STATIC_ASSERT(RMR_STAGE_DIFF == RMR_ZERO_STAGE_CHI_U8,
+                         "RmR_Stage mismatch: DIFF");
+RMR_POLICY_STATIC_ASSERT(RMR_STAGE_APPLY == RMR_ZERO_STAGE_RHO_U8,
+                         "RmR_Stage mismatch: APPLY");
+RMR_POLICY_STATIC_ASSERT(RMR_STAGE_VERIFY == RMR_ZERO_STAGE_DELTA_U8,
+                         "RmR_Stage mismatch: VERIFY");
+RMR_POLICY_STATIC_ASSERT(RMR_STAGE_AUDIT == RMR_ZERO_STAGE_SIGMA_U8,
+                         "RmR_Stage mismatch: AUDIT");
+
+RMR_POLICY_STATIC_ASSERT(RMR_ROUTE_CPU == RMR_ZERO_ROUTE_CPU_U8,
+                         "RmR_RouteId mismatch: CPU");
+RMR_POLICY_STATIC_ASSERT(RMR_ROUTE_RAM == RMR_ZERO_ROUTE_RAM_U8,
+                         "RmR_RouteId mismatch: RAM");
+RMR_POLICY_STATIC_ASSERT(RMR_ROUTE_DISK == RMR_ZERO_ROUTE_DISK_U8,
+                         "RmR_RouteId mismatch: DISK");
+RMR_POLICY_STATIC_ASSERT(RMR_ROUTE_FALLBACK == RMR_ZERO_ROUTE_FALLBACK_U8,
+                         "RmR_RouteId mismatch: FALLBACK");
+
+#undef RMR_POLICY_STATIC_ASSERT
 
 typedef struct {
   uint8_t cpu_ok;
