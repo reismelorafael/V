@@ -98,6 +98,7 @@ typedef struct {
   uint32_t cache_hint_l1;
   uint32_t cache_hint_l2;
   uint32_t cache_hint_l3;
+  uint32_t cache_hint_l4;
   uint32_t page_bytes;
   uint32_t mem_bus_bits;
   uint32_t gpio_word_bits;
@@ -149,6 +150,7 @@ typedef struct {
   uint32_t register_width_bits;
   uint32_t pin_count_hint;
   uint32_t feature_bits_hi;
+  uint32_t cache_hint_l4;
 } rmr_jni_capabilities_t;
 
 typedef struct {

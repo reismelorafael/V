@@ -55,6 +55,7 @@ typedef struct {
   uint32_t reg_signature_2;
   uint32_t gpio_word_bits;
   uint32_t gpio_pin_stride;
+  uint32_t cache_hint_l4;
 } RmR_UnifiedCapabilities;
 
 #define RMR_SIG_ARCH_UNKNOWN 0x0000u

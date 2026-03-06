@@ -47,6 +47,7 @@ static void rmr_legacy_capabilities_from_hw(const RmR_HW_Info *hw,
   caps->cache_hint_l1 = hw->cache_hint_l1;
   caps->cache_hint_l2 = hw->cache_hint_l2;
   caps->cache_hint_l3 = hw->cache_hint_l3;
+  caps->cache_hint_l4 = hw->cache_hint_l4;
   caps->page_bytes = hw->page_bytes;
   caps->mem_bus_bits = hw->mem_bus_bits;
   caps->gpio_word_bits = hw->gpio_word_bits;
@@ -268,6 +269,7 @@ static void rmr_unified_caps_from_hw(const RmR_HW_Info *hw, RmR_UnifiedCapabilit
   out->reg_signature_2 = hw->reg_signature_2;
   out->gpio_word_bits = hw->gpio_word_bits;
   out->gpio_pin_stride = hw->gpio_pin_stride;
+  out->cache_hint_l4 = hw->cache_hint_l4;
 }
 
 int RmR_UnifiedKernel_Detect(RmR_UnifiedCapabilities *out) {
@@ -434,19 +436,18 @@ static int rmr_unified_slot_lookup(const RmR_UnifiedKernel *kernel, uint32_t han
   return RMR_UK_OK;
 }
 
-static int rmr_unified_collect_active_sorted(const RmR_UnifiedKernel *kernel,
-                                             uint32_t *sorted_slots,
-                                             uint32_t *active_count,
-                                             uint32_t *free_slot) {
+int RmR_UnifiedKernel_ArenaAlloc(RmR_UnifiedKernel *kernel, uint32_t bytes, uint32_t *out_handle) {
   uint32_t i;
   uint32_t slot = RMR_UK_MAX_SLOTS;
   uint32_t best_offset = UINT32_MAX;
   if (!kernel || !out_handle || !kernel->initialized || bytes == 0u) return RMR_KERNEL_ERR_ARG;
 
   for (i = 0; i < RMR_UK_MAX_SLOTS; ++i) {
-    if (!kernel->slots[i].in_use && slot == RMR_UK_MAX_SLOTS) slot = i;
+    if (!kernel->slots[i].in_use) {
+      slot = i;
+      break;
+    }
   }
-
   if (slot == RMR_UK_MAX_SLOTS) return RMR_KERNEL_ERR_STATE;
 
   for (i = 0; i < RMR_UK_MAX_SLOTS; ++i) {
@@ -462,9 +463,7 @@ static int rmr_unified_collect_active_sorted(const RmR_UnifiedKernel *kernel,
       candidate_offset = kernel->slots[i - 1u].offset + kernel->slots[i - 1u].size;
     }
 
-    if (candidate_offset > kernel->arena_capacity || bytes > kernel->arena_capacity - candidate_offset) {
-      continue;
-    }
+    if (candidate_offset > kernel->arena_capacity || bytes > kernel->arena_capacity - candidate_offset) continue;
 
     overlap = 0;
     for (j = 0; j < RMR_UK_MAX_SLOTS; ++j) {
@@ -489,8 +488,6 @@ static int rmr_unified_collect_active_sorted(const RmR_UnifiedKernel *kernel,
       best_offset = candidate_offset;
       if (best_offset == 0u) break;
     }
-
-    prev_end = active_end;
   }
 
   if (best_offset == UINT32_MAX) return RMR_KERNEL_ERR_STATE;
@@ -605,6 +602,7 @@ static void rmr_caps_from_unified(const RmR_UnifiedCapabilities *in, rmr_jni_cap
   out->register_width_bits = in->pointer_bits;
   out->pin_count_hint = in->gpio_word_bits;
   out->feature_bits_hi = in->reg_signature_2;
+  out->cache_hint_l4 = in->cache_hint_l4;
 }
 
 int rmr_jni_kernel_init(rmr_jni_kernel_state_t *state, uint32_t seed) {

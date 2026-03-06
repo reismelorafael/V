@@ -34,15 +34,17 @@ void RmR_LL_ApplyTuneDefaults(const RmR_HW_Info *hw, RmR_LL_TunePlan *plan) {
   {
     uint32_t native_64 = (hw->word_bits >= 64u && hw->ptr_bits >= 64u) ? 1u : 0u;
     uint32_t l2_kib = hw->cache_hint_l2 / 1024u;
+    uint32_t l4_mib = hw->cache_hint_l4 / (1024u * 1024u);
     uint32_t line = hw->cacheline_bytes ? hw->cacheline_bytes : 64u;
 
     plan->qemu_smp_cpus = native_64 ? 8u : 4u;
     if (hw->arch == 4u || hw->arch == 2u) plan->qemu_smp_cpus += 2u;
     if (l2_kib >= 1024u) plan->qemu_smp_cpus += 2u;
+    if (l4_mib >= 16u) plan->qemu_smp_cpus += 2u;
     plan->qemu_smp_cpus = clamp_u32(plan->qemu_smp_cpus, 2u, 16u);
 
-    plan->qemu_use_iothread = (l2_kib >= 256u) ? 1u : 0u;
-    plan->qemu_use_direct_io = (l2_kib >= 512u && hw->mem_bus_bits >= 32u) ? 1u : 0u;
+    plan->qemu_use_iothread = (l2_kib >= 256u || l4_mib >= 8u) ? 1u : 0u;
+    plan->qemu_use_direct_io = ((l2_kib >= 512u || l4_mib >= 8u) && hw->mem_bus_bits >= 32u) ? 1u : 0u;
 
     plan->policy_lane_width = native_64 ? 16u : 8u;
     if (line >= 128u) plan->policy_lane_width += 8u;
@@ -55,6 +57,7 @@ void RmR_LL_ApplyTuneDefaults(const RmR_HW_Info *hw, RmR_LL_TunePlan *plan) {
     plan->policy_batch_size = clamp_u32(plan->policy_batch_size, 512u, 65536u);
 
     plan->policy_commit_quantum = (hw->cache_hint_l3 >= (2u * 1024u * 1024u)) ? 64u : 24u;
+    if (l4_mib >= 16u) plan->policy_commit_quantum = 96u;
     if (!native_64) plan->policy_commit_quantum = 12u;
 
     plan->cti_chunk_size = clamp_u32(line * 64u, 1024u, 65536u);

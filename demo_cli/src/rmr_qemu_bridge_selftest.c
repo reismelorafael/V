@@ -20,6 +20,7 @@ int main(void) {
   hw.ptr_bits = 64u;
   hw.word_bits = 64u;
   hw.cache_hint_l2 = 1024u * 1024u;
+  hw.cache_hint_l4 = 32u * 1024u * 1024u;
 
   RmR_QemuPlan_Autotune(&hw, RMR_GUEST_ARCH_X86_64, 8192u, 0u, &plan);
   failed += expect(plan.preset == RMR_QEMU_PRESET_PERFORMANCE, "preset performance");
@@ -29,6 +30,17 @@ int main(void) {
   failed += expect(RmR_QemuPlan_BuildArgs(&plan, out, sizeof(out)) == 0, "build args");
   failed += expect(strstr(out, "-smp") != NULL, "args has smp");
   failed += expect(strstr(out, "-accel kvm") != NULL, "args has kvm");
+
+  {
+    RmR_QemuPlan with_l4;
+    RmR_QemuPlan without_l4;
+    RmR_HW_Info hw_no_l4 = hw;
+    hw_no_l4.cache_hint_l4 = 0u;
+    RmR_QemuPlan_Autotune(&hw, RMR_GUEST_ARCH_X86_64, 4096u, 0u, &with_l4);
+    RmR_QemuPlan_Autotune(&hw_no_l4, RMR_GUEST_ARCH_X86_64, 4096u, 0u, &without_l4);
+    failed += expect(with_l4.preset == RMR_QEMU_PRESET_PERFORMANCE, "l4 keeps performance preset");
+    failed += expect(with_l4.host_cores >= without_l4.host_cores, "l4 increases or preserves host cores");
+  }
 
   RmR_QemuPlan_Autotune(&hw, RMR_GUEST_ARCH_PPC, 2048u, 0u, &plan);
   failed += expect(plan.preset == RMR_QEMU_PRESET_COMPATIBILITY, "ppc preset compatibility");

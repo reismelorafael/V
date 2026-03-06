@@ -51,6 +51,14 @@ static u32 RmR_CachelineHint(u32 arch){
   return 64u;
 }
 
+static u32 RmR_CacheHintL4(u32 arch){
+  if(arch == 7u || arch == 9u) return 64u * 1024u * 1024u;
+  if(arch == 2u || arch == 4u) return 32u * 1024u * 1024u;
+  if(arch == 5u) return 16u * 1024u * 1024u;
+  if(arch == 1u || arch == 3u || arch == 8u) return 8u * 1024u * 1024u;
+  return 0u;
+}
+
 static u32 RmR_PageHint(u32 arch){
   if(arch == 7u) return 65536u;
   return 4096u;
@@ -104,6 +112,7 @@ void RmR_HW_Detect(RmR_HW_Info *out){
   out->cache_hint_l1 = 32u * 1024u;
   out->cache_hint_l2 = 256u * 1024u;
   out->cache_hint_l3 = 1024u * 1024u;
+  out->cache_hint_l4 = RmR_CacheHintL4(arch);
   out->page_bytes = RmR_PageHint(arch);
   out->mem_bus_bits = RmR_MemBusHint(arch);
   out->gpio_word_bits = RmR_GpioWordBits(out->ptr_bits);

@@ -47,6 +47,11 @@ void RmR_QemuPlan_Autotune(const RmR_HW_Info *hw,
     if (hw->cache_hint_l2 >= (512u * 1024u)) {
       plan->preset = RMR_QEMU_PRESET_PERFORMANCE;
     }
+    if (hw->cache_hint_l4 >= (16u * 1024u * 1024u)) {
+      plan->preset = RMR_QEMU_PRESET_PERFORMANCE;
+      plan->use_multifd = 1u;
+      if (host_cores < 16u) host_cores = clamp_u32(host_cores + 2u, 2u, 16u);
+    }
     if (hw->ptr_bits < 64u) {
       plan->preset = RMR_QEMU_PRESET_COMPATIBILITY;
       plan->use_kvm = 0u;

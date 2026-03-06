@@ -23,6 +23,7 @@ typedef struct {
   u32 cache_hint_l1;
   u32 cache_hint_l2;
   u32 cache_hint_l3;
+  u32 cache_hint_l4;
   u32 page_bytes;
   u32 mem_bus_bits;
   u32 gpio_word_bits;
