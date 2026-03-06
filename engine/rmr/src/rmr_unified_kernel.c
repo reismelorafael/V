@@ -3,6 +3,7 @@
 #include "bitraf.h"
 #include "rmr_corelib.h"
 #include "rmr_hw_detect.h"
+#include "rmr_math_fabric.h"
 #if defined(RMR_ENABLE_POLICY_MODULE) && RMR_ENABLE_POLICY_MODULE
 #include "rmr_policy_kernel.h"
 #endif
@@ -338,11 +339,114 @@ int RmR_UnifiedKernel_Process(RmR_UnifiedKernel *kernel,
                               int64_t m10,
                               int64_t m11,
                               RmR_UnifiedProcessState *out) {
+  enum {
+    RMR_UK_LAYER_CPU = 0,
+    RMR_UK_LAYER_RAM = 1,
+    RMR_UK_LAYER_DISK = 2,
+    RMR_UK_LAYER_L4 = 3,
+    RMR_UK_LAYER_COUNT = 4
+  };
+  uint32_t cache_line = kernel->caps.cache_line_bytes ? kernel->caps.cache_line_bytes : 64u;
+  uint8_t metrics_storage[4u * 256u + 255u];
+  uintptr_t metrics_addr;
+  uint8_t *metrics_base;
+  uint32_t i;
+  uint64_t cpu_bytes;
+  uint64_t io_bytes;
+  uint32_t in_points[RMR_MATH_POINTS];
+  uint32_t out_domains[RMR_MATH_DOMAINS];
+  RmR_MathFabricPlan plan;
+  RmR_HW_Info hw;
+  uint32_t layer_weight[RMR_UK_LAYER_COUNT];
+  uint32_t layer_budget[RMR_UK_LAYER_COUNT];
+  uint32_t layer_signal[RMR_UK_LAYER_COUNT];
+  uint32_t layer_score[RMR_UK_LAYER_COUNT];
+  uint32_t layer_sig[RMR_UK_LAYER_COUNT];
+  uint32_t l4_enable;
+  uint64_t matrix_det;
+
   if (!kernel || !out || !kernel->initialized) return RMR_KERNEL_ERR_ARG;
-  out->cpu_pressure = (uint32_t)((cpu_cycles >> 10u) & 0xFFFFu);
-  out->storage_pressure = (uint32_t)(((storage_read_bytes + storage_write_bytes) >> 10u) & 0xFFFFu);
-  out->io_pressure = (uint32_t)(((input_bytes + output_bytes) >> 10u) & 0xFFFFu);
-  out->matrix_determinant = (m00 * m11) - (m01 * m10);
+
+  if (cache_line < 16u) cache_line = 16u;
+  if (cache_line > 256u) cache_line = 256u;
+  metrics_addr = (uintptr_t)&metrics_storage[0];
+  metrics_addr = (metrics_addr + (uintptr_t)(cache_line - 1u)) & ~((uintptr_t)cache_line - 1u);
+  metrics_base = (uint8_t *)metrics_addr;
+  for (i = 0; i < RMR_UK_LAYER_COUNT; ++i) {
+    rmr_mem_set(metrics_base + (i * cache_line), 0u, cache_line);
+  }
+
+  cpu_bytes = storage_read_bytes + storage_write_bytes;
+  io_bytes = input_bytes + output_bytes;
+
+  rmr_mem_set(&hw, 0u, sizeof(hw));
+  hw.arch = kernel->caps.signature >> 8u;
+  hw.word_bits = kernel->caps.pointer_bits;
+  hw.ptr_bits = kernel->caps.pointer_bits;
+  hw.cacheline_bytes = cache_line;
+  hw.page_bytes = kernel->caps.page_bytes;
+  hw.gpio_pin_stride = kernel->caps.gpio_pin_stride;
+  hw.gpio_word_bits = kernel->caps.gpio_word_bits;
+  hw.feature_bits_0 = kernel->caps.feature_mask;
+  hw.reg_signature_0 = kernel->caps.reg_signature_0;
+  hw.reg_signature_1 = kernel->caps.reg_signature_1;
+  hw.reg_signature_2 = kernel->caps.reg_signature_2;
+
+  RmR_MathFabric_AutodetectPlan(&hw, &plan);
+
+  in_points[0] = (uint32_t)(cpu_cycles & 0xFFFFFFFFu);
+  in_points[1] = (uint32_t)((cpu_cycles >> 32u) & 0xFFFFFFFFu);
+  in_points[2] = (uint32_t)(cpu_bytes & 0xFFFFFFFFu);
+  in_points[3] = (uint32_t)((cpu_bytes >> 32u) & 0xFFFFFFFFu);
+  in_points[4] = (uint32_t)(io_bytes & 0xFFFFFFFFu);
+  in_points[5] = (uint32_t)((io_bytes >> 32u) & 0xFFFFFFFFu);
+  in_points[6] = (uint32_t)(m00 ^ m11);
+  in_points[7] = (uint32_t)(m01 ^ m10);
+  in_points[8] = kernel->caps.feature_mask ^ kernel->caps.signature;
+
+  RmR_MathFabric_VectorMix(&plan, in_points, out_domains);
+
+  l4_enable = ((kernel->caps.feature_mask >> 4u) & 1u);
+  layer_weight[RMR_UK_LAYER_CPU] = 96u + (kernel->caps.pointer_bits >> 1u) + (cache_line >> 3u);
+  layer_weight[RMR_UK_LAYER_RAM] = 88u + (cache_line >> 1u) + (kernel->caps.page_bytes >> 10u);
+  layer_weight[RMR_UK_LAYER_DISK] = 72u + (kernel->caps.gpio_pin_stride & 0x3Fu) + ((kernel->caps.feature_mask >> 8u) & 0x1Fu);
+  layer_weight[RMR_UK_LAYER_L4] = l4_enable ? (64u + (kernel->caps.gpio_word_bits & 0x1Fu)) : 0u;
+
+  layer_budget[RMR_UK_LAYER_CPU] = 1024u + (cache_line * 16u) + (kernel->caps.pointer_bits * 2u);
+  layer_budget[RMR_UK_LAYER_RAM] = 1024u + ((kernel->caps.page_bytes ? kernel->caps.page_bytes : 4096u) >> 1u);
+  layer_budget[RMR_UK_LAYER_DISK] = 1024u + (kernel->caps.gpio_pin_stride * 64u) + (cache_line * 8u);
+  layer_budget[RMR_UK_LAYER_L4] = l4_enable ? (1024u + (kernel->caps.gpio_word_bits * 8u)) : 1u;
+
+  layer_signal[RMR_UK_LAYER_CPU] = (uint32_t)((cpu_cycles >> 10u) & 0xFFFFFFFFu) ^ out_domains[RMR_DOMAIN_ALGEBRA];
+  layer_signal[RMR_UK_LAYER_RAM] = (uint32_t)((cpu_bytes >> 10u) & 0xFFFFFFFFu) ^ out_domains[RMR_DOMAIN_GEOMETRY];
+  layer_signal[RMR_UK_LAYER_DISK] = (uint32_t)((io_bytes >> 10u) & 0xFFFFFFFFu) ^ out_domains[RMR_DOMAIN_DISCRETE];
+  layer_signal[RMR_UK_LAYER_L4] = (uint32_t)((kernel->caps.reg_signature_0 ^ kernel->caps.reg_signature_1 ^ kernel->caps.reg_signature_2) & 0xFFFFFFFFu) ^
+                                  out_domains[RMR_DOMAIN_LOGIC];
+
+  for (i = 0; i < RMR_UK_LAYER_COUNT; ++i) {
+    uint32_t *blk = (uint32_t *)(void *)(metrics_base + (i * cache_line));
+    uint64_t weighted = (uint64_t)layer_signal[i] * (uint64_t)layer_weight[i];
+    uint32_t budget = layer_budget[i] ? layer_budget[i] : 1u;
+    layer_score[i] = (uint32_t)((weighted / (uint64_t)budget) & 0xFFFFu);
+    layer_sig[i] = (uint32_t)((weighted ^ ((uint64_t)layer_budget[i] << 17u) ^ ((uint64_t)out_domains[i] << 3u) ^ (uint64_t)i) & 0xFFFFFFFFu);
+    blk[0] = layer_weight[i];
+    blk[1] = layer_budget[i];
+    blk[2] = layer_signal[i];
+    blk[3] = layer_score[i];
+    blk[4] = layer_sig[i];
+  }
+
+  out->cpu_pressure = (layer_score[RMR_UK_LAYER_CPU] ^ (layer_sig[RMR_UK_LAYER_CPU] & 0x3FFu)) & 0xFFFFu;
+  out->storage_pressure = (layer_score[RMR_UK_LAYER_RAM] ^ (layer_sig[RMR_UK_LAYER_RAM] & 0x3FFu)) & 0xFFFFu;
+  out->io_pressure = (layer_score[RMR_UK_LAYER_DISK] ^ (layer_sig[RMR_UK_LAYER_DISK] & 0x3FFu)) & 0xFFFFu;
+  if (l4_enable) {
+    out->io_pressure = (out->io_pressure + ((layer_score[RMR_UK_LAYER_L4] ^ layer_sig[RMR_UK_LAYER_L4]) & 0x1FFu)) & 0xFFFFu;
+  }
+
+  matrix_det = (uint64_t)((m00 * m11) - (m01 * m10));
+  matrix_det ^= ((uint64_t)layer_sig[RMR_UK_LAYER_CPU] << 1u) ^ ((uint64_t)layer_sig[RMR_UK_LAYER_RAM] << 7u) ^
+                ((uint64_t)layer_sig[RMR_UK_LAYER_DISK] << 13u) ^ ((uint64_t)layer_sig[RMR_UK_LAYER_L4] << 19u);
+  out->matrix_determinant = (int64_t)matrix_det;
   kernel->stage_counter += 1u;
   return RMR_UK_OK;
 }
@@ -350,15 +454,54 @@ int RmR_UnifiedKernel_Process(RmR_UnifiedKernel *kernel,
 int RmR_UnifiedKernel_Route(RmR_UnifiedKernel *kernel,
                             const RmR_UnifiedProcessState *process,
                             RmR_UnifiedRouteState *out) {
+  uint32_t cpu_score;
+  uint32_t ram_score;
+  uint32_t disk_score;
+  uint32_t l4_score;
+  uint32_t global_score;
+  uint32_t cpu_sig;
+  uint32_t ram_sig;
+  uint32_t disk_sig;
+  uint32_t l4_sig;
+  uint32_t global_sig;
   uint32_t route = RMR_ROUTE_DISK;
   if (!kernel || !process || !out || !kernel->initialized) return RMR_KERNEL_ERR_ARG;
-  if (process->cpu_pressure >= process->storage_pressure && process->cpu_pressure >= process->io_pressure) {
+
+  cpu_score = (process->cpu_pressure * 5u) + ((process->storage_pressure * 3u) >> 1u) +
+              ((uint32_t)process->matrix_determinant & 0x3FFu);
+  ram_score = (process->storage_pressure * 5u) + ((process->io_pressure * 3u) >> 1u) +
+              (((uint32_t)process->matrix_determinant >> 10u) & 0x3FFu);
+  disk_score = (process->io_pressure * 5u) + ((process->cpu_pressure * 3u) >> 1u) +
+               (((uint32_t)process->matrix_determinant >> 20u) & 0x3FFu);
+  l4_score = (((process->cpu_pressure ^ process->storage_pressure ^ process->io_pressure) *
+               ((kernel->caps.feature_mask & 1u) ? 3u : 1u)) +
+              (((uint32_t)process->matrix_determinant >> 6u) & 0x7FFu));
+
+  global_score = cpu_score ^ (ram_score << 1u) ^ (disk_score << 2u) ^ (l4_score << 3u) ^ kernel->caps.signature;
+  cpu_score ^= (global_score & 0x1FFu);
+  ram_score ^= ((global_score >> 9u) & 0x1FFu);
+  disk_score ^= ((global_score >> 18u) & 0x1FFu);
+
+  if (cpu_score >= ram_score && cpu_score >= disk_score) {
     route = RMR_ROUTE_CPU;
-  } else if (process->storage_pressure >= process->io_pressure) {
+  } else if (ram_score >= disk_score) {
     route = RMR_ROUTE_RAM;
   }
+
+  if ((l4_score > cpu_score) && (l4_score > ram_score) && (l4_score > disk_score)) {
+    route = RMR_ROUTE_RAM;
+  }
+
+  cpu_sig = cpu_score ^ (process->cpu_pressure << 8u) ^ (kernel->caps.reg_signature_0 & 0x00FFFFFFu);
+  ram_sig = ram_score ^ (process->storage_pressure << 8u) ^ (kernel->caps.reg_signature_1 & 0x00FFFFFFu);
+  disk_sig = disk_score ^ (process->io_pressure << 8u) ^ (kernel->caps.reg_signature_2 & 0x00FFFFFFu);
+  l4_sig = l4_score ^ ((uint32_t)process->matrix_determinant) ^ (kernel->caps.feature_mask << 3u);
+  global_sig = cpu_sig ^ (ram_sig << 1u) ^ (disk_sig << 2u) ^ (l4_sig << 3u) ^ route ^ kernel->crc32c;
+
   out->route_id = route;
-  out->route_tag = ((uint64_t)kernel->crc32c << 32) ^ (uint64_t)process->matrix_determinant ^ (uint64_t)route;
+  out->route_tag = ((uint64_t)cpu_sig << 48u) ^ ((uint64_t)ram_sig << 32u) ^
+                   ((uint64_t)disk_sig << 16u) ^ (uint64_t)l4_sig;
+  out->route_tag ^= ((uint64_t)global_sig << 1u) ^ (uint64_t)(route & 0xFFFFu);
   kernel->last_route_tag = out->route_tag;
   kernel->stage_counter += 1u;
   return RMR_UK_OK;
@@ -434,19 +577,15 @@ static int rmr_unified_slot_lookup(const RmR_UnifiedKernel *kernel, uint32_t han
   return RMR_UK_OK;
 }
 
-static int rmr_unified_collect_active_sorted(const RmR_UnifiedKernel *kernel,
-                                             uint32_t *sorted_slots,
-                                             uint32_t *active_count,
-                                             uint32_t *free_slot) {
-  uint32_t i;
+int RmR_UnifiedKernel_ArenaAlloc(RmR_UnifiedKernel *kernel, uint32_t bytes, uint32_t *out_handle) {
   uint32_t slot = RMR_UK_MAX_SLOTS;
   uint32_t best_offset = UINT32_MAX;
+  uint32_t i;
   if (!kernel || !out_handle || !kernel->initialized || bytes == 0u) return RMR_KERNEL_ERR_ARG;
 
   for (i = 0; i < RMR_UK_MAX_SLOTS; ++i) {
     if (!kernel->slots[i].in_use && slot == RMR_UK_MAX_SLOTS) slot = i;
   }
-
   if (slot == RMR_UK_MAX_SLOTS) return RMR_KERNEL_ERR_STATE;
 
   for (i = 0; i < RMR_UK_MAX_SLOTS; ++i) {
@@ -462,9 +601,7 @@ static int rmr_unified_collect_active_sorted(const RmR_UnifiedKernel *kernel,
       candidate_offset = kernel->slots[i - 1u].offset + kernel->slots[i - 1u].size;
     }
 
-    if (candidate_offset > kernel->arena_capacity || bytes > kernel->arena_capacity - candidate_offset) {
-      continue;
-    }
+    if (candidate_offset > kernel->arena_capacity || bytes > kernel->arena_capacity - candidate_offset) continue;
 
     overlap = 0;
     for (j = 0; j < RMR_UK_MAX_SLOTS; ++j) {
@@ -489,8 +626,6 @@ static int rmr_unified_collect_active_sorted(const RmR_UnifiedKernel *kernel,
       best_offset = candidate_offset;
       if (best_offset == 0u) break;
     }
-
-    prev_end = active_end;
   }
 
   if (best_offset == UINT32_MAX) return RMR_KERNEL_ERR_STATE;
