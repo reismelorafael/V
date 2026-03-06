@@ -15,6 +15,7 @@ pub struct RmR_UnifiedCapabilities {
     pub reg_signature_2: u32,
     pub gpio_word_bits: u32,
     pub gpio_pin_stride: u32,
+    pub cache_hint_l4: u32,
 }
 
 #[repr(C)]
@@ -22,6 +23,38 @@ pub struct RmR_UnifiedCapabilities {
 pub struct RmR_UnifiedConfig {
     pub seed: u32,
     pub arena_bytes: u32,
+}
+
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RmR_ToroidalAddr7D {
+    pub u: u32,
+    pub v: u32,
+    pub psi: u32,
+    pub chi: u32,
+    pub rho: u32,
+    pub delta: u32,
+    pub sigma: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BitomegaNode {
+    pub state: i32,
+    pub dir: i32,
+    pub coherence: f32,
+    pub entropy: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BitomegaCtx {
+    pub coherence_in: f32,
+    pub entropy_in: f32,
+    pub noise_in: f32,
+    pub load: f32,
+    pub seed: u64,
 }
 
 #[repr(C)]
@@ -38,6 +71,7 @@ pub struct RmR_UnifiedProcessState {
 pub struct RmR_UnifiedRouteState {
     pub route_id: u32,
     pub route_tag: u64,
+    pub toroidal: RmR_ToroidalAddr7D,
 }
 
 #[repr(C)]
@@ -67,6 +101,11 @@ pub struct RmR_UnifiedKernel {
     pub entropy: u32,
     pub stage_counter: u32,
     pub last_route_tag: u64,
+    pub bitomega_node: BitomegaNode,
+    pub bitomega_ctx: BitomegaCtx,
+    pub bitomega_operational_state: u32,
+    pub bitomega_invariant_ok: u32,
+    pub bitomega_fallback_safe: u32,
     pub caps: RmR_UnifiedCapabilities,
     pub arena_base: *mut u8,
     pub arena_capacity: u32,

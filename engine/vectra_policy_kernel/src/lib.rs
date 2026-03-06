@@ -101,6 +101,7 @@ fn build_canon(op_code: &str, canonical_args: &[String], anchor: Option<AnchorAd
 
 pub fn canonize(op: Op, args: &[String], anchor: Option<AnchorAddr>) -> Key {
     let plugin = resolve_op(op);
+    let op_code = op_code_for(op);
     let canonical_args = plugin.canonize(args);
     let canon = build_canon(op_code, &canonical_args, anchor);
     Key {
@@ -741,10 +742,15 @@ fn route_label(target: RouteTarget) -> &'static str {
 }
 
 pub fn crc32c(data: &[u8]) -> u32 {
-    let Some(mut kernel) = UnifiedKernelHandle::new(0, 0) else {
-        return 0;
-    };
-    kernel.verify_crc32c(data).unwrap_or(0)
+    let mut crc = 0xFFFF_FFFFu32;
+    for &b in data {
+        crc ^= b as u32;
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg() & 0x82F63B78;
+            crc = (crc >> 1) ^ mask;
+        }
+    }
+    !crc
 }
 
 pub fn fnv1a64(data: &[u8]) -> u64 {
