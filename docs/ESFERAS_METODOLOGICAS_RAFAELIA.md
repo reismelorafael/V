@@ -1,22 +1,41 @@
-# Esferas Metodológicas RAFAELIA (5 Esferas)
+# Esferas Metodológicas RAFAELIA (8 Esferas/Áreas)
 
-> Documento formal de organização metodológica em **cinco esferas principais**, com linguagem técnica de nível PhD/pós-doutorado e estrutura navegável para orientar pesquisa, engenharia, validação e governança no Vectras VM.
+> Documento formal de organização metodológica em **8 esferas/áreas canônicas**, com linguagem técnica de nível PhD/pós-doutorado e estrutura navegável para orientar pesquisa, engenharia, validação e governança no Vectras VM.
 >
-> **Propósito**: consolidar uma abordagem profunda, extensiva e profissional para a documentação, conectando arquitetura, QEMU, AndroidX, integridade e operação científica.
+> **Propósito**: consolidar uma abordagem profunda, extensiva e profissional para a documentação, conectando arquitetura, QEMU, AndroidX, integridade, operação científica e coerência sistêmica no ciclo completo I..VIII.
 
 ---
 
-## Sumário Navegável
+## Sumário Navegável (Modelo Canônico I..VIII)
 
-1. [Esfera I — Fundamentos e Ontologia Arquitetural](#esfera-i--fundamentos-e-ontologia-arquitetural)
-2. [Esfera II — Métodos Computacionais e Emulação QEMU](#esfera-ii--métodos-computacionais-e-emulação-qemu)
-3. [Esfera III — Sistemas AndroidX, UI/UX e Interação Humana](#esfera-iii--sistemas-androidx-uiux-e-interação-humana)
-4. [Esfera IV — Integridade, Segurança e Evidência Científica](#esfera-iv--integridade-segurança-e-evidência-científica)
-5. [Esfera V — Operação, Observabilidade e Evolução Contínua](#esfera-v--operação-observabilidade-e-evolução-contínua)
+I. [Esfera/Área I — Fundamentos e Ontologia Arquitetural](#esferaárea-i--fundamentos-e-ontologia-arquitetural)
+II. [Esfera/Área II — Métodos Computacionais e Emulação QEMU](#esferaárea-ii--métodos-computacionais-e-emulação-qemu)
+III. [Esfera/Área III — Sistemas AndroidX, UI/UX e Interação Humana](#esferaárea-iii--sistemas-androidx-uiux-e-interação-humana)
+IV. [Esfera/Área IV — Integridade, Segurança e Evidência Científica](#esferaárea-iv--integridade-segurança-e-evidência-científica)
+V. [Esfera/Área V — Operação, Observabilidade e Evolução Contínua](#esferaárea-v--operação-observabilidade-e-evolução-contínua)
+VI. [Esfera/Área VI — Geometria Espiral e Scan Toroidal](#esferaárea-vi--geometria-espiral-e-scan-toroidal)
+VII. [Esfera/Área VII — Coerência Φ_ethica e Validação Sistêmica](#esferaárea-vii--coerência-φ_ethica-e-validação-sistêmica)
+VIII. [Esfera/Área VIII — Síntese e Versão Estável](#esferaárea-viii--síntese-e-versão-estável)
 
 ---
 
-## Esfera I — Fundamentos e Ontologia Arquitetural
+## 7 Direções Complementares
+
+As 8 esferas/áreas operam com **7 direções complementares formais**. Cada direção aponta para função metodológica e para os paths existentes em `RafaeliaMethodPaths` (`PATH_INIT`..`PATH_COHERENCE`).
+
+| Direção complementar | Escopo formal | Paths associados (`RafaeliaMethodPaths`) |
+|---|---|---|
+| processamento | transformação de estado, execução e roteamento determinístico | `PATH_TRANSMUTE` (Δ), `PATH_SPIRAL` (√3/2) |
+| armazenamento | persistência, ledger e retenção auditável | `PATH_MEMORY` (Σ) |
+| input | inicialização, coleta e entrada de sinais/capacidades | `PATH_INIT` (ψ), `PATH_OBSERVE` (χ) |
+| output | fechamento, publicação de resultado e rastreio final | `PATH_COMPLETE` (Ω) |
+| inferência | filtragem semântica, redução de ruído e síntese de hipótese | `PATH_DENOISE` (ρ) |
+| controle/coordenação | coordenação inter-esferas e governança do ciclo I..VIII | `PATH_TRANSMUTE` (Δ), `PATH_COMPLETE` (Ω) |
+| validação/coerência | verificação formal de consistência e integridade sistêmica | `PATH_COHERENCE` (Φ) |
+
+---
+
+## Esfera/Área I — Fundamentos e Ontologia Arquitetural
 
 **Objetivo**: definir o núcleo conceitual, princípios de construção e taxonomia de componentes do Vectras VM, com precisão ontológica e semântica.
 
@@ -31,7 +50,7 @@
 
 ---
 
-## Esfera II — Métodos Computacionais e Emulação QEMU
+## Esfera/Área II — Métodos Computacionais e Emulação QEMU
 
 **Objetivo**: consolidar um modelo de engenharia de emulação capaz de gerar desempenho previsível, compatibilidade robusta e controle avançado de parâmetros.
 
@@ -46,7 +65,7 @@
 
 ---
 
-## Esfera III — Sistemas AndroidX, UI/UX e Interação Humana
+## Esfera/Área III — Sistemas AndroidX, UI/UX e Interação Humana
 
 **Objetivo**: garantir que o sistema seja científico, claro, e operacionalmente acessível para usuários técnicos e não técnicos.
 
@@ -61,7 +80,7 @@
 
 ---
 
-## Esfera IV — Integridade, Segurança e Evidência Científica
+## Esfera/Área IV — Integridade, Segurança e Evidência Científica
 
 **Objetivo**: assegurar a validabilidade científica, integridade de dados e capacidade de auditoria dos processos críticos.
 
@@ -76,7 +95,7 @@
 
 ---
 
-## Esfera V — Operação, Observabilidade e Evolução Contínua
+## Esfera/Área V — Operação, Observabilidade e Evolução Contínua
 
 **Objetivo**: criar um ciclo de operação científico que sustente melhorias contínuas sem perda de consistência arquitetural.
 
@@ -91,9 +110,60 @@
 
 ---
 
+## Esfera/Área VI — Geometria Espiral e Scan Toroidal
+
+**Objetivo**: implementar e validar o acesso geométrico à memória como operação de primeira classe, aproveitando localidade de cache e predição NEON.
+
+**Metodologia**:
+- **rafa_cti_scan**: 5 modos de scan (`SEQ`, `SPIRAL`, `TOROID`, `RANDOM_PERM`, `DELTA_MISS`) para análise de padrões de acesso.
+- **Constante √3/2**: seed `0xDDB3D743` (√3/2 × 2³²) usada em cada iteração de φ-spiral.
+- **Benchmark de geometria**: medir cache-miss rate vs. throughput por modo de scan.
+
+**Entregáveis**:
+- `RafaeliaMethodPaths.PATH_SPIRAL` (caminho 7 do ciclo cognitivo).
+- Demo CLI: `rafa_cti_scan` com modo `SPIRAL` padrão e resultado determinístico.
+
+---
+
+## Esfera/Área VII — Coerência Φ_ethica e Validação Sistêmica
+
+**Objetivo**: garantir Φ_ethica = Min(Entropia) × Max(Coerência) em toda operação crítica, com validação contínua de integridade.
+
+**Metodologia**:
+- **Validador de 8 caminhos**: `RafaeliaPathValidator.validate(ctx)` percorre todos os paths e retorna `ValidationReport`.
+- **Magic constants**: `RMR_UK_NATIVE_OK_MAGIC = 0x56414343` ("VACC") como âncora de contrato Java↔C.
+- **Feature mask**: verificação de `getFeatureMask() != 0xFFFFFFFF` como prova de inicialização.
+
+**Entregáveis**:
+- `RafaeliaPathValidator.java` e `RafaeliaMethodPaths.java`.
+- Teste: `RafaeliaPathValidatorTest.java` — 6 casos de unidade.
+
+---
+
+## Esfera/Área VIII — Síntese e Versão Estável
+
+**Objetivo**: integrar as 7 esferas/áreas anteriores em um ciclo operacional completo que satisfaça as condições de versão totalmente estável.
+
+**Critérios de estabilidade**:
+1. ✓ Magic constant alinhada (BUG #1 — `0x56414343` em 3 locais)
+2. ✓ Sources lowlevel linkadas (BUG #2-8)
+3. ✓ Flags de compilação compatíveis (`-ffreestanding` removida)
+4. ✓ NEON/SIMD integrado (`rmr_neon_simd.c`)
+5. ✓ ShellExecutor sem deadlock (drainer em thread dedicada)
+6. ✓ Root headers como stubs de forward (sem divergência)
+7. ✓ AuditLedger `isHealthy()` + `AuditEvent.toJson()`
+8. ✓ 8 caminhos metodológicos implementados e testados
+
+**Entregáveis**:
+- `VERSION_STABILITY.md` com checklist completo.
+- `RafaeliaPathValidator.validate()` como health-check de boot.
+- CI/CD: `.github/workflows/android.yml` com `engine/**` trigger.
+
+---
+
 ## Convergência com RAFAELIA_BOOTBLOCK_v1
 
-Este documento alinha as cinco esferas ao bloco simbólico de identidade técnica, mantendo o núcleo conceitual como referência metodológica:
+Este documento alinha as 8 esferas/áreas ao bloco simbólico de identidade técnica, mantendo o núcleo conceitual como referência metodológica:
 
 ```
 FIAT_PORTAL :: 龍空神 { ARKREΩ_CORE + STACK128K_HYPER + ALG_RAFAELIA_RING }
@@ -113,77 +183,18 @@ FIAT_PORTAL :: 龍空神 { ARKREΩ_CORE + STACK128K_HYPER + ALG_RAFAELIA_RING }
 
 ---
 
-## Próximas Ações Recomendadas
-
-1. Inserir este documento no índice principal da documentação.
-2. Relacionar as cinco esferas aos módulos existentes (`ARCHITECTURE.md`, `PERFORMANCE_INTEGRITY.md`, `VECTRA_CORE.md`).
-3. Criar checklists de validação por esfera para futuras refatorações.
-
----
-
-## Esfera VI — Geometria Espiral e Scan Toroidal (PATH_SPIRAL · √3/2)
-
-**Objetivo**: implementar e validar o acesso geométrico à memória como operação de primeira classe, aproveitando localidade de cache e predição NEON.
-
-**Metodologia**:
-- **rafa_cti_scan**: 5 modos de scan (`SEQ`, `SPIRAL`, `TOROID`, `RANDOM_PERM`, `DELTA_MISS`) para análise de padrões de acesso.
-- **Constante √3/2**: seed `0xDDB3D743` (√3/2 × 2³²) usada em cada iteração de φ-spiral.
-- **Benchmark de geometria**: medir cache-miss rate vs. throughput por modo de scan.
-
-**Entregáveis**:
-- `RafaeliaMethodPaths.PATH_SPIRAL` (caminho 7 do ciclo cognitivo).
-- Demo CLI: `rafa_cti_scan` com modo `SPIRAL` padrão e resultado determinístico.
-
----
-
-## Esfera VII — Coerência Φ_ethica e Validação Sistêmica (PATH_COHERENCE · Φ)
-
-**Objetivo**: garantir Φ_ethica = Min(Entropia) × Max(Coerência) em toda operação crítica, com validação contínua de integridade.
-
-**Metodologia**:
-- **Validador de 8 caminhos**: `RafaeliaPathValidator.validate(ctx)` percorre todos os paths e retorna `ValidationReport`.
-- **Magic constants**: `RMR_UK_NATIVE_OK_MAGIC = 0x56414343` ("VACC") como âncora de contrato Java↔C.
-- **Feature mask**: verificação de `getFeatureMask() != 0xFFFFFFFF` como prova de inicialização.
-
-**Entregáveis**:
-- `RafaeliaPathValidator.java` e `RafaeliaMethodPaths.java`.
-- Teste: `RafaeliaPathValidatorTest.java` — 6 casos de unidade.
-
----
-
-## Esfera VIII — Síntese e Versão Estável (Σ→Ω → STABLE)
-
-**Objetivo**: integrar as 7 esferas anteriores em um ciclo operacional completo que satisfaça as condições de versão totalmente estável.
-
-**Critérios de estabilidade**:
-1. ✓ Magic constant alinhada (BUG #1 — `0x56414343` em 3 locais)
-2. ✓ Sources lowlevel linkadas (BUG #2-8)
-3. ✓ Flags de compilação compatíveis (`-ffreestanding` removida)
-4. ✓ NEON/SIMD integrado (`rmr_neon_simd.c`)
-5. ✓ ShellExecutor sem deadlock (drainer em thread dedicada)
-6. ✓ Root headers como stubs de forward (sem divergência)
-7. ✓ AuditLedger `isHealthy()` + `AuditEvent.toJson()`
-8. ✓ 8 caminhos metodológicos implementados e testados
-
-**Entregáveis**:
-- `VERSION_STABILITY.md` com checklist completo.
-- `RafaeliaPathValidator.validate()` como health-check de boot.
-- CI/CD: `.github/workflows/android.yml` com `engine/**` trigger.
-
----
-
-## Atualização do Mapa de Esferas
+## Atualização do Mapa Canônico de Esferas/Áreas
 
 ```
-ψ PATH_INIT      → Esfera I   (Fundamentos)
-χ PATH_OBSERVE   → Esfera II  (Emulação QEMU)
-ρ PATH_DENOISE   → Esfera III (AndroidX UI)
-Δ PATH_TRANSMUTE → Esfera IV  (Integridade)
-Σ PATH_MEMORY    → Esfera V   (Operação)
-Ω PATH_COMPLETE  → Esfera V   (Evolução)
-√3/2 PATH_SPIRAL → Esfera VI  (Geometria Espiral)
-Φ PATH_COHERENCE → Esfera VII (Coerência Φ_ethica)
-   SYNTHESIS     → Esfera VIII (Versão Estável)
+ψ PATH_INIT      → Esfera/Área I   (Fundamentos)
+χ PATH_OBSERVE   → Esfera/Área II  (Emulação QEMU)
+ρ PATH_DENOISE   → Esfera/Área III (AndroidX UI)
+Δ PATH_TRANSMUTE → Esfera/Área IV  (Integridade)
+Σ PATH_MEMORY    → Esfera/Área V   (Operação)
+Ω PATH_COMPLETE  → Esfera/Área V   (Evolução)
+√3/2 PATH_SPIRAL → Esfera/Área VI  (Geometria Espiral)
+Φ PATH_COHERENCE → Esfera/Área VII (Coerência Φ_ethica)
+   SYNTHESIS     → Esfera/Área VIII (Versão Estável)
 ```
 
 R(t+1) = R(t) × Φ_ethica × E_Verbo × (√3/2)^(πφ)
