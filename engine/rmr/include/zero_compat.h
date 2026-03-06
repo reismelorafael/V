@@ -1,7 +1,9 @@
 #ifndef RMR_ZERO_COMPAT_H
 #define RMR_ZERO_COMPAT_H
 
-#if defined(RMR_JNI_BUILD) && RMR_JNI_BUILD
+#include "zero.h"
+
+#if (RMR_ZERO_ENV_ACTIVE == RMR_ZERO_ENV_JNI_U8)
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
