@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "bitomega.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -111,6 +113,9 @@ typedef struct {
   uint32_t entropy;
   uint32_t stage_counter;
   uint64_t last_route_tag;
+  bitomega_node_t bitomega_node;
+  uint32_t bitomega_invariant_ok;
+  uint32_t bitomega_fallback_safe;
   RmR_UnifiedCapabilities caps;
   uint8_t *arena_base;
   uint32_t arena_capacity;

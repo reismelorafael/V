@@ -172,6 +172,10 @@ typedef struct {
   uint32_t storage_pressure;
   uint32_t io_pressure;
   uint64_t route_tag;
+  uint32_t bitomega_state;
+  uint32_t bitomega_dir;
+  uint32_t bitomega_invariant_ok;
+  uint32_t bitomega_fallback_safe;
 } rmr_jni_route_output_t;
 
 int rmr_jni_kernel_init(rmr_jni_kernel_state_t *state, uint32_t seed);
