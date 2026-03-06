@@ -5,6 +5,58 @@
 #include "rmr_math_fabric.h"
 #include "rmr_policy_kernel.h"
 
+static uint64_t rmr_zipraf_abs64(int64_t v) {
+  return (uint64_t)(v < 0 ? -v : v);
+}
+
+int RmR_Zipraf_TriFlow3x6(const int64_t state3[3], int64_t flow6[6]) {
+  int64_t a;
+  int64_t b;
+  int64_t c;
+  if (!state3 || !flow6) return -1;
+  a = state3[0];
+  b = state3[1];
+  c = state3[2];
+  flow6[0] = a - b;
+  flow6[1] = b - a;
+  flow6[2] = b - c;
+  flow6[3] = c - b;
+  flow6[4] = c - a;
+  flow6[5] = a - c;
+  return 0;
+}
+
+int RmR_Zipraf_TriCloseBase10(const int64_t flow6[6], int64_t closed3[3], uint32_t *out_coherence) {
+  int64_t p0;
+  int64_t p1;
+  int64_t p2;
+  int64_t cycle;
+  uint64_t err;
+  uint32_t coherence;
+  if (!flow6 || !closed3 || !out_coherence) return -1;
+
+  p0 = flow6[0] - flow6[1];
+  p1 = flow6[2] - flow6[3];
+  p2 = flow6[4] - flow6[5];
+  closed3[0] = p0 - p2;
+  closed3[1] = p1 - p0;
+  closed3[2] = p2 - p1;
+
+  cycle = flow6[0] + flow6[2] + flow6[4];
+  err = rmr_zipraf_abs64(flow6[0] + flow6[1]) +
+        rmr_zipraf_abs64(flow6[2] + flow6[3]) +
+        rmr_zipraf_abs64(flow6[4] + flow6[5]) +
+        rmr_zipraf_abs64(cycle);
+
+  if (err >= 1023u) {
+    coherence = 0u;
+  } else {
+    coherence = 1023u - (uint32_t)err;
+  }
+  *out_coherence = coherence;
+  return 0;
+}
+
 static uint32_t rmr_zipraf_u32_from_u64_lo(uint64_t v) {
   return (uint32_t)(v & 0xFFFFFFFFu);
 }
@@ -21,6 +73,10 @@ int RmR_Zipraf_Execute(const RmR_ZiprafInput *in, RmR_ZiprafOutput *out) {
   uint64_t hash_seed;
   uint64_t signed_mix_a;
   uint64_t signed_mix_b;
+  int64_t tri_state[3];
+  int64_t tri_flow[6];
+  int64_t tri_closed[3];
+  uint32_t tri_coherence;
 
   if (!out) return -1;
 
@@ -61,8 +117,23 @@ int RmR_Zipraf_Execute(const RmR_ZiprafInput *in, RmR_ZiprafOutput *out) {
   signed_mix_b = (uint64_t)((uint64_t)domains[1] * (uint64_t)(domains[2] | 1u));
   out->det_signature = (int64_t)(signed_mix_a - signed_mix_b);
 
+  tri_state[0] = (int64_t)(int32_t)(points[0] ^ points[6]);
+  tri_state[1] = (int64_t)(int32_t)(points[1] ^ points[7]);
+  tri_state[2] = (int64_t)(int32_t)(points[5] ^ points[8]);
+  if (RmR_Zipraf_TriFlow3x6(tri_state, tri_flow) == 0 &&
+      RmR_Zipraf_TriCloseBase10(tri_flow, tri_closed, &tri_coherence) == 0) {
+    out->det_signature ^= (int64_t)((uint64_t)(uint32_t)tri_closed[0] << 1u);
+    out->det_signature ^= (int64_t)((uint64_t)(uint32_t)tri_closed[1] << 2u);
+    out->det_signature ^= (int64_t)((uint64_t)(uint32_t)tri_closed[2] << 3u);
+    if (tri_coherence >= 960u) {
+      out->status_flags |= RMR_ZIPRAF_STATUS_TRI_COHERENT;
+    }
+  }
+
   out->route_tag = ((uint64_t)domains[4] << 32u) ^ (uint64_t)domains[5] ^
                    ((uint64_t)out->crc32c << 1u) ^ out->bitraf_hash ^ (uint64_t)in->trajectory_id;
+  out->route_tag ^= ((uint64_t)(uint32_t)tri_flow[0] << 48u) ^ ((uint64_t)(uint32_t)tri_flow[2] << 24u);
+  out->route_tag ^= ((uint64_t)tri_coherence << 12u) ^ (uint64_t)(uint32_t)tri_closed[1];
 
   if (((domains[6] ^ domains[7]) & in->invariant_mask) == 0u) {
     out->status_flags |= RMR_ZIPRAF_STATUS_INVARIANT_MATCH;

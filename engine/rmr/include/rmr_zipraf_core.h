@@ -28,6 +28,19 @@ typedef struct {
 #define RMR_ZIPRAF_STATUS_ERR_ARG (1u << 0)
 #define RMR_ZIPRAF_STATUS_EMPTY_PAYLOAD (1u << 1)
 #define RMR_ZIPRAF_STATUS_INVARIANT_MATCH (1u << 2)
+#define RMR_ZIPRAF_STATUS_TRI_COHERENT (1u << 3)
+
+/*
+ * Kernel triangular 3->6:
+ * [a,b,c] -> [a-b,b-a,b-c,c-b,c-a,a-c]
+ */
+int RmR_Zipraf_TriFlow3x6(const int64_t state3[3], int64_t flow6[6]);
+
+/*
+ * Fechamento determinístico em base 10 com métrica de coerência.
+ * out_coherence usa escala [0..1023], maior = mais coerente.
+ */
+int RmR_Zipraf_TriCloseBase10(const int64_t flow6[6], int64_t closed3[3], uint32_t *out_coherence);
 
 int RmR_Zipraf_Execute(const RmR_ZiprafInput *in, RmR_ZiprafOutput *out);
 
