@@ -98,8 +98,25 @@ Please set the JAVA_HOME variable in your environment to match the
 location of your Java installation."
     fi
 else
-    JAVACMD="java"
-    which java >/dev/null 2>&1 || die "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
+    for CANDIDATE in \
+        "$HOME/.local/share/mise/installs/java/21/bin/java" \
+        "$HOME/.local/share/mise/installs/java/17/bin/java" \
+        "/usr/lib/jvm/java-21-openjdk-amd64/bin/java" \
+        "/usr/lib/jvm/java-21-openjdk/bin/java" \
+        "/usr/lib/jvm/temurin-21-jdk-amd64/bin/java" \
+        "/usr/lib/jvm/java-17-openjdk-amd64/bin/java" \
+        "/usr/lib/jvm/java-17-openjdk/bin/java"; do
+        if [ -x "$CANDIDATE" ] ; then
+            JAVACMD="$CANDIDATE"
+            JAVA_HOME=$(dirname "$(dirname "$CANDIDATE")")
+            export JAVA_HOME
+            break
+        fi
+    done
+    if [ -z "$JAVACMD" ] ; then
+        JAVACMD="java"
+    fi
+    command -v "$JAVACMD" >/dev/null 2>&1 || die "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
 
 Please set the JAVA_HOME variable in your environment to match the
 location of your Java installation."
