@@ -10,7 +10,7 @@ option(RMR_ENABLE_POLICY_MODULE "Enable RMR policy module for root builds" ON)
 option(RMR_ASM_CORE_EXPERIMENTAL "Enable experimental ASM core hot paths" ON)
 option(RMR_ASM_CORE_X86_64_VALIDATED "Enable ASM hot paths on x86_64 (validated ABI)" ON)
 option(RMR_ASM_CORE_ARM64_VALIDATED "Enable ASM hot paths on arm64-v8a (validated ABI)" ON)
-option(RMR_ASM_CORE_RISCV64_VALIDATED "Enable ASM hot paths on riscv64 (validated ABI)" ON)
+option(RMR_ASM_CORE_RISCV64_VALIDATED "Enable RV64I-compatible CASM path on riscv64 (validated ABI)" ON)
 
 if(RMR_JNI_BUILD)
   set(RMR_JNI_BUILD_VALUE 1)
@@ -93,14 +93,21 @@ if(RMR_ENABLE_POLICY_MODULE)
   list(APPEND RMR_SOURCES engine/rmr/src/rmr_policy_kernel.c)
 endif()
 
+set(RMR_HAS_CASM FALSE)
+
 if(RMR_ASM_CORE_EXPERIMENTAL AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64" AND RMR_ASM_CORE_X86_64_VALIDATED)
   list(APPEND RMR_SOURCES
     engine/rmr/interop/rmr_lowlevel_x86_64.S
     engine/rmr/interop/rmr_casm_x86_64.S
   )
   set(RMR_HAS_CASM TRUE)
-else()
-  set(RMR_HAS_CASM FALSE)
+endif()
+
+if(RMR_ASM_CORE_EXPERIMENTAL AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "riscv64" AND RMR_ASM_CORE_RISCV64_VALIDATED)
+  list(APPEND RMR_SOURCES
+    engine/rmr/interop/rmr_casm_riscv64.S
+  )
+  set(RMR_HAS_CASM TRUE)
 endif()
 
 add_library(rmr STATIC ${RMR_SOURCES})

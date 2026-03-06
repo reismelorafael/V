@@ -6,7 +6,7 @@ option(RMR_ENABLE_BITRAF_MODULE "Enable BITRAF module" ON)
 option(RMR_ASM_CORE_EXPERIMENTAL "Enable experimental ASM core hot paths" ON)
 option(RMR_ASM_CORE_X86_64_VALIDATED "Enable ASM hot paths on x86_64 (validated ABI)" ON)
 option(RMR_ASM_CORE_ARM64_VALIDATED "Enable ASM hot paths on arm64-v8a (validated ABI)" ON)
-option(RMR_ASM_CORE_RISCV64_VALIDATED "Enable ASM hot paths on riscv64 (validated ABI)" ON)
+option(RMR_ASM_CORE_RISCV64_VALIDATED "Enable RV64I-compatible CASM path on riscv64 (validated ABI)" ON)
 
 set(VECTRA_REPO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../../../)
 set(VECTRA_RMR_INCLUDE_DIR ${VECTRA_REPO_ROOT}/engine/rmr/include)
@@ -29,9 +29,9 @@ if(RMR_ASM_CORE_EXPERIMENTAL AND ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "ar
     list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_ARM64_SOURCE})
 endif()
 
-# Roadmap explícito: riscv64 permanece documentado no CMake, porém INATIVO até
-# existir política ABI oficial no Gradle (APP_ABI_POLICY/SUPPORTED_ABIS) que
-# autorize empacotamento e validação dessa ABI no pipeline.
+# Roadmap explícito: ABI riscv64 permanece INATIVA por política Android
+# (APP_ABI_POLICY/SUPPORTED_ABIS). A rotina CASM riscv64 já é RV64I-compatible
+# (sem extensão M) e depende apenas de habilitação dessa política ABI.
 # if(RMR_ASM_CORE_EXPERIMENTAL AND ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "riscv64" AND RMR_ASM_CORE_RISCV64_VALIDATED)
 #     set(VECTRA_CASM_RISCV64_SOURCE ../../../../engine/rmr/interop/rmr_casm_riscv64.S)
 #     list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_RISCV64_SOURCE})
