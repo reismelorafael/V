@@ -434,7 +434,10 @@ static int rmr_unified_slot_lookup(const RmR_UnifiedKernel *kernel, uint32_t han
   return RMR_UK_OK;
 }
 
-int RmR_UnifiedKernel_ArenaAlloc(RmR_UnifiedKernel *kernel, uint32_t bytes, uint32_t *out_handle) {
+static int rmr_unified_collect_active_sorted(const RmR_UnifiedKernel *kernel,
+                                             uint32_t *sorted_slots,
+                                             uint32_t *active_count,
+                                             uint32_t *free_slot) {
   uint32_t i;
   uint32_t slot = RMR_UK_MAX_SLOTS;
   uint32_t best_offset = UINT32_MAX;
@@ -486,6 +489,8 @@ int RmR_UnifiedKernel_ArenaAlloc(RmR_UnifiedKernel *kernel, uint32_t bytes, uint
       best_offset = candidate_offset;
       if (best_offset == 0u) break;
     }
+
+    prev_end = active_end;
   }
 
   if (best_offset == UINT32_MAX) return RMR_KERNEL_ERR_STATE;
