@@ -52,6 +52,27 @@ fn entropy_metric_is_bit_stable() {
 }
 
 #[test]
+fn entropy_metric_does_not_plateau_past_u16_frequency_limit() {
+    let long_biased = [
+        vec![0u8; 70_000],
+        vec![1u8; 40_000],
+        vec![2u8; 20_000],
+        vec![3u8; 10_000],
+    ]
+    .concat();
+
+    let mut with_extra_symbol = long_biased.clone();
+    with_extra_symbol.extend(std::iter::repeat_n(4u8, 100));
+
+    let baseline = entropy_milli(&long_biased);
+    let shifted = entropy_milli(&with_extra_symbol);
+    assert!(
+        shifted > baseline,
+        "entropy should increase when adding a new symbol above 65535-length regimes; baseline={baseline}, shifted={shifted}"
+    );
+}
+
+#[test]
 fn deterministic_pipeline_produces_identical_audit_log() {
     let payload = b"vectras-deterministic-policy-layer".repeat(512);
     let cfg = PipelineConfig {

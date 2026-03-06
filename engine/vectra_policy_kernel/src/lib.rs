@@ -815,9 +815,9 @@ pub fn entropy_milli(data: &[u8]) -> u16 {
         return 0;
     }
 
-    let mut freq = [0u16; 256];
+    let mut freq = [0u32; 256];
     for &b in data {
-        freq[b as usize] = freq[b as usize].saturating_add(1);
+        freq[b as usize] += 1;
     }
 
     let len = data.len();
@@ -828,7 +828,7 @@ pub fn entropy_milli(data: &[u8]) -> u16 {
             continue;
         }
         let c = count as usize;
-        weighted_log_sum = weighted_log_sum.saturating_add((c as u64) * (log2_q12(c) as u64));
+        weighted_log_sum += (count as u64) * (log2_q12(c) as u64);
     }
 
     let correction_q12 = (weighted_log_sum / len as u64) as u32;
