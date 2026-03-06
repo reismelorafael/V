@@ -25,7 +25,6 @@ import android.widget.BaseAdapter;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.content.pm.PackageManager;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
@@ -233,18 +232,6 @@ public class SetupWizard2Activity extends AppCompatActivity {
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == PermissionUtils.REQUEST_LEGACY_STORAGE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                MainSettingsManager.setOnboardingPermStorageSaf(this, MainSettingsManager.ONBOARDING_PERMISSION_GRANTED);
-            } else {
-                MainSettingsManager.setOnboardingPermStorageSaf(this, MainSettingsManager.ONBOARDING_PERMISSION_FAILED);
-            }
-        }
-    }
-
-    @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         loadingIndicatorController(currentStep);
@@ -256,10 +243,12 @@ public class SetupWizard2Activity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PermissionUtils.REQUEST_LEGACY_STORAGE) {
             boolean granted = PermissionUtils.storagepermission(this, false);
-            if (!granted) {
-                permissionOrchestrator.markFailed(FirstRunPermissionOrchestrator.CAPABILITY_STORAGE);
+            MainSettingsManager.setOnboardingPermStorageSaf(this,
+                    granted ? MainSettingsManager.ONBOARDING_PERMISSION_GRANTED : MainSettingsManager.ONBOARDING_PERMISSION_FAILED);
+            if (granted) {
+                firstRunPermissionOrchestrator.markGranted(FirstRunPermissionOrchestrator.Capability.STORAGE_SAF);
             } else {
-                permissionOrchestrator.refresh();
+                firstRunPermissionOrchestrator.markFailed(FirstRunPermissionOrchestrator.Capability.STORAGE_SAF);
             }
             renderEssentialPermissionUi();
             continueAfterEssentialPermissionResolution();
@@ -268,7 +257,6 @@ public class SetupWizard2Activity extends AppCompatActivity {
 
     private void initialize() {
         tarPath = getExternalFilesDir("data") + "/data.tar.gz";
-        permissionOrchestrator = new FirstRunPermissionOrchestrator(this);
 
         ListUtils.setupMirrorListForListmap(mirrorList);
         applySelectedMirror(MainSettingsManager.getSelectedMirror(this));
@@ -959,51 +947,26 @@ public class SetupWizard2Activity extends AppCompatActivity {
         }).start();
     }
 
-    private boolean ensureEssentialPermissionsResolved(Runnable continuation) {
-        if (permissionOrchestrator.isEssentialResolved()) {
-            return true;
-        }
-        pendingPermissionContinuation = continuation;
-        uiController(STEP_REQUEST_PERMISSION);
-        renderEssentialPermissionUi();
-        return false;
-    }
-
     private void continueAfterEssentialPermissionResolution() {
-        if (!permissionOrchestrator.isEssentialResolved()) {
-            return;
-        }
-        Runnable continuation = pendingPermissionContinuation;
-        pendingPermissionContinuation = null;
-        if (continuation != null) {
-            continuation.run();
-        }
+        ensurePermissionsBeforeContinue();
     }
 
     private void requestEssentialPermissions() {
-        for (FirstRunPermissionOrchestrator.PermissionUiModel item : permissionOrchestrator.getUiModel()) {
-            if (!item.essential) {
-                continue;
-            }
-            if (item.status == FirstRunPermissionOrchestrator.PermissionStatus.GRANTED
-                    || item.status == FirstRunPermissionOrchestrator.PermissionStatus.SKIPPED) {
-                continue;
-            }
-            if (FirstRunPermissionOrchestrator.CAPABILITY_STORAGE.equals(item.capability)) {
-                PermissionUtils.requestStoragePermission(this, storagePermissionLauncher);
-                return;
-            }
-        }
+        requestNextPermissionCapability();
     }
 
     private void renderEssentialPermissionUi() {
-        if (binding == null || permissionOrchestrator == null) {
+        if (binding == null || firstRunPermissionOrchestrator == null) {
             return;
         }
+        firstRunPermissionOrchestrator.refreshPersistedStates();
         binding.lnPermissionRequirements.removeAllViews();
-        for (FirstRunPermissionOrchestrator.PermissionUiModel item : permissionOrchestrator.getUiModel()) {
+        for (FirstRunPermissionOrchestrator.CapabilityStep item : firstRunPermissionOrchestrator.getSteps()) {
+            if (!item.getRequired()) {
+                continue;
+            }
             TextView info = new TextView(this);
-            info.setText(item.title + " — " + item.status.name() + "\n" + item.description);
+            info.setText(describePermissionCapability(item.getCapability()) + " — " + item.getState().name());
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1012,14 +975,13 @@ public class SetupWizard2Activity extends AppCompatActivity {
             info.setLayoutParams(lp);
             binding.lnPermissionRequirements.addView(info);
 
-            if (item.status == FirstRunPermissionOrchestrator.PermissionStatus.FAILED) {
-                if (item.canRetry) {
-                    com.google.android.material.button.MaterialButton retry = new com.google.android.material.button.MaterialButton(this);
-                    retry.setText(getString(R.string.try_again));
-                    retry.setOnClickListener(v -> requestEssentialPermissions());
-                    binding.lnPermissionRequirements.addView(retry);
-                }
-                if (item.canOpenSettings) {
+            if (item.getState() == FirstRunPermissionOrchestrator.StepState.FAILED) {
+                com.google.android.material.button.MaterialButton retry = new com.google.android.material.button.MaterialButton(this);
+                retry.setText(getString(R.string.try_again));
+                retry.setOnClickListener(v -> requestEssentialPermissions());
+                binding.lnPermissionRequirements.addView(retry);
+
+                if (item.getCapability() == FirstRunPermissionOrchestrator.Capability.STORAGE_SAF) {
                     com.google.android.material.button.MaterialButton settings = new com.google.android.material.button.MaterialButton(this);
                     settings.setText(getString(R.string.settings));
                     settings.setOnClickListener(v -> PermissionUtils.openAllFilesAccessSettings(this));
@@ -1028,11 +990,27 @@ public class SetupWizard2Activity extends AppCompatActivity {
             }
         }
 
-        if (permissionOrchestrator.isEssentialResolved()) {
+        if (firstRunPermissionOrchestrator.areRequiredCapabilitiesGranted()) {
             binding.btnAllowPermission.setText(getString(R.string.continuetext));
         } else {
             binding.btnAllowPermission.setText(getString(R.string.allow));
         }
+    }
+
+    private String describePermissionCapability(FirstRunPermissionOrchestrator.Capability capability) {
+        if (capability == FirstRunPermissionOrchestrator.Capability.STORAGE_SAF) {
+            return getString(R.string.allow_access_to_storage);
+        }
+        if (capability == FirstRunPermissionOrchestrator.Capability.NOTIFICATIONS) {
+            return "Notifications";
+        }
+        if (capability == FirstRunPermissionOrchestrator.Capability.MEDIA_ACCESS) {
+            return "Media access";
+        }
+        if (capability == FirstRunPermissionOrchestrator.Capability.BATTERY_OPTIMIZATION) {
+            return "Battery optimization";
+        }
+        return "Overlay";
     }
 
     private void showStandardSetupUnavailableDialog() {
