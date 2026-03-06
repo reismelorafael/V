@@ -263,7 +263,7 @@ def resolveGradleWrapperCommandLine(String taskPath, List<String> extraArgs = []
     return [wrapperFile.absolutePath, taskPath] + extraArgs
 }
 
-def nativeCheckAbiPolicies = ['arm64-only', 'with-32bit'].sort()
+def nativeCheckAbiPolicies = ['arm64-only', 'with-32bit', 'all'].sort()
 def nativeCheckBuildVariants = ['debug', 'release', 'perfRelease'].sort()
 
 def abiPolicyTaskPart = { String policy ->

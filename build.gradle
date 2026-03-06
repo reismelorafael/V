@@ -1,10 +1,11 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 def defaultSupportedAbisByPolicy = [
     'arm64-only': 'arm64-v8a',
-    'with-32bit': 'arm64-v8a,armeabi-v7a'
+    'with-32bit': 'arm64-v8a,armeabi-v7a',
+    'all': 'arm64-v8a,armeabi-v7a,x86,x86_64'
 ]
 
-def officiallySupportedAbis = ['arm64-v8a', 'armeabi-v7a']
+def officiallySupportedAbis = ['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64']
 
 buildscript {
     ext {
@@ -94,9 +95,11 @@ def validateReleaseTargetApi(boolean strictMode = true) {
 def validateMinApiAbiCompatibility(boolean strictMode = true) {
     def abiMinApiRequirements = [
         'armeabi-v7a': 16,
-        'arm64-v8a': 21
+        'arm64-v8a': 21,
+        'x86': 16,
+        'x86_64': 21
     ]
-    def supportedPolicyNames = ['arm64-only', 'with-32bit'] as Set
+    def supportedPolicyNames = ['arm64-only', 'with-32bit', 'all'] as Set
 
     if (!supportedPolicyNames.contains(appAbiPolicy)) {
         emitValidationMessage('validateMinApiAbiCompatibility', "APP_ABI_POLICY (${appAbiPolicy}) inválida. Use uma entre ${supportedPolicyNames}.", strictMode)
@@ -117,6 +120,14 @@ def validateMinApiAbiCompatibility(boolean strictMode = true) {
 
     if (appAbiPolicy == 'with-32bit' && !supportedAbis.contains('armeabi-v7a')) {
         emitValidationMessage('validateMinApiAbiCompatibility', "APP_ABI_POLICY=with-32bit exige ABI 32-bit oficial armeabi-v7a em SUPPORTED_ABIS (atual: ${supportedAbis}).", strictMode)
+    }
+
+    if (appAbiPolicy == 'all') {
+        def normalizedSupportedAbis = supportedAbis as Set
+        def normalizedOfficialAbis = officialAbis as Set
+        if (normalizedSupportedAbis != normalizedOfficialAbis) {
+            emitValidationMessage('validateMinApiAbiCompatibility', "APP_ABI_POLICY=all exige SUPPORTED_ABIS com todas as ABIs oficiais (${officialAbis}) (atual: ${supportedAbis}).", strictMode)
+        }
     }
 
     def requiredMinApi = supportedAbis.collect { abiMinApiRequirements[it] }.max()
