@@ -11,6 +11,7 @@
    ─────────────────────────────────────────────────────────────── */
 #include "rmr_hw_detect.h"
 
+#include "zero.h"
 #include "zero_compat.h"
 
 /* ── Type definitions ── */
@@ -97,7 +98,7 @@ u32 rmr_neon_crc32c(u32 seed, const u8 *data, u32 len) {
         crc ^= data[i];
         for (u32 b = 0; b < 8u; ++b) {
             u32 mask = (u32)(-(int)(crc & 1u));
-            crc = (crc >> 1u) ^ (0x82F63B78u & mask);
+            crc = (crc >> 1u) ^ (RMR_ZERO_CRC32C_POLY_U32 & mask);
         }
     }
     return crc;
@@ -107,7 +108,7 @@ u32 rmr_neon_crc32c(u32 seed, const u8 *data, u32 len) {
 /* NEON φ-step: R(t+1) = R(t) × PHI64 vectorized */
 void rmr_neon_phi_step_bulk(u32 *states, u32 count) {
     /* PHI32 = 0x9E3779B9 */
-    uint32x4_t phi = vdupq_n_u32(0x9E3779B9u);
+    uint32x4_t phi = vdupq_n_u32(RMR_ZERO_PHI32_U32);
     u32 i = 0;
     for (; i + 4u <= count; i += 4u) {
         uint32x4_t s = vld1q_u32(states + i);
@@ -118,7 +119,7 @@ void rmr_neon_phi_step_bulk(u32 *states, u32 count) {
         vst1q_u32(states + i, s);
     }
     for (; i < count; ++i) {
-        states[i] = states[i] * 0x9E3779B9u;
+        states[i] = states[i] * RMR_ZERO_PHI32_U32;
         if (!states[i]) states[i] = 1u;
     }
 }
@@ -194,7 +195,7 @@ u32 rmr_neon_crc32c(u32 seed, const u8 *data, u32 len) {
         crc ^= data[i];
         for (u32 b = 0; b < 8u; ++b) {
             u32 m = (u32)(-(int)(crc & 1u));
-            crc = (crc >> 1u) ^ (0x82F63B78u & m);
+            crc = (crc >> 1u) ^ (RMR_ZERO_CRC32C_POLY_U32 & m);
         }
     }
     return crc;
@@ -203,7 +204,7 @@ u32 rmr_neon_crc32c(u32 seed, const u8 *data, u32 len) {
 
 void rmr_neon_phi_step_bulk(u32 *states, u32 count) {
     for (u32 i = 0; i < count; ++i) {
-        states[i] *= 0x9E3779B9u;
+        states[i] *= RMR_ZERO_PHI32_U32;
         if (!states[i]) states[i] = 1u;
     }
 }
@@ -240,14 +241,14 @@ u32 rmr_neon_crc32c(u32 seed, const u8 *data, u32 len) {
         crc ^= data[i];
         for (u32 b = 0; b < 8u; ++b) {
             u32 m = (u32)(-(int)(crc & 1u));
-            crc = (crc >> 1u) ^ (0x82F63B78u & m);
+            crc = (crc >> 1u) ^ (RMR_ZERO_CRC32C_POLY_U32 & m);
         }
     }
     return crc;
 }
 void rmr_neon_phi_step_bulk(u32 *states, u32 count) {
     for (u32 i = 0; i < count; ++i) {
-        states[i] *= 0x9E3779B9u;
+        states[i] *= RMR_ZERO_PHI32_U32;
         if (!states[i]) states[i] = 1u;
     }
 }

@@ -1,4 +1,5 @@
 #include "rmr_policy_kernel.h"
+#include "zero.h"
 #include "zero_compat.h"
 #include "rmr_corelib.h"
 #include "rmr_hw_detect.h"
@@ -40,7 +41,7 @@ static const char *route_target_from_id(uint8_t id) {
 }
 
 static uint64_t mix_u64(uint64_t acc, uint64_t x) {
-  acc ^= x + RMR_ZERO_POLICY_KERNEL_SIG_MIX64_U64 + (acc << 6) + (acc >> 2);
+  acc ^= x + RMR_ZERO_PHI64_U64 + (acc << 6) + (acc >> 2);
   return acc;
 }
 
@@ -183,7 +184,7 @@ static void init_crc32c_table(void) {
   for (uint32_t i = 0; i < 256; ++i) {
     uint32_t c = i;
     for (uint32_t b = 0; b < 8; ++b) {
-      c = (c & 1u) ? (RMR_ZERO_POLICY_KERNEL_CRC32C_POLY_U32 ^ (c >> 1)) : (c >> 1);
+      c = (c & 1u) ? (RMR_ZERO_CRC32C_POLY_U32 ^ (c >> 1)) : (c >> 1);
     }
     g_crc32c_table[i] = c;
   }
@@ -235,7 +236,7 @@ uint32_t RmR_CRC32C_RawUpdate(uint32_t initial, const uint8_t *buf, size_t len) 
 }
 
 uint32_t RmR_CRC32C(const uint8_t *buf, size_t len) {
-  return ~RmR_CRC32C_RawUpdate(RMR_ZERO_POLICY_KERNEL_CRC32C_INIT_U32, buf, len);
+  return ~RmR_CRC32C_RawUpdate(RMR_ZERO_CRC32_INIT_U32, buf, len);
 }
 
 uint64_t RmR_Hash64_FNV1a(const uint8_t *buf, size_t len) {

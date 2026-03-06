@@ -8,14 +8,13 @@
 #define BITRAF_MAGIC_3 RMR_ZERO_BITRAF_MAGIC_3_U8
 #define BITRAF_HEADER_SIZE 24u
 #define BITRAF_CHUNK_BYTES 64u
-#define BITRAF_FLAG_V2_CHUNK_TABLE RMR_ZERO_BITRAF_FLAG_V2_CHUNK_TABLE_U32
-#define BITRAF_PHI64 RMR_ZERO_BITRAF_PHI64_U64
-#define BITRAF_IV64 RMR_ZERO_BITRAF_FNV1A_BASIS_U64
-#define BITRAF_MIX_A RMR_ZERO_BITRAF_MIX_A_U64
-#define BITRAF_MIX_B RMR_ZERO_BITRAF_MIX_B_U64
-#define BITRAF_MIX_C RMR_ZERO_BITRAF_MIX_C_U64
+#define BITRAF_FLAG_V2_CHUNK_TABLE 0x00000001u
+#define BITRAF_IV64 0xCBF29CE484222325ULL
+#define BITRAF_MIX_A 0xBF58476D1CE4E5B9ULL
+#define BITRAF_MIX_B 0x94D049BB133111EBULL
+#define BITRAF_MIX_C 0xA0761D6478BD642FULL
 
-static const uint64_t g_bitraf_seed = BITRAF_PHI64;
+static const uint64_t g_bitraf_seed = RMR_ZERO_PHI64_U64;
 
 static uint64_t bitraf_mix64(uint64_t x) {
   x ^= (x >> 30);
@@ -33,7 +32,7 @@ static uint64_t bitraf_seed_effective(uint64_t seed) {
 }
 
 static uint64_t bitraf_stream_word(uint64_t base, uint64_t index) {
-  return bitraf_mix64(base + BITRAF_PHI64 * (index + 1ULL));
+  return bitraf_mix64(base + RMR_ZERO_PHI64_U64 * (index + 1ULL));
 }
 
 static void bitraf_store_u32le(uint8_t *p, uint32_t v) {
@@ -67,12 +66,12 @@ static uint64_t bitraf_load_u64le(const uint8_t *p) {
 
 
 static uint32_t bitraf_crc32(const uint8_t *data, size_t len) {
-  uint32_t crc = RMR_ZERO_BITRAF_CRC32_INIT_U32;
+  uint32_t crc = RMR_ZERO_CRC32_INIT_U32;
   for (size_t i = 0; i < len; ++i) {
     crc ^= (uint32_t)data[i];
     for (unsigned b = 0; b < 8u; ++b) {
       uint32_t m = (uint32_t)(-(int32_t)(crc & 1u));
-      crc = (crc >> 1) ^ (RMR_ZERO_BITRAF_CRC32_POLY_U32 & m);
+      crc = (crc >> 1) ^ (RMR_ZERO_CRC32_IEEE_REV_U32 & m);
     }
   }
   return ~crc;
@@ -90,7 +89,7 @@ uint64_t bitraf_hash(const uint8_t *data, size_t len, uint64_t seed) {
   }
   for (size_t i = 0; i < len; ++i) {
     h ^= (uint64_t)data[i];
-    h *= RMR_ZERO_BITRAF_FNV1A_PRIME_U64;
+    h *= RMR_ZERO_FNV1A64_PRIME_U64;
     h ^= (h >> 33);
   }
   return bitraf_mix64(h ^ (uint64_t)len);
@@ -102,12 +101,12 @@ size_t bitraf_compress(const uint8_t *in, size_t in_len,
   if ((!in && in_len) || !out || out_cap < (size_t)BITRAF_HEADER_SIZE) {
     return 0u;
   }
-  if (in_len > 0xFFFFFFFFu) {
+  if (in_len > (size_t)RMR_ZERO_U32_MAX_U32) {
     return 0u;
   }
 
   size_t chunk_count = (in_len + (size_t)BITRAF_CHUNK_BYTES - 1u) / (size_t)BITRAF_CHUNK_BYTES;
-  if (chunk_count > 0xFFFFu) {
+  if (chunk_count > (size_t)RMR_ZERO_U16_MAX_U16) {
     return 0u;
   }
 
