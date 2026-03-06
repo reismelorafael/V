@@ -58,11 +58,11 @@ int RmR_Zipraf_TriCloseBase10(const int64_t flow6[6], int64_t closed3[3], uint32
 }
 
 static uint32_t rmr_zipraf_u32_from_u64_lo(uint64_t v) {
-  return (uint32_t)(v & 0xFFFFFFFFu);
+  return (uint32_t)(v & RMR_ZERO_ZIPRAF_U32_MASK_U64);
 }
 
 static uint32_t rmr_zipraf_u32_from_u64_hi(uint64_t v) {
-  return (uint32_t)((v >> 32u) & 0xFFFFFFFFu);
+  return (uint32_t)((v >> 32u) & RMR_ZERO_ZIPRAF_U32_MASK_U64);
 }
 
 int RmR_Zipraf_Execute(const RmR_ZiprafInput *in, RmR_ZiprafOutput *out) {
@@ -102,8 +102,8 @@ int RmR_Zipraf_Execute(const RmR_ZiprafInput *in, RmR_ZiprafOutput *out) {
   points[0] = in->seed;
   points[1] = in->trajectory_id;
   points[2] = in->invariant_mask;
-  points[3] = (uint32_t)(in->payload_len & 0xFFFFFFFFu);
-  points[4] = (uint32_t)((in->payload_len >> 32u) & 0xFFFFFFFFu);
+  points[3] = (uint32_t)(in->payload_len & RMR_ZERO_ZIPRAF_U32_MASK_U64);
+  points[4] = (uint32_t)((in->payload_len >> 32u) & RMR_ZERO_ZIPRAF_U32_MASK_U64);
   points[5] = out->crc32c;
   points[6] = rmr_zipraf_u32_from_u64_lo(out->bitraf_hash);
   points[7] = rmr_zipraf_u32_from_u64_hi(out->bitraf_hash);
@@ -125,7 +125,7 @@ int RmR_Zipraf_Execute(const RmR_ZiprafInput *in, RmR_ZiprafOutput *out) {
     out->det_signature ^= (int64_t)((uint64_t)(uint32_t)tri_closed[0] << 1u);
     out->det_signature ^= (int64_t)((uint64_t)(uint32_t)tri_closed[1] << 2u);
     out->det_signature ^= (int64_t)((uint64_t)(uint32_t)tri_closed[2] << 3u);
-    if (tri_coherence >= 960u) {
+    if (tri_coherence >= RMR_ZERO_ZIPRAF_TRI_COHERENT_MIN_U32) {
       out->status_flags |= RMR_ZIPRAF_STATUS_TRI_COHERENT;
     }
   }

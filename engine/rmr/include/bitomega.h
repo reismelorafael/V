@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "zero.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -21,25 +23,25 @@ extern "C" {
  */
 
 typedef enum {
-  BITOMEGA_NEG = 0,   /* contraction */
-  BITOMEGA_ZERO = 1,  /* neutral */
-  BITOMEGA_POS = 2,   /* expansion */
-  BITOMEGA_MIX = 3,   /* transitional (+/-) */
-  BITOMEGA_VOID = 4,  /* out-of-domain / undefined */
-  BITOMEGA_EDGE = 5,  /* threshold / boundary */
-  BITOMEGA_FLOW = 6,  /* dynamic flow */
-  BITOMEGA_LOCK = 7,  /* stable lock */
-  BITOMEGA_NOISE = 8, /* measured noise */
-  BITOMEGA_META = 9   /* meta-observer / controller */
+  BITOMEGA_NEG = RMR_ZERO_BITOMEGA_STATE_NEG_U8,   /* contraction */
+  BITOMEGA_ZERO = RMR_ZERO_BITOMEGA_STATE_ZERO_U8,  /* neutral */
+  BITOMEGA_POS = RMR_ZERO_BITOMEGA_STATE_POS_U8,   /* expansion */
+  BITOMEGA_MIX = RMR_ZERO_BITOMEGA_STATE_MIX_U8,   /* transitional (+/-) */
+  BITOMEGA_VOID = RMR_ZERO_BITOMEGA_STATE_VOID_U8,  /* out-of-domain / undefined */
+  BITOMEGA_EDGE = RMR_ZERO_BITOMEGA_STATE_EDGE_U8,  /* threshold / boundary */
+  BITOMEGA_FLOW = RMR_ZERO_BITOMEGA_STATE_FLOW_U8,  /* dynamic flow */
+  BITOMEGA_LOCK = RMR_ZERO_BITOMEGA_STATE_LOCK_U8,  /* stable lock */
+  BITOMEGA_NOISE = RMR_ZERO_BITOMEGA_STATE_NOISE_U8, /* measured noise */
+  BITOMEGA_META = RMR_ZERO_BITOMEGA_STATE_META_U8   /* meta-observer / controller */
 } bitomega_state_t;
 
 typedef enum {
-  BITOMEGA_DIR_NONE = 0,   /* no direction / unknown */
-  BITOMEGA_DIR_UP = 1,     /* expansion */
-  BITOMEGA_DIR_DOWN = 2,   /* contraction */
-  BITOMEGA_DIR_FORWARD = 3,/* propagation */
-  BITOMEGA_DIR_RECURSE = 4,/* recursion / feedback */
-  BITOMEGA_DIR_NULL = 5    /* forced null / dropout */
+  BITOMEGA_DIR_NONE = RMR_ZERO_BITOMEGA_DIR_NONE_U8,   /* no direction / unknown */
+  BITOMEGA_DIR_UP = RMR_ZERO_BITOMEGA_DIR_UP_U8,     /* expansion */
+  BITOMEGA_DIR_DOWN = RMR_ZERO_BITOMEGA_DIR_DOWN_U8,   /* contraction */
+  BITOMEGA_DIR_FORWARD = RMR_ZERO_BITOMEGA_DIR_FORWARD_U8,/* propagation */
+  BITOMEGA_DIR_RECURSE = RMR_ZERO_BITOMEGA_DIR_RECURSE_U8,/* recursion / feedback */
+  BITOMEGA_DIR_NULL = RMR_ZERO_BITOMEGA_DIR_NULL_U8    /* forced null / dropout */
 } bitomega_dir_t;
 
 typedef struct {

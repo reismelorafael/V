@@ -37,4 +37,29 @@ void RmR_MathFabric_VectorMix(const RmR_MathFabricPlan *plan,
                               const u32 in_points[RMR_MATH_POINTS],
                               u32 out_domains[RMR_MATH_DOMAINS]);
 
+/* ─── RAFAELIA Math Fabric Extensions (formula index §16,17,19,29) ────────── */
+#define RMR_DOMAIN_SPIRAL     RMR_DOMAIN_GEOMETRY
+#define RMR_DOMAIN_TOROID     RMR_DOMAIN_ANALYSIS
+#define RMR_DOMAIN_FIBONACCI  RMR_DOMAIN_NUMBER_THEORY
+#define RMR_DOMAIN_TRINITY    RMR_DOMAIN_ALGEBRA
+#define RMR_DOMAIN_ETHICA     RMR_DOMAIN_LOGIC
+#define RMR_DOMAIN_RETRO      RMR_DOMAIN_DISCRETE
+
+typedef struct {
+  u32 spiral_q16;
+  u32 phi_q16;
+  u32 pi_q16;
+  u32 spiral_pi_phi_q16;
+  u32 r_corr_q16;
+  u32 theta_999_sin_pi_q16;
+  u32 fomega_low;
+  u32 fomega_high;
+  u32 ruler_42;
+  u32 calibration_999;
+} RmR_MathFabricRafaeliaExt;
+
+void RmR_MathFabric_RafaeliaExtend(RmR_MathFabricRafaeliaExt *out);
+u32 RmR_MathFabric_Spiral(const RmR_MathFabricRafaeliaExt *ext, u32 n);
+u32 RmR_MathFabric_FibRafaelStep(const RmR_MathFabricRafaeliaExt *ext, u32 fn_q16);
+
 #endif

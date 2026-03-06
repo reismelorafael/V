@@ -1,11 +1,5 @@
 #include "rmr_ll_tuning.h"
-#if defined(RMR_JNI_BUILD) && RMR_JNI_BUILD
-#include <string.h>
-#else
-#include "rmr_baremetal_compat.h" /* baremetal memset substitute */
-#endif
-
-/* BUG FIX baremetal: string.h removido */
+#include "zero_compat.h"
 
 static uint32_t clamp_u32(uint32_t v, uint32_t lo, uint32_t hi) {
   if (v < lo) return lo;
@@ -16,7 +10,7 @@ static uint32_t clamp_u32(uint32_t v, uint32_t lo, uint32_t hi) {
 void RmR_LL_ApplyTuneDefaults(const RmR_HW_Info *hw, RmR_LL_TunePlan *plan) {
   if (!plan) return;
 
-  memset(plan, 0, sizeof(*plan));
+  rmr_mem_set(plan, 0, sizeof(*plan));
   plan->qemu_smp_cpus = 2u;
   plan->qemu_use_iothread = 1u;
   plan->qemu_use_direct_io = 0u;
@@ -38,39 +32,22 @@ void RmR_LL_ApplyTuneDefaults(const RmR_HW_Info *hw, RmR_LL_TunePlan *plan) {
     uint32_t line = hw->cacheline_bytes ? hw->cacheline_bytes : 64u;
 
     plan->qemu_smp_cpus = native_64 ? 8u : 4u;
-    if (hw->arch == 4u || hw->arch == 2u) plan->qemu_smp_cpus += 2u;
-    if (l2_kib >= 1024u) plan->qemu_smp_cpus += 2u;
+    if (l2_kib >= 512u) plan->qemu_smp_cpus += 2u;
     if (l4_mib >= 16u) plan->qemu_smp_cpus += 2u;
     plan->qemu_smp_cpus = clamp_u32(plan->qemu_smp_cpus, 2u, 16u);
 
-    plan->qemu_use_iothread = (l2_kib >= 256u || l4_mib >= 8u) ? 1u : 0u;
-    plan->qemu_use_direct_io = ((l2_kib >= 512u || l4_mib >= 8u) && hw->mem_bus_bits >= 32u) ? 1u : 0u;
+    plan->policy_batch_size = clamp_u32(line * 128u, 2048u, 65536u);
+    if (l2_kib >= 1024u) plan->policy_batch_size = clamp_u32(plan->policy_batch_size * 2u, 4096u, 131072u);
 
     plan->policy_lane_width = native_64 ? 16u : 8u;
-    if (line >= 128u) plan->policy_lane_width += 8u;
+    if (l4_mib >= 16u) plan->policy_lane_width = 32u;
     plan->policy_lane_width = clamp_u32(plan->policy_lane_width, 4u, 32u);
 
-    plan->policy_batch_size = line * plan->policy_lane_width;
-    if (l4_mib >= 64u) {
-      plan->policy_batch_size <<= 2u;
-    } else if (l4_mib >= 16u) {
-      plan->policy_batch_size <<= 1u;
-    }
-    if (hw->cache_hint_l1 > 0u && hw->cache_hint_l1 < plan->policy_batch_size) {
-      plan->policy_batch_size = hw->cache_hint_l1;
-    }
-    plan->policy_batch_size = clamp_u32(plan->policy_batch_size, 512u, 65536u);
-
-    plan->policy_commit_quantum = (hw->cache_hint_l3 >= (2u * 1024u * 1024u)) ? 64u : 24u;
-    if (l4_mib >= 16u) plan->policy_commit_quantum = 96u;
-    if (l4_mib >= 64u) plan->policy_commit_quantum = 128u;
-    if (!native_64) plan->policy_commit_quantum = 12u;
+    plan->policy_commit_quantum = native_64 ? 32u : 16u;
+    if (l4_mib >= 16u) plan->policy_commit_quantum = 64u;
 
     plan->cti_chunk_size = clamp_u32(line * 64u, 1024u, 65536u);
-    if (hw->page_bytes >= 4096u) plan->cti_chunk_size = clamp_u32(hw->page_bytes, 1024u, 65536u);
-    plan->cti_stride = (hw->gpio_pin_stride > 1u) ? clamp_u32(hw->gpio_pin_stride, 1u, 64u) : 1u;
-    plan->cti_prefetch = clamp_u32(line * 4u, 64u, 2048u);
-    if (l4_mib >= 16u) plan->cti_prefetch = clamp_u32(plan->cti_prefetch << 1u, 64u, 4096u);
-    if (l4_mib >= 64u) plan->cti_prefetch = clamp_u32(plan->cti_prefetch + (line * 8u), 64u, 8192u);
+    plan->cti_stride = (hw->has_cycle_counter || hw->has_asm_probe) ? 2u : 1u;
+    plan->cti_prefetch = clamp_u32(line * 4u, 64u, 1024u);
   }
 }

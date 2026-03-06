@@ -15,6 +15,20 @@ make all
 - API pública mínima consolidada: `rmr_kernel_init`, `rmr_kernel_shutdown`, `rmr_kernel_ingest`, `rmr_kernel_process`, `rmr_kernel_route`, `rmr_kernel_verify`, `rmr_kernel_audit`, `rmr_kernel_autodetect`, `rmr_kernel_get_capabilities`.
 - Este header é o único ponto de verdade para orquestração do core (lifecycle + I/O descriptors + capacidades de hardware).
 
+## Constantes canônicas
+- Header canônico de constantes: `include/zero.h`
+- Escopo consolidado das constantes canônicas:
+  - policy kernel
+  - bitraf
+  - bitomega
+  - hw detect
+  - zipraf
+  - qemu bridge
+- Regra de manutenção: todo novo literal hexadecimal deve nascer em `include/zero.h` com prefixo `RMR_ZERO_*`.
+- Distinção obrigatória de responsabilidades:
+  - orquestração do core: `include/rmr_unified_kernel.h`
+  - constantes canônicas: `include/zero.h`
+
 ## Artefatos
 - `build/engine/librmr.a`
 - `build/engine/libbitraf.a`
@@ -83,3 +97,24 @@ Recursos:
   - `preset=RMR_QEMU_PRESET_COMPATIBILITY`
   - `use_virtio=0`
 - com isso, o builder produz linha de comando alinhada ao plano para PPC (sem `virtio` e com fallback de disco/NIC compatíveis).
+
+## Política de promoção e anti-divergência (canônico vs sandbox)
+
+Regra explícita de governança:
+- `engine/rmr` é canônico (produção).
+- `bug/core` é sandbox (investigação/rascunho), sem autoridade para sobrescrever `engine/rmr/src`.
+
+Checklist obrigatório para promover mudanças de `bug/core`:
+- [ ] Abrir comparação arquivo-a-arquivo (pares canônico/rascunho).
+- [ ] Revisar função por função e isolar somente mudanças válidas.
+- [ ] Rejeitar promoção em bloco quando houver divergência de API/contrato.
+- [ ] Preservar ABI e headers públicos de `engine/rmr/include`.
+- [ ] Validar build e testes do engine após cada promoção.
+- [ ] Registrar no changelog/README o que foi promovido e o que foi rejeitado.
+
+Status da revisão atual dos pares:
+- `bug/core/rmr_policy_kernel.c` vs `engine/rmr/src/rmr_policy_kernel.c`: não promovido (arquitetura/API divergentes).
+- `bug/core/rmr_math_fabric.c` vs `engine/rmr/src/rmr_math_fabric.c`: não promovido (contratos incompatíveis).
+- `bug/core/bitraf.c` vs `engine/rmr/src/bitraf.c`: não promovido (interseção parcial, sem patch isolado validado).
+- `bug/core/rmr_hw_detect.c` vs `engine/rmr/src/rmr_hw_detect.c`: não promovido (pipeline de detecção divergente).
+- `bug/core/rmr_unified_kernel.c` vs `engine/rmr/src/rmr_unified_kernel.c`: não promovido em bloco; manter revisão incremental por função.

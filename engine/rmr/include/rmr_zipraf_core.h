@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "zero.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -24,11 +26,11 @@ typedef struct {
   uint32_t status_flags;
 } RmR_ZiprafOutput;
 
-#define RMR_ZIPRAF_STATUS_OK 0u
-#define RMR_ZIPRAF_STATUS_ERR_ARG (1u << 0)
-#define RMR_ZIPRAF_STATUS_EMPTY_PAYLOAD (1u << 1)
-#define RMR_ZIPRAF_STATUS_INVARIANT_MATCH (1u << 2)
-#define RMR_ZIPRAF_STATUS_TRI_COHERENT (1u << 3)
+#define RMR_ZIPRAF_STATUS_OK RMR_ZERO_ZIPRAF_STATUS_OK_U32
+#define RMR_ZIPRAF_STATUS_ERR_ARG RMR_ZERO_ZIPRAF_STATUS_ERR_ARG_U32
+#define RMR_ZIPRAF_STATUS_EMPTY_PAYLOAD RMR_ZERO_ZIPRAF_STATUS_EMPTY_PAYLOAD_U32
+#define RMR_ZIPRAF_STATUS_INVARIANT_MATCH RMR_ZERO_ZIPRAF_STATUS_INVARIANT_MATCH_U32
+#define RMR_ZIPRAF_STATUS_TRI_COHERENT RMR_ZERO_ZIPRAF_STATUS_TRI_COHERENT_U32
 
 /*
  * Kernel triangular 3->6:

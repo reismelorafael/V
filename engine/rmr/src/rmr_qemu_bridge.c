@@ -2,7 +2,6 @@
 #include "rmr_corelib.h"
 #include "rmr_ll_tuning.h"
 
-#include <limits.h>
 #include "zero_compat.h"
 
 static uint32_t clamp_u32(uint32_t v, uint32_t lo, uint32_t hi) {
@@ -43,7 +42,7 @@ void RmR_QemuPlan_Autotune(const RmR_HW_Info *hw,
   }
 
   if (hw) {
-    plan->use_kvm = (hw->arch == 2u || hw->arch == 4u) ? 1u : 0u;
+    plan->use_kvm = (hw->arch == RMR_ZERO_HW_ARCH_X86_64_U32 || hw->arch == RMR_ZERO_HW_ARCH_ARM64_U32) ? 1u : 0u;
     if (hw->cache_hint_l2 >= (512u * 1024u)) {
       plan->preset = RMR_QEMU_PRESET_PERFORMANCE;
     }
@@ -108,7 +107,7 @@ int RmR_QemuPlan_BuildArgs(const RmR_QemuPlan *plan, char *out, size_t out_len) 
     nic_device = "rtl8139";
   }
 
-  int n = snprintf(out, out_len,
+  int n = rmr_snprintf(out, out_len,
                    "-M %s -smp cpus=%u -m %u "
                    "-drive if=%s,cache=%s,aio=%s "
                    "-netdev user,id=n0 -device %s,netdev=n0",
@@ -123,29 +122,29 @@ int RmR_QemuPlan_BuildArgs(const RmR_QemuPlan *plan, char *out, size_t out_len) 
 
   size_t used = (size_t)n;
   if (plan->use_virtio && plan->use_iothread) {
-    n = snprintf(out + used, out_len - used, " -object iothread,id=ioth0 -device virtio-scsi-pci,id=scsi0,iothread=ioth0");
+    n = rmr_snprintf(out + used, out_len - used, " -object iothread,id=ioth0 -device virtio-scsi-pci,id=scsi0,iothread=ioth0");
     if (n < 0 || (size_t)n >= (out_len - used)) return -2;
     used += (size_t)n;
   }
   if (plan->use_kvm) {
-    n = snprintf(out + used, out_len - used, " -accel kvm");
+    n = rmr_snprintf(out + used, out_len - used, " -accel kvm");
     if (n < 0 || (size_t)n >= (out_len - used)) return -2;
     used += (size_t)n;
   }
   if (plan->low_latency) {
-    n = snprintf(out + used, out_len - used, " -icount shift=0,align=off,sleep=off");
+    n = rmr_snprintf(out + used, out_len - used, " -icount shift=0,align=off,sleep=off");
     if (n < 0 || (size_t)n >= (out_len - used)) return -2;
     used += (size_t)n;
   }
   if (plan->use_multifd) {
-    n = snprintf(out + used, out_len - used, " -incoming defer");
+    n = rmr_snprintf(out + used, out_len - used, " -incoming defer");
     if (n < 0 || (size_t)n >= (out_len - used)) return -2;
   }
   return 0;
 }
 
 static int parse_u32_after_key(const char *s, const char *key, uint32_t *out) {
-  const char *p = strstr(s, key);
+  const char *p = rmr_strstr(s, key);
   if (!p) return -1;
   p += rmr_len_u8((const uint8_t *)key);
   while (*p == ' ' || *p == ':' || *p == '"') p++;
@@ -153,8 +152,8 @@ static int parse_u32_after_key(const char *s, const char *key, uint32_t *out) {
   int found = 0;
   while (*p >= '0' && *p <= '9') {
     uint32_t digit = (uint32_t)(*p - '0');
-    if (v > (UINT32_MAX - digit) / 10u) {
-      v = UINT32_MAX;
+    if (v > (0xFFFFFFFFu - digit) / 10u) {
+      v = 0xFFFFFFFFu;
       found = 1;
       while (*p >= '0' && *p <= '9') p++;
       break;
@@ -169,7 +168,7 @@ static int parse_u32_after_key(const char *s, const char *key, uint32_t *out) {
 }
 
 static int has_json_bool_true(const char *s, const char *key) {
-  const char *p = strstr(s, key);
+  const char *p = rmr_strstr(s, key);
   if (!p) return 0;
   p += rmr_len_u8((const uint8_t *)key);
   while (*p == ' ' || *p == '\t') p++;
@@ -183,18 +182,18 @@ int RmR_QmpTelemetry_Parse(const char *qmp_json_line, RmR_QmpTelemetry *out) {
   if (!qmp_json_line || !out) return -1;
   rmr_mem_set(out, 0, sizeof(*out));
 
-  if (strstr(qmp_json_line, "\"status\":\"running\"") || strstr(qmp_json_line, "\"status\" : \"running\"")) {
+  if (rmr_strstr(qmp_json_line, "\"status\":\"running\"") || rmr_strstr(qmp_json_line, "\"status\" : \"running\"")) {
     out->running = 1u;
   }
 
-  if (strstr(qmp_json_line, "query-cpus-fast") || strstr(qmp_json_line, "cpu-index")) {
+  if (rmr_strstr(qmp_json_line, "query-cpus-fast") || rmr_strstr(qmp_json_line, "cpu-index")) {
     const char *p = qmp_json_line;
-    while ((p = strstr(p, "\"cpu-index\"")) != NULL) {
+    while ((p = rmr_strstr(p, "\"cpu-index\"")) != NULL) {
       out->vcpu_count++;
       p += 11;
     }
     p = qmp_json_line;
-    while ((p = strstr(p, "\"halted\"")) != NULL) {
+    while ((p = rmr_strstr(p, "\"halted\"")) != NULL) {
       if (has_json_bool_true(p, "\"halted\"")) out->halted_count++;
       p += 8;
     }

@@ -69,3 +69,42 @@ void RmR_MathFabric_VectorMix(const RmR_MathFabricPlan *plan,
     out_domains[d] = acc;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RAFAELIA Math Fabric Extensions
+ * ═══════════════════════════════════════════════════════════════════════════ */
+static u32 rmr_raf_q16_mul(u32 a, u32 b) {
+  unsigned long long p = (unsigned long long)a * (unsigned long long)b;
+  unsigned long long q = p >> 16;
+  return (q > 0xFFFFFFFFULL) ? 0xFFFFFFFFu : (u32)q;
+}
+
+void RmR_MathFabric_RafaeliaExtend(RmR_MathFabricRafaeliaExt *out) {
+  if (!out) return;
+  out->spiral_q16 = 56756u;
+  out->phi_q16 = 106039u;
+  out->pi_q16 = 205887u;
+  out->spiral_pi_phi_q16 = 23163u;
+  out->r_corr_q16 = 63176u;
+  out->theta_999_sin_pi_q16 = 203360u;
+  out->fomega_low = 963u;
+  out->fomega_high = 999u;
+  out->ruler_42 = 42u;
+  out->calibration_999 = 999u;
+}
+
+u32 RmR_MathFabric_Spiral(const RmR_MathFabricRafaeliaExt *ext, u32 n) {
+  u32 result = 65536u;
+  if (!ext) return result;
+  for (u32 i = 0; i < n; i++) {
+    result = rmr_raf_q16_mul(result, ext->spiral_q16);
+  }
+  return result;
+}
+
+u32 RmR_MathFabric_FibRafaelStep(const RmR_MathFabricRafaeliaExt *ext, u32 fn_q16) {
+  if (!ext) return 0u;
+  u32 scaled = rmr_raf_q16_mul(fn_q16, ext->spiral_q16);
+  u32 sub = ext->theta_999_sin_pi_q16;
+  return (scaled < sub) ? 0u : (scaled - sub);
+}

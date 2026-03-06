@@ -1,16 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════════
    rmr_baremetal_compat.h — Substituição stdlib para baremetal
    Zero deps externas. Implementação inline + bump allocator.
-   Inclua ANTES de qualquer outra header que use stdlib.
-
-   BUG FIX GLOBAL: arquivos originais usavam malloc/free/memset/
-   memcpy/printf de stdlib — proibido em baremetal sem libc.
-   Este header fornece substitutos determinísticos próprios.
    ═══════════════════════════════════════════════════════════════════ */
 #ifndef RMR_BAREMETAL_COMPAT_H
 #define RMR_BAREMETAL_COMPAT_H
 
-/* ── Tipos primitivos independentes de stdint.h ── */
 #if !defined(RMR_TYPES_DEFINED)
 #define RMR_TYPES_DEFINED
 typedef unsigned char      uint8_t;
@@ -25,16 +19,12 @@ typedef unsigned long long uintptr_t;
 #define SIZE_MAX  ((size_t)-1)
 #endif
 
-/* ── Bump allocator global (1MB pool baremetal) ──
-   Precisa ser inicializado por kernel_main antes de uso.
-   BUG FIX: sem arena → malloc retornava NULL sem aviso   */
 #define RMR_ARENA_SIZE (1024u * 1024u)
 
 extern uint8_t  rmr_arena[RMR_ARENA_SIZE];
 extern uint32_t rmr_arena_ptr;
 
 static inline void* rmr_malloc(size_t bytes) {
-    /* alinha 8 bytes */
     bytes = (bytes + 7u) & ~7u;
     if (rmr_arena_ptr + bytes > RMR_ARENA_SIZE) return NULL;
     void *p = (void*)(rmr_arena + rmr_arena_ptr);
@@ -42,14 +32,20 @@ static inline void* rmr_malloc(size_t bytes) {
     return p;
 }
 
-/* free no-op: bump allocator não libera (baremetal intencional) */
 static inline void rmr_free(void *p) { (void)p; }
 
-/* ── mem funções ── */
+static inline void* rmr_realloc(void *ptr, size_t bytes) {
+    void *np;
+    if (!ptr) return rmr_malloc(bytes);
+    if (bytes == 0u) return NULL;
+    np = rmr_malloc(bytes);
+    if (!np) return NULL;
+    return np;
+}
+
 static inline void* rmr_memset(void *dst, int val, size_t n) {
     uint8_t *d = (uint8_t*)dst;
     uint8_t  v = (uint8_t)val;
-    /* BUG FIX: fill word-by-word para performance */
     size_t i = 0;
     while (i < n && ((uintptr_t)(d+i) & 7u)) { d[i++] = v; }
     uint64_t w = v; w |= w<<8; w |= w<<16; w |= w<<32;
@@ -61,7 +57,6 @@ static inline void* rmr_memset(void *dst, int val, size_t n) {
 static inline void* rmr_memcpy(void *dst, const void *src, size_t n) {
     uint8_t *d = (uint8_t*)dst;
     const uint8_t *s = (const uint8_t*)src;
-    /* BUG FIX: direção depende de overlap */
     if (d <= s || d >= s + n) {
         size_t i = 0;
         while (i < n && (((uintptr_t)(d+i)|(uintptr_t)(s+i)) & 7u)) { d[i]=s[i]; i++; }
@@ -79,58 +74,68 @@ static inline size_t rmr_strlen(const char *s) {
     size_t n = 0; while (s[n]) n++; return n;
 }
 
-/* ── stdio stub: printf → discarded em baremetal ──
-   Para debug real, redirecionar para uart_puts:
-   Defina RMR_UART_PUTS antes de incluir este header.  */
+static inline const char *rmr_strstr(const char *s, const char *needle) {
+    size_t i;
+    size_t nlen;
+    if (!s || !needle) return NULL;
+    nlen = rmr_strlen(needle);
+    if (nlen == 0u) return s;
+    for (; *s; ++s) {
+        for (i = 0u; i < nlen && s[i] == needle[i]; ++i) {}
+        if (i == nlen) return s;
+    }
+    return NULL;
+}
+
+static inline int rmr_snprintf(char *out, size_t out_len, const char *fmt, ...) {
+    size_t i;
+    if (!out || out_len == 0u) return 0;
+    if (!fmt) {
+        out[0] = '\0';
+        return 0;
+    }
+    for (i = 0u; i + 1u < out_len && fmt[i] != '\0'; ++i) out[i] = fmt[i];
+    out[i] = '\0';
+    return (int)i;
+}
+
 #ifndef RMR_UART_PUTS
 #define RMR_UART_PUTS(s) ((void)(s))
 #endif
 
-/* printf stub — silencia todos os printfs em baremetal */
 static inline int rmr_printf_stub(const char *fmt, ...) {
-    RMR_UART_PUTS(fmt); /* emite formato cru se UART disponível */
+    RMR_UART_PUTS(fmt);
     return 0;
 }
 static inline int rmr_fprintf_stub(void *f, const char *fmt, ...) {
     (void)f; (void)fmt; return 0;
 }
 
-/* FILE stubs — operações de arquivo impossíveis em baremetal */
-typedef void RMR_FILE;
-#define RMR_NULL_FILE ((RMR_FILE*)NULL)
+typedef void rmr_file_t;
 
-static inline RMR_FILE* rmr_fopen(const char *p, const char *m)  { (void)p;(void)m; return NULL; }
-static inline int       rmr_fclose(RMR_FILE *f)                   { (void)f; return 0; }
-static inline size_t    rmr_fread(void *b,size_t s,size_t n,RMR_FILE*f){(void)b;(void)s;(void)n;(void)f;return 0;}
-static inline size_t    rmr_fwrite(const void*b,size_t s,size_t n,RMR_FILE*f){(void)b;(void)s;(void)n;(void)f;return 0;}
-static inline int       rmr_feof(RMR_FILE *f)                     { (void)f; return 1; }
-static inline RMR_FILE* rmr_popen(const char *c, const char *m)   { (void)c;(void)m; return NULL; }
-static inline int       rmr_pclose(RMR_FILE *f)                   { (void)f; return 0; }
-static inline int       rmr_stat_stub(const char *p, void *s)     { (void)p;(void)s; return -1; }
+typedef struct {
+    uint64_t st_dev;
+    uint64_t st_ino;
+    uint64_t st_size;
+} rmr_stat_t;
 
-/* ── Macro overrides: substitui símbolos stdlib → rmr_ ── */
-#define malloc(n)            rmr_malloc(n)
-#define free(p)              rmr_free(p)
-#define calloc(n,s)          rmr_memset(rmr_malloc((n)*(s)), 0, (n)*(s))
-#define memset(d,v,n)        rmr_memset(d,v,n)
-#define memcpy(d,s,n)        rmr_memcpy(d,s,n)
-#define memmove(d,s,n)       rmr_memcpy(d,s,n)
-#define strlen(s)            rmr_strlen(s)
-#define printf(...)          rmr_printf_stub(__VA_ARGS__)
-#define fprintf(f,...)       rmr_fprintf_stub(f,__VA_ARGS__)
-#define fopen(p,m)           rmr_fopen(p,m)
-#define fclose(f)            rmr_fclose(f)
-#define fread(b,s,n,f)       rmr_fread(b,s,n,f)
-#define fwrite(b,s,n,f)      rmr_fwrite(b,s,n,f)
-#define feof(f)              rmr_feof(f)
-#define popen(c,m)           rmr_popen(c,m)
-#define pclose(f)            rmr_pclose(f)
+typedef struct {
+    long tv_sec;
+    long tv_nsec;
+} rmr_timespec_t;
 
-/* sys/stat.h stub */
-#define stat(p,s)            rmr_stat_stub(p,s)
-struct stat { int st_size; };
+static inline rmr_file_t* rmr_fopen(const char *p, const char *m)  { (void)p;(void)m; return NULL; }
+static inline int         rmr_fclose(rmr_file_t *f)                 { (void)f; return 0; }
+static inline size_t      rmr_fread(void *b,size_t s,size_t n,rmr_file_t*f){(void)b;(void)s;(void)n;(void)f;return 0;}
+static inline size_t      rmr_fwrite(const void*b,size_t s,size_t n,rmr_file_t*f){(void)b;(void)s;(void)n;(void)f;return 0;}
+static inline int         rmr_feof(rmr_file_t *f)                   { (void)f; return 1; }
+static inline int         rmr_fflush(rmr_file_t *f)                 { (void)f; return 0; }
+static inline int         rmr_stat(const char *p, rmr_stat_t *s)    { (void)p;(void)s; return -1; }
+static inline int         rmr_clock_gettime_monotonic(rmr_timespec_t *t) {
+    if (t) { t->tv_sec = 0; t->tv_nsec = 0; }
+    return 0;
+}
 
-/* stdlib.h abort/exit stubs */
 #if defined(__has_attribute)
 #  if __has_attribute(noreturn)
 #    define RMR_NORETURN __attribute__((noreturn))
@@ -143,20 +148,13 @@ struct stat { int st_size; };
 #  define RMR_NORETURN
 #endif
 
-/* Permite desativar instruções que dependem de privilégio em alguns alvos. */
 #ifndef RMR_ABORT_USE_RISCV_WFI
 #define RMR_ABORT_USE_RISCV_WFI 1
 #endif
-
 #ifndef RMR_ABORT_USE_X86_HLT
 #define RMR_ABORT_USE_X86_HLT 1
 #endif
 
-/* Portabilidade: cada arquitetura usa a instrução de idle/halt mais apropriada
-   quando disponível; fallback mantém loop puro com barreira de memória para
-   evitar otimizações agressivas e preservar comportamento seguro sem libc.
-   Cobertura multi-arquitetura (8+ famílias): ARM/AArch64, x86, RISC-V,
-   MIPS, PowerPC, SPARC, LoongArch e fallback genérico. */
 static inline RMR_NORETURN void rmr_abort(void) {
     for (;;) {
 #if defined(__aarch64__) || defined(__arm__)
@@ -186,41 +184,20 @@ static inline RMR_NORETURN void rmr_abort(void) {
 #endif
     }
 }
-#define abort()   rmr_abort()
-#define exit(c)   rmr_abort()
 
-/* pthread stubs — baremetal single-core (sem pré-emptividade) */
-typedef int pthread_mutex_t;
-typedef int pthread_t;
-#define PTHREAD_MUTEX_INITIALIZER 0
-static inline int pthread_mutex_lock(pthread_mutex_t *m)   { (void)m; return 0; }
-static inline int pthread_mutex_unlock(pthread_mutex_t *m) { (void)m; return 0; }
-static inline int pthread_create(pthread_t *t, void *a, void *(*f)(void*), void *arg) {
-    (void)t;(void)a;(void)f;(void)arg; return -1; /* sem threads em baremetal */
-}
-static inline int pthread_join(pthread_t t, void **r) { (void)t;(void)r; return 0; }
+/* Legacy aliases for source files ainda em transição */
+#define malloc(n)            rmr_malloc(n)
+#define free(p)              rmr_free(p)
+#define realloc(p,n)         rmr_realloc(p,n)
+#define memset(d,v,n)        rmr_memset(d,v,n)
+#define memcpy(d,s,n)        rmr_memcpy(d,s,n)
+#define strlen(s)            rmr_strlen(s)
+#define snprintf(...)       rmr_snprintf(__VA_ARGS__)
+#define strstr(s,n)          rmr_strstr(s,n)
 
-/* stdatomic stubs — single-core: sem necessidade de atomic */
-#define _Atomic
-#define ATOMIC_VAR_INIT(v)  (v)
-#define atomic_load_explicit(p,mo)        (*(p))
-#define atomic_store_explicit(p,v,mo)     (*(p)=(v))
-#define atomic_load(p)                    (*(p))
-#define atomic_store(p,v)                 (*(p)=(v))
-#define atomic_exchange(p,v)              ({ int _o=*(p); *(p)=(v); _o; })
-typedef int atomic_int;
-
-/* time.h stub */
-#define CLOCK_MONOTONIC 0
-struct timespec { long tv_sec; long tv_nsec; };
-static inline int clock_gettime(int c, struct timespec *t) {
-    (void)c; if(t){ t->tv_sec=0; t->tv_nsec=0; } return 0;
-}
-
-/* Arena vars — definidos em rmr_baremetal_compat.c */
 #ifndef RMR_BAREMETAL_COMPAT_IMPL
 extern uint8_t  rmr_arena[];
 extern uint32_t rmr_arena_ptr;
 #endif
 
-#endif /* RMR_BAREMETAL_COMPAT_H */
+#endif

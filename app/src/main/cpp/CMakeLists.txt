@@ -44,6 +44,8 @@ add_library(vectra_core_accel SHARED
     ../../../../engine/rmr/src/rmr_baremetal_compat.c
     ../../../../engine/rmr/src/rmr_casm_bridge.c
     ../../../../engine/rmr/src/rmr_unified_kernel.c
+    ../../../../engine/rmr/src/rmr_unified_jni_bridge.c
+    ../../../../engine/rmr/src/rmr_host_compat.c
     ../../../../engine/rmr/src/rmr_zipraf_core.c
     ../../../../engine/rmr/src/rmr_hw_detect.c
     ../../../../engine/rmr/src/rmr_corelib.c

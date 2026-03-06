@@ -2,10 +2,10 @@
 #include "bitraf_version.h"
 #include "zero.h"
 
-#define BITRAF_MAGIC_0 ((uint8_t)'B')
-#define BITRAF_MAGIC_1 ((uint8_t)'T')
-#define BITRAF_MAGIC_2 ((uint8_t)'R')
-#define BITRAF_MAGIC_3 ((uint8_t)'F')
+#define BITRAF_MAGIC_0 RMR_ZERO_BITRAF_MAGIC_0_U8
+#define BITRAF_MAGIC_1 RMR_ZERO_BITRAF_MAGIC_1_U8
+#define BITRAF_MAGIC_2 RMR_ZERO_BITRAF_MAGIC_2_U8
+#define BITRAF_MAGIC_3 RMR_ZERO_BITRAF_MAGIC_3_U8
 #define BITRAF_HEADER_SIZE 24u
 #define BITRAF_CHUNK_BYTES 64u
 #define BITRAF_FLAG_V2_CHUNK_TABLE 0x00000001u
@@ -36,10 +36,10 @@ static uint64_t bitraf_stream_word(uint64_t base, uint64_t index) {
 }
 
 static void bitraf_store_u32le(uint8_t *p, uint32_t v) {
-  p[0] = (uint8_t)(v & 0xFFu);
-  p[1] = (uint8_t)((v >> 8) & 0xFFu);
-  p[2] = (uint8_t)((v >> 16) & 0xFFu);
-  p[3] = (uint8_t)((v >> 24) & 0xFFu);
+  p[0] = (uint8_t)(v & RMR_ZERO_BITRAF_IO_MASK_U8);
+  p[1] = (uint8_t)((v >> 8) & RMR_ZERO_BITRAF_IO_MASK_U8);
+  p[2] = (uint8_t)((v >> 16) & RMR_ZERO_BITRAF_IO_MASK_U8);
+  p[3] = (uint8_t)((v >> 24) & RMR_ZERO_BITRAF_IO_MASK_U8);
 }
 
 static uint32_t bitraf_load_u32le(const uint8_t *p) {
@@ -51,7 +51,7 @@ static uint32_t bitraf_load_u32le(const uint8_t *p) {
 
 static void bitraf_store_u64le(uint8_t *p, uint64_t v) {
   for (unsigned i = 0; i < 8u; ++i) {
-    p[i] = (uint8_t)((v >> (8u * i)) & 0xFFu);
+    p[i] = (uint8_t)((v >> (8u * i)) & RMR_ZERO_BITRAF_IO_MASK_U8);
   }
 }
 
@@ -131,8 +131,8 @@ size_t bitraf_compress(const uint8_t *in, size_t in_len,
   bitraf_store_u32le(ext + 0, BITRAF_FLAG_V2_CHUNK_TABLE);
   ext[4] = (uint8_t)BITRAF_CHUNK_BYTES;
   ext[5] = 4u;
-  ext[6] = (uint8_t)(chunk_count & 0xFFu);
-  ext[7] = (uint8_t)((chunk_count >> 8) & 0xFFu);
+  ext[6] = (uint8_t)(chunk_count & RMR_ZERO_BITRAF_IO_MASK_U8);
+  ext[7] = (uint8_t)((chunk_count >> 8) & RMR_ZERO_BITRAF_IO_MASK_U8);
 
   for (size_t c = 0; c < chunk_count; ++c) {
     size_t off = c * (size_t)BITRAF_CHUNK_BYTES;
@@ -147,7 +147,7 @@ size_t bitraf_compress(const uint8_t *in, size_t in_len,
   size_t payload_off = (size_t)BITRAF_HEADER_SIZE + ext_size;
   for (size_t i = 0; i < in_len; ++i) {
     uint64_t w = bitraf_stream_word(eff_seed, (uint64_t)i >> 3);
-    uint8_t k = (uint8_t)((w >> (8u * (unsigned)(i & 7u))) & 0xFFu);
+    uint8_t k = (uint8_t)((w >> (8u * (unsigned)(i & 7u))) & RMR_ZERO_BITRAF_IO_MASK_U8);
     out[payload_off + i] = (uint8_t)(in[i] ^ k);
   }
   return frame_size;
@@ -219,7 +219,7 @@ size_t bitraf_reconstruct_ex(const uint8_t *in, size_t in_len,
 
   for (size_t i = 0; i < (size_t)plain_len; ++i) {
     uint64_t w = bitraf_stream_word(eff_seed, (uint64_t)i >> 3);
-    uint8_t k = (uint8_t)((w >> (8u * (unsigned)(i & 7u))) & 0xFFu);
+    uint8_t k = (uint8_t)((w >> (8u * (unsigned)(i & 7u))) & RMR_ZERO_BITRAF_IO_MASK_U8);
     out[i] = (uint8_t)(in[payload_off + i] ^ k);
   }
 

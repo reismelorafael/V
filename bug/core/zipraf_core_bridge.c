@@ -163,3 +163,24 @@ rmr_u64 zr_virt_size(rmr_u64 phys, rmr_u32 cells, rmr_u32 paths) {
 extern rmr_u32 rmr_ll_geo4x4_trace(const rmr_u16 *cells, rmr_u32 count);
 extern rmr_u64 rmr_ll_virt_size(rmr_u64 phys_size, rmr_u32 cell_count, rmr_u32 path_count);
 extern int     rmr_ll_triple_complete(rmr_u64*, rmr_u32*, rmr_u32*, rmr_u32, const rmr_u8*, rmr_u32);
+
+/* RAFAELIA-CHANGED-FILES integration: standalone CRC32 (IEEE) helper for ZIP diagnostics. */
+rmr_u32 zr_crc32_ieee(rmr_u32 crc, const rmr_u8 *d, rmr_u32 n) {
+    static rmr_u32 tbl[256];
+    static int ready = 0;
+    if (!ready) {
+        for (int i = 0; i < 256; i++) {
+            rmr_u32 c = (rmr_u32)i;
+            for (int j = 0; j < 8; j++) {
+                c = (c >> 1) ^ ((c & 1u) ? 0xEDB88320u : 0u);
+            }
+            tbl[i] = c;
+        }
+        ready = 1;
+    }
+    crc = ~crc;
+    for (rmr_u32 i = 0; i < n; i++) {
+        crc = (crc >> 8) ^ tbl[(crc ^ d[i]) & 0xFFu];
+    }
+    return ~crc;
+}

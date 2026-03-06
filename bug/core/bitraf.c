@@ -118,3 +118,20 @@ rmr_u32 bitraf_zipraf_slot(rmr_u64 offset, rmr_u32 length, rmr_u32 crc32) {
     );
     return h & (BITRAF_SLOTS - 1u);
 }
+
+/* RAFAELIA-CHANGED-FILES integration: deterministic bit-count helper for BITRAF diagnostics. */
+rmr_u32 bitraf_popcount32(rmr_u32 value) {
+    rmr_u32 c = 0u;
+    while (value) {
+        c += value & 1u;
+        value >>= 1u;
+    }
+    return c;
+}
+
+rmr_u32 bitraf_route_popcount(void) {
+    if (s_bitraf.magic != BITRAF_MAGIC) return 0u;
+    rmr_u32 low = (rmr_u32)(s_bitraf.route_mask & 0xFFFFFFFFu);
+    rmr_u32 high = (rmr_u32)(s_bitraf.route_mask >> 32u);
+    return bitraf_popcount32(low) + bitraf_popcount32(high);
+}
