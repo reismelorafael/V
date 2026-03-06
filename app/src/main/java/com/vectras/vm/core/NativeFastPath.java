@@ -386,46 +386,65 @@ public final class NativeFastPath {
 
     public static int xorChecksum(byte[] data, int offset, int length) {
         if (data == null || length <= 0) return 0;
+        if (offset < 0 || offset + length > data.length) {
+            throw new IllegalArgumentException("Invalid checksum range");
+        }
         TELEMETRY_XOR_CALLS.incrementAndGet();
-        int value = LowLevelBridge.xorChecksumCompat(data, offset, length);
-        trackLowLevelRouteHit();
-        return value;
+        if (NATIVE_AVAILABLE) {
+            int nativeValue = nativeXorChecksum(data, offset, length);
+            if (nativeValue != Integer.MIN_VALUE) {
+                telemetryNativeHit();
+                return nativeValue;
+            }
+        }
+        telemetryFallbackHit();
+        return LowLevelDeterminism.xorChecksumCompatFallback(data, offset, length);
     }
 
     public static int fold32(int a, int b, int c, int d) {
-        int folded = LowLevelBridge.fold32(a, b, c, d);
-        trackLowLevelRouteHit();
-        return folded;
+        if (NATIVE_AVAILABLE) {
+            telemetryNativeHit();
+            return nativeFold32(a, b, c, d);
+        }
+        telemetryFallbackHit();
+        return LowLevelDeterminism.fold32Fallback(a, b, c, d);
     }
 
     public static int reduceXor(byte[] data, int offset, int length) {
-        int reduced = LowLevelBridge.reduceXor(data, offset, length);
-        trackLowLevelRouteHit();
-        return reduced;
+        if (NATIVE_AVAILABLE) {
+            int nativeValue = nativeReduceXor(data, offset, length);
+            telemetryNativeHit();
+            return nativeValue;
+        }
+        telemetryFallbackHit();
+        return LowLevelDeterminism.reduceXorFallback(data, offset, length);
     }
 
     public static int checksum32(byte[] data, int offset, int length, int seed) {
-        int checksum = LowLevelBridge.checksum32(data, offset, length, seed);
-        trackLowLevelRouteHit();
-        return checksum;
-    }
-
-    private static void trackLowLevelRouteHit() {
-        if (LowLevelBridge.wasLastCallNative()) {
+        if (NATIVE_AVAILABLE) {
+            int nativeValue = nativeChecksum32(data, offset, length, seed);
             telemetryNativeHit();
-        } else {
-            telemetryFallbackHit();
+            return nativeValue;
         }
+        telemetryFallbackHit();
+        return LowLevelDeterminism.checksum32Fallback(data, offset, length, seed);
     }
 
     public static int crc32c(int initial, byte[] data, int offset, int length) {
         if (data == null || length <= 0) {
             return initial;
         }
+        if (offset < 0 || offset + length > data.length) {
+            throw new IllegalArgumentException("Invalid crc range");
+        }
         TELEMETRY_CRC_CALLS.incrementAndGet();
-        int crc = LowLevelBridge.crc32cCompat(initial, data, offset, length);
-        trackLowLevelRouteHit();
-        return crc;
+        if (NATIVE_AVAILABLE) {
+            int nativeValue = nativeDeterministicCrc32c(initial, data, offset, length);
+            telemetryNativeHit();
+            return nativeValue;
+        }
+        telemetryFallbackHit();
+        return LowLevelDeterminism.crc32cCompatFallback(initial, data, offset, length);
     }
 
     public static int allocArena(int bytes) {
@@ -978,6 +997,12 @@ public final class NativeFastPath {
     private static native int nativeCopyBytes(byte[] src, int srcOffset, byte[] dst, int dstOffset, int length);
 
     private static native int nativeXorChecksum(byte[] data, int offset, int length);
+
+    private static native int nativeFold32(int a, int b, int c, int d);
+
+    private static native int nativeReduceXor(byte[] data, int offset, int length);
+
+    private static native int nativeChecksum32(byte[] data, int offset, int length, int seed);
 
     private static native int nativePopcount32(int value);
 
