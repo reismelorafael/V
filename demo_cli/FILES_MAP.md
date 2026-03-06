@@ -32,3 +32,8 @@ Mapa arquivo-a-arquivo em três linhas por item: papel, ligação e comando de i
 - **Liga com**: ver [`demo_cli/README.md`](README.md) e [`docs/THREE_LAYER_ANALYSIS.md`](../docs/THREE_LAYER_ANALYSIS.md) para contexto de camadas.
 - **Inspeção**: `file "demo_cli/src/policy_kernel_selftest.c"` e, quando texto, `sed -n "1,80p" "demo_cli/src/policy_kernel_selftest.c"`.
 
+
+## `demo_cli/src/rmr_unified_arena_selftest.c`
+- **Papel**: código-fonte de auto-teste da arena unificada com cenários de fragmentação/reuso.
+- **Liga com**: [`engine/rmr/src/rmr_unified_kernel.c`](../engine/rmr/src/rmr_unified_kernel.c), [`Makefile`](../Makefile) e [`CMakeLists.txt`](../CMakeLists.txt).
+- **Inspeção**: `file "demo_cli/src/rmr_unified_arena_selftest.c"` e, quando texto, `sed -n "1,220p" "demo_cli/src/rmr_unified_arena_selftest.c"`.

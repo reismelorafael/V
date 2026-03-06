@@ -437,19 +437,60 @@ static int rmr_unified_slot_lookup(const RmR_UnifiedKernel *kernel, uint32_t han
 int RmR_UnifiedKernel_ArenaAlloc(RmR_UnifiedKernel *kernel, uint32_t bytes, uint32_t *out_handle) {
   uint32_t i;
   uint32_t slot = RMR_UK_MAX_SLOTS;
-  uint32_t end = 0u;
+  uint32_t best_offset = UINT32_MAX;
   if (!kernel || !out_handle || !kernel->initialized || bytes == 0u) return RMR_KERNEL_ERR_ARG;
+
   for (i = 0; i < RMR_UK_MAX_SLOTS; ++i) {
     if (!kernel->slots[i].in_use && slot == RMR_UK_MAX_SLOTS) slot = i;
-    if (kernel->slots[i].in_use) {
-      uint32_t s_end;
-      if (kernel->slots[i].size > UINT32_MAX - kernel->slots[i].offset) return RMR_KERNEL_ERR_STATE;
-      s_end = kernel->slots[i].offset + kernel->slots[i].size;
-      if (s_end > end) end = s_end;
+  }
+
+  if (slot == RMR_UK_MAX_SLOTS) return RMR_KERNEL_ERR_STATE;
+
+  for (i = 0; i < RMR_UK_MAX_SLOTS; ++i) {
+    uint32_t candidate_offset;
+    uint32_t j;
+    int overlap;
+
+    if (i == 0u) {
+      candidate_offset = 0u;
+    } else {
+      if (!kernel->slots[i - 1u].in_use) continue;
+      if (kernel->slots[i - 1u].size > UINT32_MAX - kernel->slots[i - 1u].offset) return RMR_KERNEL_ERR_STATE;
+      candidate_offset = kernel->slots[i - 1u].offset + kernel->slots[i - 1u].size;
+    }
+
+    if (candidate_offset > kernel->arena_capacity || bytes > kernel->arena_capacity - candidate_offset) {
+      continue;
+    }
+
+    overlap = 0;
+    for (j = 0; j < RMR_UK_MAX_SLOTS; ++j) {
+      uint32_t used_offset;
+      uint32_t used_end;
+      uint32_t candidate_end;
+      if (!kernel->slots[j].in_use) continue;
+      if (kernel->slots[j].size > UINT32_MAX - kernel->slots[j].offset) return RMR_KERNEL_ERR_STATE;
+
+      used_offset = kernel->slots[j].offset;
+      used_end = used_offset + kernel->slots[j].size;
+      if (bytes > UINT32_MAX - candidate_offset) return RMR_KERNEL_ERR_STATE;
+      candidate_end = candidate_offset + bytes;
+
+      if (!(candidate_end <= used_offset || candidate_offset >= used_end)) {
+        overlap = 1;
+        break;
+      }
+    }
+
+    if (!overlap && candidate_offset < best_offset) {
+      best_offset = candidate_offset;
+      if (best_offset == 0u) break;
     }
   }
-  if (slot == RMR_UK_MAX_SLOTS || bytes > kernel->arena_capacity - end) return RMR_KERNEL_ERR_STATE;
-  kernel->slots[slot].offset = end;
+
+  if (best_offset == UINT32_MAX) return RMR_KERNEL_ERR_STATE;
+
+  kernel->slots[slot].offset = best_offset;
   kernel->slots[slot].size = bytes;
   kernel->slots[slot].generation += 1u;
   kernel->slots[slot].in_use = 1u;
