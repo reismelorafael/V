@@ -79,6 +79,7 @@ set(RMR_SOURCES
   engine/rmr/src/rmr_ll_tuning.c
   engine/rmr/src/rmr_casm_bridge.c
   engine/rmr/src/rmr_unified_kernel.c
+  engine/rmr/src/rmr_zipraf_core.c
   engine/rmr/src/rmr_lowlevel_portable.c
   engine/rmr/src/rmr_lowlevel_mix.c
   engine/rmr/src/rmr_lowlevel_reduce.c
@@ -174,6 +175,11 @@ target_link_libraries(rmr_asm_equivalence_selftest PRIVATE rmr)
 rmr_apply_common_flags(rmr_asm_equivalence_selftest)
 
 add_executable(rmr_unified_arena_selftest demo_cli/src/rmr_unified_arena_selftest.c)
+
+add_executable(zipraf_core_selftest demo_cli/src/zipraf_core_selftest.c)
+target_link_libraries(zipraf_core_selftest PRIVATE rmr)
+rmr_apply_common_flags(zipraf_core_selftest)
+
 target_link_libraries(rmr_unified_arena_selftest PRIVATE bitraf_static rmr)
 rmr_apply_common_flags(rmr_unified_arena_selftest)
 
@@ -185,6 +191,7 @@ add_custom_target(run_selftest
   COMMAND policy_kernel_selftest
   COMMAND rmr_qemu_bridge_selftest
   COMMAND rmr_unified_arena_selftest
+  COMMAND zipraf_core_selftest
   COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bench/results
   COMMAND bitomega_smoketest
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -194,6 +201,7 @@ add_custom_target(run_selftest
           policy_kernel_selftest
           rmr_qemu_bridge_selftest
           rmr_unified_arena_selftest
+          zipraf_core_selftest
           bitomega_smoketest
 )
 add_custom_target(run_bitomega_smoketest
