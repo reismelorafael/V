@@ -1,4 +1,4 @@
-# RAFAELIA FIXES SUMMARY — 56 Pontos Corrigidos
+# RAFAELIA FIXES SUMMARY — 57 Pontos Corrigidos
 # ∆ⁿ R(t+1)=R(t)×Φ_ethica×(√3/2)^(πφ) — Ciclo ψ→χ→ρ→Δ→Σ→Ω
 
 ## CRÍTICOS (Build-Breaking / Runtime-Breaking)
@@ -72,6 +72,7 @@
 | 54 | `rmr_unified_kernel.c`: `RMR_KERNEL_ERR_ARG` adicionado nas verificações de ponteiro nulo |
 | 55 | `gradle.properties`: duplicatas removidas |
 | 56 | `PROJECT_STATE.md`: atualizado para FIXED_REFACTORING |
+| 57 | `.github/workflows/`: removidos `android (1).yml`, `android (2).yml`, `android-verified (1).yml` e `neon_simd_selftest.c` para eliminar duplicidade/poluição de CI |
 
 ---
 **Status:** ψ→Σ→Ω — Coerência restaurada. Build funcional garantido.
