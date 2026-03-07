@@ -104,3 +104,23 @@ Mapa arquivo-a-arquivo em três linhas por item: papel, ligação e comando de i
 - **Papel**: script de auditoria forense para inventariar todos os arquivos não-Markdown com hash SHA-256.
 - **Liga com**: gera [`reports/NON_MD_AUDIT_REPORT.md`](../reports/NON_MD_AUDIT_REPORT.md) e [`reports/non_md_inventory.tsv`](../reports/non_md_inventory.tsv).
 - **Inspeção**: `python3 tools/audit_non_md_inventory.py` e `sed -n "1,80p" "reports/NON_MD_AUDIT_REPORT.md"`.
+
+## `tools/baremetal/rafcode_phi/README.md`
+- **Papel**: guia local da base RAFCODE❤️PHI C→ASM com emissão de opcodes em hexadecimal.
+- **Liga com**: ver [`docs/RAFCODE_PHI_COMPILER_HEADER.md`](../docs/RAFCODE_PHI_COMPILER_HEADER.md) para contrato técnico e [`tools/baremetal/`](baremetal/) para contexto low-level.
+- **Inspeção**: `file "tools/baremetal/rafcode_phi/README.md"` e, quando texto, `sed -n "1,200p" "tools/baremetal/rafcode_phi/README.md"`.
+
+## `tools/baremetal/rafcode_phi/include/rafcode_phi_abi.h`
+- **Papel**: contrato ABI autoral C↔ASM (tipos fixos, opcodes hex e assinaturas de emissão).
+- **Liga com**: ver [`tools/baremetal/rafcode_phi/c/rafcode_phi_front_shell.c`](baremetal/rafcode_phi/c/rafcode_phi_front_shell.c) e [`tools/baremetal/rafcode_phi/asm/rafcode_phi_emit_word.S`](baremetal/rafcode_phi/asm/rafcode_phi_emit_word.S).
+- **Inspeção**: `file "tools/baremetal/rafcode_phi/include/rafcode_phi_abi.h"` e, quando texto, `sed -n "1,220p" "tools/baremetal/rafcode_phi/include/rafcode_phi_abi.h"`.
+
+## `tools/baremetal/rafcode_phi/c/rafcode_phi_front_shell.c`
+- **Papel**: casca C determinística para converter tokens em opcodes hex e consolidar CRC32C do bloco emitido.
+- **Liga com**: usa ABI em [`tools/baremetal/rafcode_phi/include/rafcode_phi_abi.h`](baremetal/rafcode_phi/include/rafcode_phi_abi.h) e hook ASM `rafphi_emit_word_asm`.
+- **Inspeção**: `file "tools/baremetal/rafcode_phi/c/rafcode_phi_front_shell.c"` e, quando texto, `sed -n "1,260p" "tools/baremetal/rafcode_phi/c/rafcode_phi_front_shell.c"`.
+
+## `tools/baremetal/rafcode_phi/asm/rafcode_phi_emit_word.S`
+- **Papel**: rotina ASM bare-metal para serializar palavra `opcode_hex` no buffer de saída com retorno de sucesso/falha.
+- **Liga com**: implementa contrato de [`tools/baremetal/rafcode_phi/include/rafcode_phi_abi.h`](baremetal/rafcode_phi/include/rafcode_phi_abi.h) para caminhos `__aarch64__` e `__x86_64__`.
+- **Inspeção**: `file "tools/baremetal/rafcode_phi/asm/rafcode_phi_emit_word.S"` e, quando texto, `sed -n "1,220p" "tools/baremetal/rafcode_phi/asm/rafcode_phi_emit_word.S"`.

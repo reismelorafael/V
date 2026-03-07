@@ -39,4 +39,10 @@ public class DataRoms {
     public String hash;
     @SerializedName("sha256")
     public String sha256;
+    @SerializedName("os_family")
+    public String osFamily;
+    @SerializedName("os_flavor")
+    public String osFlavor;
+    @SerializedName("release_channel")
+    public String releaseChannel;
 }
