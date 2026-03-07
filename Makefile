@@ -14,20 +14,47 @@ else ifeq ($(UNAME_S),Darwin)
   SHARED_EXT := dylib
 endif
 
-ENGINE_SRCS := engine/rmr/src/bitomega.c engine/rmr/src/rmr_cycles.c engine/rmr/src/rmr_lowlevel_portable.c engine/rmr/src/rmr_lowlevel_mix.c engine/rmr/src/rmr_lowlevel_reduce.c engine/rmr/src/rmr_neon_simd.c engine/rmr/src/rmr_hw_detect.c engine/rmr/src/rmr_bench.c engine/rmr/src/rmr_bench_suite.c engine/rmr/src/rmr_isorf.c engine/rmr/src/rmr_apk_module.c engine/rmr/src/rmr_math_fabric.c engine/rmr/src/rmr_policy_kernel.c engine/rmr/src/rmr_qemu_bridge.c engine/rmr/src/rmr_corelib.c engine/rmr/src/rmr_ll_ops.c engine/rmr/src/rmr_ll_tuning.c engine/rmr/src/rmr_casm_bridge.c engine/rmr/src/rmr_unified_kernel.c
+ENGINE_CORE_SRCS := \
+	engine/rmr/src/bitomega.c \
+	engine/rmr/src/rmr_cycles.c \
+	engine/rmr/src/rmr_hw_detect.c \
+	engine/rmr/src/rmr_bench.c \
+	engine/rmr/src/rmr_bench_suite.c \
+	engine/rmr/src/rmr_isorf.c \
+	engine/rmr/src/rmr_apk_module.c \
+	engine/rmr/src/rmr_qemu_bridge.c \
+	engine/rmr/src/rmr_math_fabric.c \
+	engine/rmr/src/rafaelia_formulas_core.c \
+	engine/rmr/src/rmr_corelib.c \
+	engine/rmr/src/rmr_ll_ops.c \
+	engine/rmr/src/rmr_ll_tuning.c \
+	engine/rmr/src/rmr_casm_bridge.c \
+	engine/rmr/src/rmr_unified_kernel.c \
+	engine/rmr/src/rmr_unified_jni_bridge.c \
+	engine/rmr/src/rmr_host_compat.c \
+	engine/rmr/src/rmr_zipraf_core.c \
+	engine/rmr/src/rmr_lowlevel_portable.c \
+	engine/rmr/src/rmr_lowlevel_mix.c \
+	engine/rmr/src/rmr_lowlevel_reduce.c \
+	engine/rmr/src/rmr_neon_simd.c
+
+ENGINE_SRCS := $(ENGINE_CORE_SRCS)
+ifeq ($(RMR_ENABLE_POLICY_MODULE),1)
+ENGINE_SRCS += engine/rmr/src/rmr_policy_kernel.c
+endif
 ENGINE_OBJS := $(patsubst %.c,build/%.o,$(ENGINE_SRCS))
 
 CASM_ASM_SRCS :=
 ifeq ($(UNAME_S),Linux)
 ifeq ($(shell uname -m 2>/dev/null),x86_64)
+  CASM_ASM_SRCS += engine/rmr/interop/rmr_lowlevel_x86_64.S
   CASM_ASM_SRCS += engine/rmr/interop/rmr_casm_x86_64.S
+else ifeq ($(shell uname -m 2>/dev/null),riscv64)
+  CASM_ASM_SRCS += engine/rmr/interop/rmr_casm_riscv64.S
 endif
 endif
 CASM_ASM_OBJS := $(patsubst %.S,build/%.o,$(CASM_ASM_SRCS))
 ENGINE_OBJS += $(CASM_ASM_OBJS)
-CASM_BRIDGE_C_SRC := engine/rmr/src/rmr_casm_bridge.c
-CASM_BRIDGE_C_OBJ := $(patsubst %.c,build/%.o,$(CASM_BRIDGE_C_SRC))
-CASM_BRIDGE_OBJS := $(CASM_BRIDGE_C_OBJ) $(CASM_ASM_OBJS)
 BITRAF_API_SRC := engine/rmr/src/bitraf.c
 BITRAF_API_OBJ := $(patsubst %.c,build/%.o,$(BITRAF_API_SRC))
 BITRAF_BIN := build/demo/bitraf_core
@@ -52,7 +79,12 @@ UNIFIED_ARENA_SELFTEST_BIN := build/demo/rmr_unified_arena_selftest
 HW_DETECT_SELFTEST_BIN := build/demo/rmr_hw_detect_selftest
 RMR_REQUIRED_SYMBOLS := RmR_MathFabric_AutodetectPlan RmR_MathFabric_VectorMix
 
-all: $(LIB_STATIC) verify-librmr-symbols $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_BRIDGE_SELFTEST_BIN) $(BITOMEGA_SMOKETEST_BIN) $(UNIFIED_ARENA_SELFTEST_BIN) $(HW_DETECT_SELFTEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
+CASM_SELFTEST_TARGETS :=
+ifneq ($(strip $(CASM_ASM_SRCS)),)
+CASM_SELFTEST_TARGETS += $(CASM_BRIDGE_SELFTEST_BIN)
+endif
+
+all: $(LIB_STATIC) verify-librmr-symbols $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_SELFTEST_TARGETS) $(BITOMEGA_SMOKETEST_BIN) $(UNIFIED_ARENA_SELFTEST_BIN) $(HW_DETECT_SELFTEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
 
 build/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -133,9 +165,9 @@ $(DETERMINISM_SIGNATURE_SELFTEST_BIN): demo_cli/src/determinism_signature_selfte
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
 
-$(CASM_BRIDGE_SELFTEST_BIN): demo_cli/src/rmr_casm_bridge_selftest.c $(CASM_BRIDGE_OBJS)
+$(CASM_BRIDGE_SELFTEST_BIN): demo_cli/src/rmr_casm_bridge_selftest.c $(LIB_STATIC)
 	@mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(CASM_BRIDGE_OBJS) $(LDFLAGS) -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(LIB_STATIC) $(LDFLAGS) -o $@
 
 $(BITOMEGA_SMOKETEST_BIN): demo_cli/src/bitomega_smoketest.c $(LIB_STATIC)
 	@mkdir -p $(dir $@)
@@ -155,14 +187,18 @@ run-bitomega-smoketest: $(BITOMEGA_SMOKETEST_BIN)
 run-demo: $(DEMO_BIN)
 	./$(DEMO_BIN)
 
-run-casm-selftest: $(CASM_BRIDGE_SELFTEST_BIN)
+run-casm-selftest: $(CASM_SELFTEST_TARGETS)
+	@if [ -z "$(CASM_SELFTEST_TARGETS)" ]; then \
+		echo "[run-casm-selftest] CASM bridge selftest unavailable for this host architecture"; \
+		exit 0; \
+	fi
 	./$(CASM_BRIDGE_SELFTEST_BIN)
 
-run-selftest: $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_BRIDGE_SELFTEST_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_SELFTEST_BIN) $(BITOMEGA_SMOKETEST_BIN) $(UNIFIED_ARENA_SELFTEST_BIN) $(HW_DETECT_SELFTEST_BIN)
+run-selftest: $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_SELFTEST_TARGETS) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_SELFTEST_BIN) $(BITOMEGA_SMOKETEST_BIN) $(UNIFIED_ARENA_SELFTEST_BIN) $(HW_DETECT_SELFTEST_BIN)
 	./$(SELFTEST_BIN)
 	./$(MATH_FABRIC_SELFTEST_BIN)
 	./$(DETERMINISM_SIGNATURE_SELFTEST_BIN)
-	./$(CASM_BRIDGE_SELFTEST_BIN)
+	@if [ -n "$(CASM_SELFTEST_TARGETS)" ]; then ./$(CASM_BRIDGE_SELFTEST_BIN); fi
 	./$(POLICY_SELFTEST_BIN)
 	./$(QEMU_BRIDGE_SELFTEST_BIN)
 	./$(UNIFIED_ARENA_SELFTEST_BIN)

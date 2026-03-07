@@ -186,6 +186,10 @@ rmr_apply_common_flags(rmr_asm_equivalence_selftest)
 
 add_executable(rmr_unified_arena_selftest demo_cli/src/rmr_unified_arena_selftest.c)
 
+add_executable(rmr_hw_detect_selftest engine/rmr/src/rmr_hw_detect_selftest.c)
+target_link_libraries(rmr_hw_detect_selftest PRIVATE rmr)
+rmr_apply_common_flags(rmr_hw_detect_selftest)
+
 add_executable(zipraf_core_selftest demo_cli/src/zipraf_core_selftest.c)
 target_link_libraries(zipraf_core_selftest PRIVATE rmr)
 rmr_apply_common_flags(zipraf_core_selftest)
@@ -194,26 +198,47 @@ target_link_libraries(rmr_unified_arena_selftest PRIVATE bitraf_static rmr)
 rmr_apply_common_flags(rmr_unified_arena_selftest)
 
 
-add_custom_target(run_selftest
-  COMMAND bitraf_selftest
-  COMMAND math_fabric_selftest
-  COMMAND determinism_signature_selftest
-  COMMAND policy_kernel_selftest
-  COMMAND rmr_qemu_bridge_selftest
-  COMMAND rmr_unified_arena_selftest
-  COMMAND zipraf_core_selftest
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bench/results
-  COMMAND bitomega_smoketest
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  DEPENDS bitraf_selftest
-          math_fabric_selftest
-          determinism_signature_selftest
-          policy_kernel_selftest
-          rmr_qemu_bridge_selftest
-          rmr_unified_arena_selftest
-          zipraf_core_selftest
-          bitomega_smoketest
+set(RMR_RUN_SELFTEST_COMMANDS
+  bitraf_selftest
+  math_fabric_selftest
+  determinism_signature_selftest
+  policy_kernel_selftest
+  rmr_qemu_bridge_selftest
+  rmr_unified_arena_selftest
+  rmr_hw_detect_selftest
+  zipraf_core_selftest
+  bitomega_smoketest
 )
+
+set(RMR_RUN_SELFTEST_DEPENDS
+  bitraf_selftest
+  math_fabric_selftest
+  determinism_signature_selftest
+  policy_kernel_selftest
+  rmr_qemu_bridge_selftest
+  rmr_unified_arena_selftest
+  rmr_hw_detect_selftest
+  zipraf_core_selftest
+  bitomega_smoketest
+)
+
+if(RMR_HAS_CASM)
+  list(INSERT RMR_RUN_SELFTEST_COMMANDS 3 rmr_casm_bridge_selftest)
+  list(INSERT RMR_RUN_SELFTEST_DEPENDS 3 rmr_casm_bridge_selftest)
+endif()
+
+add_custom_target(run_selftest
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bench/results
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  DEPENDS ${RMR_RUN_SELFTEST_DEPENDS}
+)
+
+foreach(RMR_SELFTEST_CMD IN LISTS RMR_RUN_SELFTEST_COMMANDS)
+  add_custom_command(TARGET run_selftest POST_BUILD
+    COMMAND ${RMR_SELFTEST_CMD}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  )
+endforeach()
 add_custom_target(run_bitomega_smoketest
   COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bench/results
   COMMAND bitomega_smoketest
