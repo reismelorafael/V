@@ -6,6 +6,11 @@ def defaultSupportedAbisByPolicy = [
 ]
 
 def officiallySupportedAbis = ['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64']
+def abiPolicyIntent = [
+    'arm64-only': 'distribuição oficial mínima',
+    'with-32bit': 'distribuição oficial completa',
+    'all': 'validação interna completa'
+]
 
 buildscript {
     ext {
@@ -102,7 +107,7 @@ def validateMinApiAbiCompatibility(boolean strictMode = true) {
     def supportedPolicyNames = ['arm64-only', 'with-32bit', 'all'] as Set
 
     if (!supportedPolicyNames.contains(appAbiPolicy)) {
-        emitValidationMessage('validateMinApiAbiCompatibility', "APP_ABI_POLICY (${appAbiPolicy}) inválida. Use uma entre ${supportedPolicyNames}.", strictMode)
+        emitValidationMessage('validateMinApiAbiCompatibility', "APP_ABI_POLICY (${appAbiPolicy}) inválida. Use uma entre ${supportedPolicyNames} (arm64-only=distribuição oficial mínima, with-32bit=distribuição oficial completa, all=validação interna completa).", strictMode)
     }
 
     if (supportedAbis.isEmpty()) {
@@ -111,22 +116,22 @@ def validateMinApiAbiCompatibility(boolean strictMode = true) {
 
     def unknownAbis = supportedAbis.findAll { !abiMinApiRequirements.containsKey(it) }
     if (!unknownAbis.isEmpty()) {
-        emitValidationMessage('validateMinApiAbiCompatibility', "SUPPORTED_ABIS contém ABIs não reconhecidas/oficiais: ${unknownAbis}. ABIs oficialmente suportadas: ${officialAbis}.", strictMode)
+        emitValidationMessage('validateMinApiAbiCompatibility', "SUPPORTED_ABIS contém ABIs fora da matriz oficial (distribuição + validação interna): ${unknownAbis}. ABIs permitidas: ${officialAbis}.", strictMode)
     }
 
     if (appAbiPolicy == 'arm64-only' && supportedAbis != ['arm64-v8a']) {
-        emitValidationMessage('validateMinApiAbiCompatibility', "APP_ABI_POLICY=arm64-only exige SUPPORTED_ABIS=arm64-v8a (atual: ${supportedAbis}).", strictMode)
+        emitValidationMessage('validateMinApiAbiCompatibility', "APP_ABI_POLICY=arm64-only (${abiPolicyIntent['arm64-only']}) exige SUPPORTED_ABIS=arm64-v8a (atual: ${supportedAbis}).", strictMode)
     }
 
     if (appAbiPolicy == 'with-32bit' && !supportedAbis.contains('armeabi-v7a')) {
-        emitValidationMessage('validateMinApiAbiCompatibility', "APP_ABI_POLICY=with-32bit exige ABI 32-bit oficial armeabi-v7a em SUPPORTED_ABIS (atual: ${supportedAbis}).", strictMode)
+        emitValidationMessage('validateMinApiAbiCompatibility', "APP_ABI_POLICY=with-32bit (${abiPolicyIntent['with-32bit']}) exige ABI 32-bit armeabi-v7a em SUPPORTED_ABIS (atual: ${supportedAbis}).", strictMode)
     }
 
     if (appAbiPolicy == 'all') {
         def normalizedSupportedAbis = supportedAbis as Set
         def normalizedOfficialAbis = officialAbis as Set
         if (normalizedSupportedAbis != normalizedOfficialAbis) {
-            emitValidationMessage('validateMinApiAbiCompatibility', "APP_ABI_POLICY=all exige SUPPORTED_ABIS com todas as ABIs oficiais (${officialAbis}) (atual: ${supportedAbis}).", strictMode)
+            emitValidationMessage('validateMinApiAbiCompatibility', "APP_ABI_POLICY=all (${abiPolicyIntent['all']}) exige SUPPORTED_ABIS com todas as ABIs da matriz oficial (${officialAbis}) (atual: ${supportedAbis}).", strictMode)
         }
     }
 

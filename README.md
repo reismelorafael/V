@@ -111,10 +111,13 @@ find . -maxdepth 2 -type d | sort
 - Para override pontual, use `-P` no comando Gradle.
 
 ### ABIs oficialmente suportadas
-- ABIs oficiais no build atual: `arm64-v8a` e `armeabi-v7a`.
-- Política padrão (`APP_ABI_POLICY=arm64-only`): empacota apenas `arm64-v8a`.
-- Política opcional (`APP_ABI_POLICY=with-32bit`): empacota `arm64-v8a,armeabi-v7a`.
-- Entradas condicionais para outras ABIs no CMake (ex.: `riscv64`) são apenas roadmap e não representam ABI ativa no empacotamento Gradle.
+- Matriz oficial única de ABI (build/Gradle): `arm64-v8a`, `armeabi-v7a`, `x86` e `x86_64`.
+- **Suporte de distribuição oficial**:
+  - `APP_ABI_POLICY=arm64-only`: empacota apenas `arm64-v8a` (distribuição mínima).
+  - `APP_ABI_POLICY=with-32bit`: empacota `arm64-v8a,armeabi-v7a` (distribuição completa).
+- **Suporte de validação interna**:
+  - `APP_ABI_POLICY=all`: valida/empacota toda a matriz oficial (`arm64-v8a,armeabi-v7a,x86,x86_64`) para cobertura técnica interna.
+- Entradas condicionais para ABIs fora dessa matriz no CMake (ex.: `riscv64`) são apenas roadmap e não representam ABI ativa no empacotamento Gradle.
 
 ### Exemplo de configuração de Java para build
 ```bash
