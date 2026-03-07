@@ -38,7 +38,3 @@ rafphi_emit_word_asm:
     xorl    %eax, %eax
     ret
 #endif
-
-#if defined(__ELF__)
-    .section .note.GNU-stack,"",@progbits
-#endif
