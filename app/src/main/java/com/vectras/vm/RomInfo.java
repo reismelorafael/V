@@ -198,6 +198,9 @@ public class RomInfo extends AppCompatActivity {
         intent.putExtra("romfilename", getIntent().getStringExtra("filename"));
         intent.putExtra("finalromfilename", getIntent().getStringExtra("finalromfilename"));
         intent.putExtra("rompath", romPath);
+        intent.putExtra("os_family", getIntent().getStringExtra("os_family"));
+        intent.putExtra("os_flavor", getIntent().getStringExtra("os_flavor"));
+        intent.putExtra("release_channel", getIntent().getStringExtra("release_channel"));
         if (!TextUtils.isEmpty(romUri)) {
             intent.putExtra("romuri", romUri);
         }
@@ -260,7 +263,15 @@ public class RomInfo extends AppCompatActivity {
             binding.textName.setText(getIntent().getStringExtra("title"));
         }
         if (getIntent().hasExtra("shortdesc")) {
-            binding.textSize.setText(getIntent().getStringExtra("shortdesc"));
+            String shortDesc = getIntent().getStringExtra("shortdesc");
+            String osFamily = getIntent().getStringExtra("os_family");
+            String osFlavor = getIntent().getStringExtra("os_flavor");
+            String releaseChannel = getIntent().getStringExtra("release_channel");
+            if (com.vectras.vm.main.romstore.RomCatalogLabels.isRafLinuxEnterprise(osFamily, osFlavor, releaseChannel)) {
+                binding.textSize.setText("RafLinux Enterprise • " + shortDesc);
+            } else {
+                binding.textSize.setText(shortDesc);
+            }
         }
         if (getIntent().hasExtra("desc")) {
             binding.descTxt.setText(getIntent().getStringExtra("desc"));
