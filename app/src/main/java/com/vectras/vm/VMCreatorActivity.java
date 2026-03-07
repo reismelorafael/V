@@ -672,11 +672,28 @@ public class VMCreatorActivity extends AppCompatActivity {
     }
 
     private void setDefault() {
-        String defQemuParams = RafaeliaQemuProfile.defaultParams(
+        boolean isRafLinuxEnterprise = com.vectras.vm.main.romstore.RomCatalogLabels.isRafLinuxEnterprise(
+                getIntent().getStringExtra("os_family"),
+                getIntent().getStringExtra("os_flavor"),
+                getIntent().getStringExtra("release_channel")
+        );
+
+        String defQemuParams = isRafLinuxEnterprise
+                ? RafaeliaQemuProfile.presetParams(
+                DeviceUtils.is64bit(),
+                MainSettingsManager.getArch(this),
+                RafaeliaQemuProfile.PresetKind.COMPATIBILITY
+        )
+                : RafaeliaQemuProfile.defaultParams(
                 DeviceUtils.is64bit(),
                 MainSettingsManager.getArch(this)
         );
-        binding.title.setText(getString(R.string.new_vm));
+
+        if (isRafLinuxEnterprise) {
+            binding.title.setText("RafLinux Enterprise");
+        } else {
+            binding.title.setText(getString(R.string.new_vm));
+        }
         binding.qemu.setText(defQemuParams);
     }
 

@@ -64,7 +64,7 @@ public class RomStoreHomeAdapterSearch extends RecyclerView.Adapter<RecyclerView
         final DataRoms current = dataRom.get(position);
         Glide.with(context).load(current.romIcon).placeholder(R.drawable.ic_computer_180dp_with_padding).error(R.drawable.ic_computer_180dp_with_padding).into(myHolder.ivIcon);
         myHolder.textName.setText(current.romName);
-        myHolder.textSize.setText(current.romArch + " - " + current.fileSize);
+        myHolder.textSize.setText(RomCatalogLabels.buildSummaryLine(current.romArch, current.fileSize, current.osFamily, current.osFlavor, current.releaseChannel));
         if (current.romAvail) {
             myHolder.linearItem.setOnClickListener(v -> {
                 notifyItemRangeChanged(0, dataRom.size());
@@ -86,6 +86,9 @@ public class RomStoreHomeAdapterSearch extends RecyclerView.Adapter<RecyclerView
                 intent.putExtra("id", current.id);
                 intent.putExtra("vecid", current.vecid);
                 intent.putExtra("sha256", current.sha256);
+                intent.putExtra("os_family", current.osFamily);
+                intent.putExtra("os_flavor", current.osFlavor);
+                intent.putExtra("release_channel", current.releaseChannel);
                 intent.putExtra("isRomInfo", false);
                 context.startActivity(intent);
             });

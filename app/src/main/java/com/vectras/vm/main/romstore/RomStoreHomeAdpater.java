@@ -66,7 +66,7 @@ public class RomStoreHomeAdpater extends RecyclerView.Adapter<RecyclerView.ViewH
     private void bind(@NonNull MyHolder myHolder, @NonNull DataRoms current, int position) {
         Glide.with(context).load(current.romIcon).placeholder(R.drawable.ic_computer_180dp_with_padding).error(R.drawable.ic_computer_180dp_with_padding).into(myHolder.ivIcon);
         myHolder.textName.setText(current.romName);
-        myHolder.textSize.setText(current.romArch + " - " + current.fileSize);
+        myHolder.textSize.setText(RomCatalogLabels.buildSummaryLine(current.romArch, current.fileSize, current.osFamily, current.osFlavor, current.releaseChannel));
         if (Boolean.TRUE.equals(current.romAvail)) {
             myHolder.textAvail.setText(context.getString(R.string.available));
             myHolder.textAvail.setTextColor(myHolder.textName.getCurrentTextColor());
@@ -88,6 +88,9 @@ public class RomStoreHomeAdpater extends RecyclerView.Adapter<RecyclerView.ViewH
                 intent.putExtra("id", current.id);
                 intent.putExtra("vecid", current.vecid);
                 intent.putExtra("hash", current.hash);
+                intent.putExtra("os_family", current.osFamily);
+                intent.putExtra("os_flavor", current.osFlavor);
+                intent.putExtra("release_channel", current.releaseChannel);
                 intent.putExtra("isRomInfo", true);
                 context.startActivity(intent);
             });
