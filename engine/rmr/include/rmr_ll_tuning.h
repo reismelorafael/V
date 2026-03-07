@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "bitomega.h"
 #include "rmr_hw_detect.h"
 
 #ifdef __cplusplus
@@ -23,7 +24,15 @@ typedef struct {
   uint32_t cti_prefetch;
 } RmR_LL_TunePlan;
 
+typedef struct {
+  bitomega_node_t nodes[16];
+  uint32_t vcpu_count;
+  uint32_t active_mask;
+} RmR_VcpuScheduler;
+
 void RmR_LL_ApplyTuneDefaults(const RmR_HW_Info *hw, RmR_LL_TunePlan *plan);
+void RmR_VcpuScheduler_Init(RmR_VcpuScheduler *sched, uint32_t vcpu_count);
+uint32_t RmR_VcpuScheduler_Next(RmR_VcpuScheduler *sched, const bitomega_ctx_t *ctx);
 
 #ifdef __cplusplus
 }

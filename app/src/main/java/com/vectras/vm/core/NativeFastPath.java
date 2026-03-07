@@ -1079,5 +1079,7 @@ public final class NativeFastPath {
 
     private static native int nativeAsmBridgeMarker();
 
+    public static native int runNativeLoop(int maxSteps, long stopConditionPtr);
+
 
 }

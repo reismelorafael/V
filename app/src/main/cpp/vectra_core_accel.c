@@ -654,3 +654,26 @@ Java_com_vectras_vm_core_VmFlowNativeBridge_nativeVmFlowLastMono(JNIEnv* env, jc
     (*env)->SetIntArrayRegion(env, arr, 0, 2, payload);
     return arr;
 }
+
+JNIEXPORT jint JNICALL
+Java_com_vectras_vm_core_NativeFastPath_runNativeLoop(JNIEnv* env, jclass clazz, jint maxSteps, jlong stopConditionPtr) {
+    (void)env;
+    (void)clazz;
+    if (vectra_kernel_ensure() != RMR_KERNEL_OK) return (jint)RMR_KERNEL_ERR_STATE;
+    if (maxSteps <= 0) return 0;
+
+    volatile uint32_t *stop = (volatile uint32_t*)(uintptr_t)stopConditionPtr;
+    int steps = 0;
+    int32_t out_value = 0;
+
+    while (steps < maxSteps) {
+        if (stop && *stop) break;
+        pthread_mutex_lock(&g_unified_lock);
+        int rc = rmr_jni_kernel_process(&g_unified_state, 1, 1, 0u, &out_value);
+        pthread_mutex_unlock(&g_unified_lock);
+        if (rc != RMR_KERNEL_OK) break;
+        ++steps;
+    }
+
+    return (jint)steps;
+}

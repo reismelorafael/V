@@ -125,3 +125,32 @@ rmr_casm_crc32c_byte_arm64:
 
 /* Stack não-executável (ABI padrão) */
 .section .note.GNU-stack,"",@progbits
+
+.global rmr_spiral_arm64
+.type   rmr_spiral_arm64, %function
+rmr_spiral_arm64:
+    mov     x1, #65536
+    cbz     x0, .Lspiral_done
+    mov     x2, #56756
+.Lspiral_loop:
+    mul     x3, x1, x2
+    lsr     x1, x3, #16
+    subs    x0, x0, #1
+    bne     .Lspiral_loop
+.Lspiral_done:
+    mov     x0, x1
+    ret
+.size rmr_spiral_arm64, .-rmr_spiral_arm64
+
+.global rmr_fib_rafael_step_arm64
+.type   rmr_fib_rafael_step_arm64, %function
+rmr_fib_rafael_step_arm64:
+    mov     x1, #56756
+    mul     x2, x0, x1
+    lsr     x2, x2, #16
+    mov     x3, #6752
+    movk    x3, #3, lsl #16
+    subs    x0, x2, x3
+    csel    x0, xzr, x0, lo
+    ret
+.size rmr_fib_rafael_step_arm64, .-rmr_fib_rafael_step_arm64

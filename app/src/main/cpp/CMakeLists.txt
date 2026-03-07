@@ -57,6 +57,11 @@ add_library(vectra_core_accel SHARED
     ../../../../engine/rmr/src/rmr_lowlevel_reduce.c
     ../../../../engine/rmr/src/rmr_neon_simd.c
     ../../../../engine/rmr/src/bitomega.c
+    ../../../../engine/rmr/src/rmr_tcg_cache.c
+    ../../../../engine/rmr/src/rmr_virtio_blk.c
+    ../../../../engine/rmr/src/rmr_attractor.c
+    ../../../../engine/rmr/src/rmr_vhw_model.c
+    ../../../../engine/rmr/src/rmr_ethica_loss.c
     ${VECTRA_LOWLEVEL_SOURCES}
     ${VECTRA_CASM_SOURCES})
 

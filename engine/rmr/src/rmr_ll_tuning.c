@@ -51,3 +51,49 @@ void RmR_LL_ApplyTuneDefaults(const RmR_HW_Info *hw, RmR_LL_TunePlan *plan) {
     plan->cti_prefetch = clamp_u32(line * 4u, 64u, 1024u);
   }
 }
+
+void RmR_VcpuScheduler_Init(RmR_VcpuScheduler *sched, uint32_t vcpu_count) {
+  if (!sched) return;
+  rmr_mem_set(sched, 0u, sizeof(*sched));
+  sched->vcpu_count = clamp_u32(vcpu_count, 1u, 16u);
+  sched->active_mask = (sched->vcpu_count >= 32u) ? 0xFFFFFFFFu : ((1u << sched->vcpu_count) - 1u);
+  for (uint32_t i = 0u; i < sched->vcpu_count; ++i) {
+    sched->nodes[i].state = BITOMEGA_ZERO;
+    sched->nodes[i].dir = BITOMEGA_DIR_NONE;
+    sched->nodes[i].coherence = 0.5f;
+    sched->nodes[i].entropy = 0.5f;
+  }
+}
+
+uint32_t RmR_VcpuScheduler_Next(RmR_VcpuScheduler *sched, const bitomega_ctx_t *ctx) {
+  uint32_t best = 0u;
+  uint32_t best_score = 0u;
+  bitomega_ctx_t local_ctx;
+  if (!sched) return 0u;
+  local_ctx = ctx ? *ctx : bitomega_ctx_default(0u);
+
+  for (uint32_t i = 0u; i < sched->vcpu_count; ++i) {
+    uint32_t score = 0u;
+    bitomega_node_t *n;
+    if (!(sched->active_mask & (1u << i))) continue;
+
+    n = &sched->nodes[i];
+    (void)bitomega_transition(n, &local_ctx);
+
+    if (n->state == BITOMEGA_FLOW) score = 1000u;
+    else if (n->state == BITOMEGA_LOCK) score = 800u;
+    else if (n->state == BITOMEGA_POS) score = 600u;
+    else if (n->state == BITOMEGA_MIX) score = 400u;
+    else if (n->state == BITOMEGA_NOISE) score = 100u;
+    else if (n->state == BITOMEGA_VOID) score = 0u;
+    else score = 200u;
+
+    score = (uint32_t)(((uint64_t)score * (uint64_t)(uint32_t)(n->coherence * 65536.0f)) >> 16u);
+
+    if (score > best_score) {
+      best_score = score;
+      best = i;
+    }
+  }
+  return best;
+}

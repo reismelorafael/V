@@ -51,3 +51,19 @@ rmr_casm_bridge_marker:
   mov $0x41534d31, %eax
   ret
 .size rmr_casm_bridge_marker, .-rmr_casm_bridge_marker
+
+.global rmr_spiral_x86_64
+.type rmr_spiral_x86_64, @function
+rmr_spiral_x86_64:
+  mov $65536, %rax
+  test %rdi, %rdi
+  jz .Lspiral64_done
+  mov $56756, %rcx
+.Lspiral64_loop:
+  imul %rcx, %rax
+  shr $16, %rax
+  dec %rdi
+  jnz .Lspiral64_loop
+.Lspiral64_done:
+  ret
+.size rmr_spiral_x86_64, .-rmr_spiral_x86_64

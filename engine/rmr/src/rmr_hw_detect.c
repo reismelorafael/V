@@ -97,7 +97,9 @@ static u32 RmR_GpioWordBits(u32 ptr_bits){
 
 static u32 RmR_GpioPinStride(u32 arch){
   if(arch == RMR_ZERO_HW_ARCH_ARM64_U32 || arch == RMR_ZERO_HW_ARCH_ARM_U32) return 4u;
-  return RMR_ZERO_HW_ARCH_I386_U32;
+  if(arch == RMR_ZERO_HW_ARCH_X86_64_U32 || arch == RMR_ZERO_HW_ARCH_I386_U32) return 1u;
+  if(arch == RMR_ZERO_HW_ARCH_PPC64_U32 || arch == RMR_ZERO_HW_ARCH_PPC32_U32) return 8u;
+  return 2u;
 }
 
 void RmR_HW_Detect(RmR_HW_Info *out){
