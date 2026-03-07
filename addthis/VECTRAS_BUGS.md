@@ -4,6 +4,8 @@
 
 ---
 
+> Revalidação profunda (árvore atual): ver `addthis/VECTRAS_REALITY_DIFF.md` para status real (aberto/parcial/resolvido) bug-a-bug.
+
 ## LEGENDA DE SEVERIDADE
 
 | Tag | Significado |
