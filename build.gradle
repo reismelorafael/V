@@ -39,24 +39,28 @@ allprojects {
 }
 
 ext {
+    deprecatedPropertyWarnings = [] as Set<String>
     resolveProperty = { List<String> keys, String fallback ->
-        def key = keys.find { properties.containsKey(it) }
-        return properties.get(key ?: '', fallback)
+        def selectedKey = keys.find { properties.containsKey(it) }
+        if (selectedKey != null && selectedKey != keys[0] && deprecatedPropertyWarnings.add(selectedKey)) {
+            logger.warn("[deprecation] Gradle property alias '${selectedKey}' is legacy and will be removed in a future update. Prefer '${keys[0]}'.")
+        }
+        return properties.get(selectedKey ?: '', fallback)
     }
     resolveIntProperty = { List<String> keys, int fallback ->
         return Integer.parseInt(resolveProperty(keys, fallback.toString()).toString())
     }
     buildStrict = Boolean.parseBoolean(resolveProperty(['buildStrict'], 'false').toString())
-    toolsVersion = resolveProperty(['TOOLS_VERSION', 'tools.version'], '35.0.0')
-    sdkBaselineApi = resolveIntProperty(['SDK_BASELINE_API', 'sdk.baseline.api'], 35)
-    compileApi = resolveIntProperty(['COMPILE_API', 'compile.api'], sdkBaselineApi)
-    targetApi = resolveIntProperty(['TARGET_API', 'target.api'], sdkBaselineApi)
+    toolsVersion = resolveProperty(['tools.version', 'TOOLS_VERSION'], '35.0.0')
+    sdkBaselineApi = resolveIntProperty(['sdk.baseline.api', 'SDK_BASELINE_API'], 35)
+    compileApi = resolveIntProperty(['compile.api', 'COMPILE_API'], sdkBaselineApi)
+    targetApi = resolveIntProperty(['target.api', 'TARGET_API'], sdkBaselineApi)
     // Política atual: ARM64-only com baseline coerente para ABIs 64-bit.
-    minApi = resolveIntProperty(['MIN_API', 'min.api'], 23)
-    releaseMinTargetApi = resolveIntProperty(['RELEASE_MIN_TARGET_API', 'release.min.target.api'], sdkBaselineApi)
-    javaLanguageVersion = resolveIntProperty(['JAVA_LANGUAGE_VERSION', 'java.language.version'], 17)
-    ndkVersion = resolveProperty(['NDK_VERSION', 'ndk.version'], '27.2.12479018')
-    cmakeVersion = resolveProperty(['CMAKE_VERSION', 'cmake.version'], '3.22.1')
+    minApi = resolveIntProperty(['min.api', 'MIN_API'], 23)
+    releaseMinTargetApi = resolveIntProperty(['release.min.target.api', 'RELEASE_MIN_TARGET_API'], sdkBaselineApi)
+    javaLanguageVersion = resolveIntProperty(['java.language.version', 'JAVA_LANGUAGE_VERSION'], 17)
+    ndkVersion = resolveProperty(['ndk.version', 'NDK_VERSION'], '27.2.12479018')
+    cmakeVersion = resolveProperty(['cmake.version', 'CMAKE_VERSION'], '3.22.1')
     appAbiPolicy = properties.get('APP_ABI_POLICY', 'arm64-only')
     officialAbis = officiallySupportedAbis
     supportedAbis = properties.get('SUPPORTED_ABIS', defaultSupportedAbisByPolicy.get(appAbiPolicy, 'arm64-v8a'))
@@ -252,8 +256,8 @@ tasks.register("verifyArm64ToolchainCompatibility") {
 
 def validateGradleRuntimeJavaVersion(boolean strictMode = true) {
     def currentJava = JavaVersion.current()
-    def configuredRuntime = resolveIntProperty(['GRADLE_JAVA_RUNTIME_VERSION', 'gradle.java.runtime.version'], resolveIntProperty(['JAVA_LANGUAGE_VERSION', 'java.language.version'], 17))
-    def maxSupportedRuntime = resolveIntProperty(['GRADLE_MAX_RUNTIME_JAVA_VERSION', 'gradle.max.runtime.java.version'], 21)
+    def configuredRuntime = resolveIntProperty(['gradle.java.runtime.version', 'GRADLE_JAVA_RUNTIME_VERSION'], resolveIntProperty(['java.language.version', 'JAVA_LANGUAGE_VERSION'], 17))
+    def maxSupportedRuntime = resolveIntProperty(['gradle.max.runtime.java.version', 'GRADLE_MAX_RUNTIME_JAVA_VERSION'], 21)
 
     def configuredJavaVersion = JavaVersion.toVersion(configuredRuntime)
     if (currentJava < configuredJavaVersion) {

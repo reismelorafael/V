@@ -97,18 +97,24 @@ find . -maxdepth 2 -type d | sort
   - `ndk_version` (padrão `27.2.12479018`)
   - `cmake_version` (padrão `3.22.1`)
   - `java_version` (padrão `17`)
-- Para manter valores padrão por repositório em CI, configure variáveis em **Settings > Secrets and variables > Actions > Variables** (ex.: `COMPILE_API`, `TOOLS_VERSION`, `NDK_VERSION`, `CMAKE_VERSION`, `JAVA_VERSION`).
+- Para manter valores padrão por repositório em CI, configure variáveis em **Settings > Secrets and variables > Actions > Variables** (prefira canônicas: `compile.api`, `tools.version`, `ndk.version`, `cmake.version`, `java.language.version`; aliases legados como `COMPILE_API`, `TOOLS_VERSION`, `NDK_VERSION`, `CMAKE_VERSION`, `JAVA_VERSION` ficam como fallback de compatibilidade).
 
 ## Setup rápido de build
 - Copie `local.properties.example` para `local.properties` e ajuste `sdk.dir`.
-- Ajuste versões via `gradle.properties` (`COMPILE_API`, `TOOLS_VERSION`, `JAVA_LANGUAGE_VERSION`, `CMAKE_VERSION`, `NDK_VERSION`).
-- **Manutenção de upgrade de SDK:** altere primeiro `SDK_BASELINE_API` e `COMPILE_API`/`TARGET_API`/`RELEASE_MIN_TARGET_API` em `gradle.properties`; o `build.gradle` raiz consome esse baseline como fallback único para todos os módulos.
+- Ajuste versões via `gradle.properties` com precedência explícita: canônicas (`compile.api`, `tools.version`, `java.language.version`, `cmake.version`, `ndk.version`) primeiro; aliases legados (`COMPILE_API`, `TOOLS_VERSION`, `JAVA_LANGUAGE_VERSION`, `CMAKE_VERSION`, `NDK_VERSION`) apenas como fallback retroativo com warning de depreciação.
+- **Manutenção de upgrade de SDK:** altere primeiro `sdk.baseline.api` e `compile.api`/`target.api`/`release.min.target.api` em `gradle.properties`; aliases legados (`SDK_BASELINE_API`, `COMPILE_API`, `TARGET_API`, `RELEASE_MIN_TARGET_API`) ficam somente como fallback. O `build.gradle` raiz consome esse baseline como fallback único para todos os módulos.
 - Baseline único de CMake para host + Android: `3.22.1`. O `CMakeLists.txt` da raiz e o CMake do app JNI compartilham esse baseline para evitar drift entre build local/CI e NDK.
 - Política de JVM do Gradle: execute preferencialmente com **JDK 17** (alinhado com `JAVA_LANGUAGE_VERSION=17`).
 - Defina explicitamente `JAVA_HOME` para o JDK 17/21 ou configure `org.gradle.java.home=<path-do-jdk17-ou-jdk21>` em `~/.gradle/gradle.properties`.
 - Use sempre o wrapper `./tools/gradle_with_jdk21.sh` (local e CI) para evitar regressão com JDK 22+.
 - O build agora valida em bootstrap `GRADLE_JAVA_RUNTIME_VERSION` (padrão 17) e falha se a JVM runtime exceder `GRADLE_MAX_RUNTIME_JAVA_VERSION` (padrão 21).
 - Para override pontual, use `-P` no comando Gradle.
+
+
+### Precedência oficial de propriedades Gradle
+- Regra fixa: propriedade canônica (`lowercase.with.dots`) sempre vence.
+- Alias legado (`UPPER_SNAKE_CASE`) é somente fallback para compatibilidade retroativa.
+- Uso de alias legado gera warning de depreciação no bootstrap Gradle para facilitar migração sem quebra imediata.
 
 ### ABIs oficialmente suportadas
 - Matriz oficial única de ABI (build/Gradle): `arm64-v8a`, `armeabi-v7a`, `x86` e `x86_64`.

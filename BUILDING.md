@@ -44,13 +44,19 @@ All values below are defaults from `gradle.properties` and can be overridden wit
 
 | Area | Property | Min | Default | Max/Policy |
 |---|---|---:|---:|---:|
-| Compile SDK | `compile.api` / `COMPILE_API` | 35 | 35 | follows Android baseline updates |
-| Target SDK | `target.api` / `TARGET_API` | 35 (`release.min.target.api`) | 35 | follows Android baseline updates |
-| Build Tools | `tools.version` / `TOOLS_VERSION` | 35.0.0 | 35.0.0 | keep aligned with compile SDK |
-| NDK | `ndk.version` / `NDK_VERSION` | 23.x | 27.2.12479018 | latest validated in CI |
-| CMake | `cmake.version` / `CMAKE_VERSION` | 3.22.1 | 3.22.1 | keep host+JNI parity |
-| Java language level | `java.language.version` / `JAVA_LANGUAGE_VERSION` | 17 | 17 | 21 (when toolchain validated) |
-| Gradle runtime JVM | `gradle.java.runtime.version` / `GRADLE_JAVA_RUNTIME_VERSION` | 17 | 17 | `gradle.max.runtime.java.version` (default 21) |
+| Compile SDK | `compile.api` → fallback `COMPILE_API` | 35 | 35 | follows Android baseline updates |
+| Target SDK | `target.api` → fallback `TARGET_API` | 35 (`release.min.target.api`) | 35 | follows Android baseline updates |
+| Build Tools | `tools.version` → fallback `TOOLS_VERSION` | 35.0.0 | 35.0.0 | keep aligned with compile SDK |
+| NDK | `ndk.version` → fallback `NDK_VERSION` | 23.x | 27.2.12479018 | latest validated in CI |
+| CMake | `cmake.version` → fallback `CMAKE_VERSION` | 3.22.1 | 3.22.1 | keep host+JNI parity |
+| Java language level | `java.language.version` → fallback `JAVA_LANGUAGE_VERSION` | 17 | 17 | 21 (when toolchain validated) |
+| Gradle runtime JVM | `gradle.java.runtime.version` → fallback `GRADLE_JAVA_RUNTIME_VERSION` | 17 | 17 | `gradle.max.runtime.java.version` (default 21) |
+
+
+Property precedence rule (to avoid config drift):
+- Canonical property names use dotted lowercase keys (for example: `compile.api`, `tools.version`).
+- Legacy aliases in uppercase snake case (for example: `COMPILE_API`, `TOOLS_VERSION`) are fallback-only for backward compatibility.
+- When a legacy alias is used, the Gradle bootstrap emits a deprecation warning and continues.
 
 Strictness control by pipeline context:
 - `-PbuildStrict=false` (default): local/debug mode; validations emit warnings where allowed.
