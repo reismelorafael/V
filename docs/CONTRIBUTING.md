@@ -142,11 +142,19 @@ git checkout -b feature/your-feature-name
 
 ### Backend and Telemetry Configuration
 
-This repository now follows a local authorial backend strategy (Bitstack Local Pipeline).
+This repository follows a hybrid policy:
 
-- `google-services.json` is **not required** for standard builds.
-- Build and test flow is fully local/offline-oriented.
-- Telemetry/failure tracking guidance is documented in [FIREBASE.md](../app/FIREBASE.md).
+- **BLP (Bitstack Local Pipeline)** is the default local telemetry path.
+- **Debug** can run fully local/offline without Firebase.
+- **perfRelease/release** still validate Firebase configuration for production telemetry compatibility, unless a controlled exception flag is explicitly enabled for internal validation.
+
+| Variant | Firebase requirement | Notes |
+|---|---|---|
+| `debug` | Optional | Local fallback without `google-services.json` is allowed. |
+| `perfRelease` | Required (or controlled exception) | Requires real `app/google-services.json`; only internal validation may use `-PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=true`. |
+| `release` | Required (or controlled exception) | Requires real `app/google-services.json`; only internal validation may use `-PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=true`. |
+
+Telemetry/failure tracking details and release guardrails are documented in [FIREBASE.md](../app/FIREBASE.md) and enforced in `app/build.gradle` (`validateFirebaseReleaseConfig`).
 
 ---
 

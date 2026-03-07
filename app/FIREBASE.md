@@ -1,93 +1,39 @@
-# Backend de Telemetria e Falhas (substituto do Firebase)
+# Backend de Telemetria e Falhas (BLP + compatibilidade release com Firebase)
 
-## Decisão arquitetural
+## Política oficial
 
-O módulo `app/` **não usa mais Firebase** (Analytics, Crashlytics, Messaging).
-A estratégia oficial passa a ser um pipeline autoral local, chamado **Bitstack Local Pipeline (BLP)**,
-com coleta determinística no dispositivo e exportação controlada via artefatos locais.
+A política oficial do módulo `app/` é:
 
-Para build local, o arquivo `app/google-services.json` é opcional em **debug** (fallback explícito sem Firebase) e obrigatório em variantes **release**.
+- **BLP (Bitstack Local Pipeline)** é o caminho padrão para desenvolvimento local.
+- **Debug não depende de Firebase** e pode compilar/rodar sem `app/google-services.json`.
+- **perfRelease e release exigem configuração Firebase real**, com exceção controlada apenas para validação interna via flag Gradle.
 
-- Evitar acoplamento com serviços externos para build/execução.
-- Permitir operação offline e previsível.
-- Manter trilha técnica para diagnóstico usando componentes já existentes no projeto.
+Essa política evita ambiguidade: BLP é o padrão de desenvolvimento, mas o pipeline de release ainda protege compatibilidade de telemetria de produção.
 
-## Como funciona
+## Matriz por variante
 
-### Option 2: Use Placeholder (Apenas para debug/local)
+| Variante | Requisito de Firebase | Regra prática |
+|---|---|---|
+| `debug` | Opcional | Sem `google-services.json`, build local continua usando fallback sem Firebase. |
+| `perfRelease` | Obrigatório (ou exceção controlada) | Falha sem JSON real; para validação interna, usar `-PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=true`. |
+| `release` | Obrigatório (ou exceção controlada) | Falha sem JSON real; para validação interna, usar `-PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=true`. |
 
-> Referências de arquitetura operacional e auditoria: `docs/ARCHITECTURE.md`.
+## Regras validadas no Gradle
 
-## Impacto no build
+A task `validateFirebaseReleaseConfig` em `app/build.gradle` aplica as seguintes regras para `perfRelease/release`:
 
-Salve como `app/google-services.json` para builds locais/debug sem um projeto Firebase real.
+1. Falha se `app/google-services.json` estiver ausente.
+2. Falha se o JSON for inválido.
+3. Falha se `project_info.project_id` estiver vazio.
+4. Falha se `project_id` contiver `placeholder`.
+5. Permite exceção **somente** com `-PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=true` (uso interno/controlado).
 
-## Migração (Firebase → BLP)
+## CI/CD (segredo para produção)
 
-- Remover procedimentos de provisionamento Firebase dos guias de onboarding.
-- Manter apenas fluxo de build Android/Gradle padrão.
-- Centralizar rastreabilidade em documentação de arquitetura e operação local.
-
-## Checklist rápido
-
-1. Substitua `project_id` e `storage_bucket` do exemplo por valores reais do seu projeto Firebase (não use `vectras-vm-placeholder`).
-2. Use o `google-services.json` real baixado do Firebase Console para o app Android correto.
-
-### Exemplo real (sem `*-placeholder`)
-
-```json
-{
-  "project_info": {
-    "project_number": "123456789012",
-    "project_id": "vectras-vm-prod",
-    "storage_bucket": "vectras-vm-prod.appspot.com"
-  },
-  "client": [
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:123456789012:android:abcdef1234567890abcd12",
-        "android_client_info": {
-          "package_name": "com.vectras.vm"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyRealProjectKeyExample123456789"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    }
-  ],
-  "configuration_version": "1"
-}
-```
-
-### Checklist de validação
-
-- [ ] Arquivo presente em `app/google-services.json`.
-- [ ] `package_name` do JSON compatível com o package da aplicação (`com.vectras.vm`).
-- [ ] Executar Sync Gradle após substituir o arquivo.
-
-### Aviso de risco funcional
-
-Se `vectras-vm-placeholder` ou qualquer placeholder for mantido, Analytics, Crashlytics e Messaging ficam inoperantes.
-
-
-## CI/CD (segredo obrigatório para produção)
-
-`app/google-services.json` de produção **não deve ser versionado**. O pipeline deve injetar o arquivo via segredo (base64), por exemplo:
+`app/google-services.json` de produção **não deve ser versionado**. Injete via segredo (ex.: base64) no pipeline:
 
 ```bash
 echo "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > app/google-services.json
 ```
 
-Regras do pipeline:
-
-- Release/perfRelease falham se `project_id` contiver `placeholder`.
-- Debug pode usar fallback placeholder para compilar sem Firebase ativo.
-- Em CI de release, use sempre o JSON real do Firebase via secret.
+Para pipelines de release/perfRelease, a recomendação oficial é sempre usar JSON real do projeto de produção.

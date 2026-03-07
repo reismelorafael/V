@@ -173,10 +173,13 @@ def firebaseConfigFile = file("${project.projectDir}/google-services.json")
 
 tasks.register("validateFirebaseReleaseConfig") {
     group = "verification"
-    description = "Falha builds release quando google-services.json está ausente ou com project_id placeholder."
+    description = "Matriz Firebase: debug=opcional; perfRelease/release=JSON real obrigatório (ou exceção controlada por flag)."
 
     doLast {
         def allowPlaceholderFirebase = providers.gradleProperty("ALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE").orElse("false").get().toBoolean()
+
+        logger.lifecycle("[validateFirebaseReleaseConfig] matriz de variantes: debug=opcional | perfRelease=obrigatório | release=obrigatório")
+        logger.lifecycle("[validateFirebaseReleaseConfig] exceção controlada: -PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=true (somente validação interna)")
 
         if (!firebaseConfigFile.exists()) {
             if (allowPlaceholderFirebase) {
