@@ -19,7 +19,7 @@ Mapa arquivo-a-arquivo em três linhas por item: papel, ligação e comando de i
 
 ## `tools/apk/build_release_signed_local.sh`
 - **Papel**: gera release assinado, coleta logs de build e valida assinatura/checksum do artefato final.
-- **Liga com**: usa `vectras.jks`, Gradle wrapper, `local.properties` e `apksigner` disponível no Android SDK.
+- **Liga com**: usa keystore via `VECTRAS_RELEASE_STORE_FILE`/`android.injected.signing.store.file`, Gradle wrapper, `local.properties` e `apksigner` do Android SDK.
 - **Inspeção**: `file "tools/apk/build_release_signed_local.sh"` e, quando texto, `sed -n "1,240p" "tools/apk/build_release_signed_local.sh"`.
 
 ## `tools/baremetal/dir_integrity_matrix.sh`
@@ -51,7 +51,7 @@ Mapa arquivo-a-arquivo em três linhas por item: papel, ligação e comando de i
 - **Inspeção**: `file "tools/termux-arm64-orchestrator/README.md"` e, quando texto, `sed -n "1,120p" "tools/termux-arm64-orchestrator/README.md"`.
 
 ## `tools/termux-arm64-orchestrator/legal-compliance-check.sh`
-- **Papel**: gate documental/legal + validação de assinatura com `vectras.jks` antes da compilação de release.
+- **Papel**: gate documental/legal + validação do contrato de assinatura por variável antes da compilação de release.
 - **Liga com**: ver [`tools/termux-arm64-orchestrator/orchestrate-build.sh`](termux-arm64-orchestrator/orchestrate-build.sh) e [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 - **Inspeção**: `file "tools/termux-arm64-orchestrator/legal-compliance-check.sh"` e, quando texto, `sed -n "1,140p" "tools/termux-arm64-orchestrator/legal-compliance-check.sh"`.
 
@@ -62,7 +62,7 @@ Mapa arquivo-a-arquivo em três linhas por item: papel, ligação e comando de i
 - **Inspeção**: `file "tools/termux-arm64-orchestrator/bootstrap-termux-android15.sh"` e, quando texto, `sed -n "1,260p" "tools/termux-arm64-orchestrator/bootstrap-termux-android15.sh"`.
 
 ## `tools/termux-arm64-orchestrator/orchestrate-build.sh`
-- **Papel**: orquestra build arm64-v8a com tuning de memória/spill, assinatura via `vectras.jks` e verificação pós-build.
+- **Papel**: orquestra build arm64-v8a com tuning de memória/spill, assinatura via segredo/variável e verificação pós-build.
 - **Liga com**: ver [`tools/termux-arm64-orchestrator/legal-compliance-check.sh`](termux-arm64-orchestrator/legal-compliance-check.sh) e [`tools/termux-arm64-orchestrator/run-local-termux-build.sh`](termux-arm64-orchestrator/run-local-termux-build.sh).
 - **Inspeção**: `file "tools/termux-arm64-orchestrator/orchestrate-build.sh"` e, quando texto, `sed -n "1,220p" "tools/termux-arm64-orchestrator/orchestrate-build.sh"`.
 

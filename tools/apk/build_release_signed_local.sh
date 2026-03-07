@@ -6,7 +6,6 @@ DEFAULT_SDK_ROOT="/workspace/android-sdk"
 SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$DEFAULT_SDK_ROOT}}"
 PREFERRED_JAVA17="/usr/lib/jvm/java-17-openjdk-amd64"
 APK_PATH="$ROOT_DIR/app/build/outputs/apk/release/app-release.apk"
-KEYSTORE_PATH="$ROOT_DIR/vectras.jks"
 REPORT_DIR="$ROOT_DIR/build/reports/apk-local"
 GRADLE_WRAPPER="$ROOT_DIR/tools/gradle_with_jdk21.sh"
 GRADLE_LOG="$REPORT_DIR/gradle_assemble_release.log"
@@ -15,6 +14,24 @@ APK_META="$REPORT_DIR/apk_metadata.txt"
 
 log(){ printf '[APK-BUILD] %s\n' "$*"; }
 fail(){ printf '[APK-BUILD][ERR] %s\n' "$*" >&2; exit 1; }
+
+resolve_release_store_file(){
+  local via_env="${VECTRAS_RELEASE_STORE_FILE:-}"
+  local via_gradle
+  via_gradle="$(printenv 'android.injected.signing.store.file' 2>/dev/null || true)"
+
+  if [[ -n "$via_env" ]]; then
+    printf '%s\n' "$via_env"
+    return 0
+  fi
+
+  if [[ -n "$via_gradle" ]]; then
+    printf '%s\n' "$via_gradle"
+    return 0
+  fi
+
+  fail "Informe o caminho do keystore em VECTRAS_RELEASE_STORE_FILE ou android.injected.signing.store.file para build release assinado."
+}
 
 prepare_java(){
   if [[ ! -x "$GRADLE_WRAPPER" ]]; then
@@ -97,7 +114,12 @@ build_release(){
 }
 
 verify_artifact(){
-  [[ -f "$KEYSTORE_PATH" ]] || fail "Keystore esperado não encontrado: $KEYSTORE_PATH"
+  local keystore_path
+  keystore_path="$(resolve_release_store_file)"
+
+  [[ "$keystore_path" = /* ]] || fail "Caminho de keystore deve ser absoluto: $keystore_path"
+  [[ "$keystore_path" == *.jks || "$keystore_path" == *.keystore ]] || fail "Keystore precisa usar extensão .jks ou .keystore: $keystore_path"
+  [[ -f "$keystore_path" ]] || fail "Keystore informado não encontrado: $keystore_path"
   [[ -f "$APK_PATH" ]] || fail "APK não encontrado: $APK_PATH"
 
   local apksigner_bin

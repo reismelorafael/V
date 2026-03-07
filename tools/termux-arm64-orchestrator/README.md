@@ -10,7 +10,7 @@ Este módulo é para **build local no terminal**, sem depender de GitHub Actions
 
 - Bootstrap automático de componentes Android necessários quando faltam no ambiente de terminal.
 - Build release `arm64-v8a` com foco em flags de performance e redução de falhas por memória.
-- Assinatura obrigatória com `vectras.jks` do repositório (sem publicação em loja).
+- Assinatura obrigatória por segredo/variável de ambiente (`VECTRAS_RELEASE_STORE_FILE` ou `android.injected.signing.store.file`), sem versionar keystore no Git.
 - Helpers C low-level autorais para detecção ARM64/NEON e alocação de spill em storage.
 - Gate mínimo de conformidade legal/documental antes da compilação.
 
@@ -21,7 +21,7 @@ Este módulo é para **build local no terminal**, sem depender de GitHub Actions
 - `c/storage_spill_allocator.c`: cria arquivo de spill (`spill.bin`) para suporte de memória por storage.
 - `bootstrap-termux-android15.sh`: instala/prepara cmdline-tools + SDK + NDK + CMake local (`.android-sdk`) e gera `local.properties`.
 - `orchestrate-build.sh`: orquestrador principal (detecção, spill, bootstrap, build e verificação de assinatura).
-- `legal-compliance-check.sh`: valida pré-requisitos legais e metadados de release + keystore.
+- `legal-compliance-check.sh`: valida pré-requisitos legais e metadados de release + contrato de assinatura por variável.
 - `run-local-termux-build.sh`: entrypoint único para execução local no terminal.
 
 ## Execução local (recomendada)
@@ -47,7 +47,7 @@ bash tools/termux-arm64-orchestrator/orchestrate-build.sh
 - `ANDROID_NDK_VERSION` (default `27.2.12479018`)
 - `ANDROID_CMAKE_VERSION` (default `3.22.1`)
 - `BUILD_SPILL_DIR` (default `.build-spill`)
-- `VECTRAS_KEYSTORE` (default `./vectras.jks`)
+- `VECTRAS_RELEASE_STORE_FILE` (obrigatória para release; fallback local privado opcional em `.secrets/vectras-release.jks`, fora do Git)
 - `VECTRAS_KEY_ALIAS` (default `vectras`)
 - `VECTRAS_STORE_PASSWORD` (default `856856`)
 - `VECTRAS_KEY_PASSWORD` (default `856856`)

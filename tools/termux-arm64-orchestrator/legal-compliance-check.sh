@@ -8,7 +8,6 @@ required_files=(
   "LICENSE"
   "THIRD_PARTY_NOTICES.md"
   "app/build.gradle"
-  "vectras.jks"
 )
 
 for file in "${required_files[@]}"; do
@@ -23,17 +22,17 @@ if ! rg -n "signingConfigs" app/build.gradle >/dev/null; then
   exit 1
 fi
 
-if ! rg -n "storeFile\s+file\('\.\./vectras\.jks'\)" app/build.gradle >/dev/null; then
-  echo "[compliance] app/build.gradle must reference repository keystore ../vectras.jks" >&2
+if ! rg -n "android\.injected\.signing\.store\.file|VECTRAS_RELEASE_STORE_FILE" app/build.gradle >/dev/null; then
+  echo "[compliance] app/build.gradle must support signing store path via android.injected.signing.store.file or VECTRAS_RELEASE_STORE_FILE" >&2
   exit 1
 fi
 
-if ! rg -n "keyAlias\s+'vectras'" app/build.gradle >/dev/null; then
-  echo "[compliance] app/build.gradle must use keyAlias 'vectras'" >&2
+if ! rg -n "android\.injected\.signing\.key\.alias|VECTRAS_RELEASE_KEY_ALIAS|keyAlias\s+releaseKeyAlias" app/build.gradle >/dev/null; then
+  echo "[compliance] app/build.gradle must support signing key alias via variável injetada" >&2
   exit 1
 fi
 
-if ! rg -n "targetSdk\s*=\s*targetApi" app/build.gradle >/dev/null; then
+if ! rg -n "targetSdk\s*=\s*.*targetApi" app/build.gradle >/dev/null; then
   echo "[compliance] targetSdk declaration not found in app/build.gradle" >&2
   exit 1
 fi
