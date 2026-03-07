@@ -118,6 +118,9 @@ int rmr_jni_kernel_route(rmr_jni_kernel_state_t *state, const rmr_jni_route_inpu
   out->storage_pressure = process.storage_pressure;
   out->io_pressure = process.io_pressure;
   out->route_tag = route.route_tag;
+  out->theta_period = route.theta_period;
+  out->theta_index = route.theta_index;
+  out->delta_theta_q16 = route.delta_theta_q16;
   out->bitomega_state = (uint32_t)state->bitomega_node.state;
   out->bitomega_dir = (uint32_t)state->bitomega_node.dir;
   out->bitomega_operational_state = state->bitomega_operational_state;

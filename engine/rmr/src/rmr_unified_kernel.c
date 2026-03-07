@@ -126,9 +126,12 @@ int RmR_Toroidal_MapThetaLcm(uint32_t n_ring_a,
                              uint64_t input_scalar,
                              RmR_ToroidalAddr7D *out,
                              uint32_t *out_period,
-                             uint32_t *out_theta_index) {
+                             uint32_t *out_theta_index,
+                             uint32_t *out_delta_theta_q16) {
+  const uint32_t two_pi_q16 = 411775u;
   uint32_t period;
   uint32_t theta_index;
+  uint32_t delta_theta_q16;
   uint64_t mix0;
   uint64_t mix1;
   int rc;
@@ -145,6 +148,7 @@ int RmR_Toroidal_MapThetaLcm(uint32_t n_ring_a,
     out->sigma = 0u;
     if (out_period) *out_period = 0u;
     if (out_theta_index) *out_theta_index = 0u;
+    if (out_delta_theta_q16) *out_delta_theta_q16 = 0u;
     return rc;
   }
 
@@ -159,9 +163,11 @@ int RmR_Toroidal_MapThetaLcm(uint32_t n_ring_a,
   out->rho = rmr_toroidal_fold_u32((mix0 + mix1) ^ rmr_rotl64((uint64_t)period, 19u));
   out->delta = rmr_toroidal_fold_u32((mix0 ^ ((uint64_t)theta_index << 1u)) * 0x9FB21C651E98DF25u);
   out->sigma = rmr_toroidal_fold_u32((mix1 ^ ((uint64_t)period << 3u)) * 0xC2B2AE3D27D4EB4Fu);
+  delta_theta_q16 = (two_pi_q16 + (period >> 1u)) / period;
 
   if (out_period) *out_period = period;
   if (out_theta_index) *out_theta_index = theta_index;
+  if (out_delta_theta_q16) *out_delta_theta_q16 = delta_theta_q16;
   return RMR_UK_OK;
 }
 
@@ -177,7 +183,7 @@ static int rmr_toroidal_map_from_mode(uint32_t seed,
                                       RmR_ToroidalAddr7D *out) {
   if (!out) return RMR_KERNEL_ERR_ARG;
   if (mode && mode->mode == RMR_TOROIDAL_ADDR_MODE_THETA_LCM) {
-    return RmR_Toroidal_MapThetaLcm(mode->n_ring_a, mode->n_ring_b, mode->input_scalar, out, NULL, NULL);
+    return RmR_Toroidal_MapThetaLcm(mode->n_ring_a, mode->n_ring_b, mode->input_scalar, out, NULL, NULL, NULL);
   }
   *out = RmR_Toroidal_Map(seed,
                           payload_hash,
@@ -734,22 +740,35 @@ int RmR_UnifiedKernel_RouteEx(RmR_UnifiedKernel *kernel,
   uint32_t global_sig;
   RmR_ToroidalAddr7D toroidal;
   uint64_t toroidal_tag;
+  uint32_t theta_period = 0u;
+  uint32_t theta_index = 0u;
+  uint32_t delta_theta_q16 = 0u;
   uint32_t route = RMR_ROUTE_DISK;
   uint32_t tor_cpu_bias;
   uint32_t tor_ram_bias;
   uint32_t tor_disk_bias;
   if (!kernel || !process || !out || !kernel->initialized) return RMR_KERNEL_ERR_ARG;
 
-  if (rmr_toroidal_map_from_mode(kernel->seed,
-                                 kernel->last_route_tag ^ ((uint64_t)kernel->crc32c << 32u),
-                                 kernel->entropy,
-                                 kernel->stage_counter + 1u,
-                                 process->cpu_pressure,
-                                 process->storage_pressure,
-                                 process->io_pressure,
-                                 process->matrix_determinant,
-                                 toroidal_mode,
-                                 &toroidal) != RMR_UK_OK) {
+  if (toroidal_mode && toroidal_mode->mode == RMR_TOROIDAL_ADDR_MODE_THETA_LCM) {
+    if (RmR_Toroidal_MapThetaLcm(toroidal_mode->n_ring_a,
+                                 toroidal_mode->n_ring_b,
+                                 toroidal_mode->input_scalar,
+                                 &toroidal,
+                                 &theta_period,
+                                 &theta_index,
+                                 &delta_theta_q16) != RMR_UK_OK) {
+      return RMR_KERNEL_ERR_ARG;
+    }
+  } else if (rmr_toroidal_map_from_mode(kernel->seed,
+                                        kernel->last_route_tag ^ ((uint64_t)kernel->crc32c << 32u),
+                                        kernel->entropy,
+                                        kernel->stage_counter + 1u,
+                                        process->cpu_pressure,
+                                        process->storage_pressure,
+                                        process->io_pressure,
+                                        process->matrix_determinant,
+                                        toroidal_mode,
+                                        &toroidal) != RMR_UK_OK) {
     return RMR_KERNEL_ERR_ARG;
   }
   toroidal_tag = rmr_toroidal_route_tag(&toroidal);
@@ -797,6 +816,9 @@ int RmR_UnifiedKernel_RouteEx(RmR_UnifiedKernel *kernel,
 
   out->route_id = route;
   out->toroidal = toroidal;
+  out->theta_period = theta_period;
+  out->theta_index = theta_index;
+  out->delta_theta_q16 = delta_theta_q16;
   out->route_tag = toroidal_tag ^ ((uint64_t)cpu_sig << 48u) ^ ((uint64_t)ram_sig << 32u) ^
                    ((uint64_t)disk_sig << 16u) ^ (uint64_t)l4_sig;
   out->route_tag ^= ((uint64_t)global_sig << 1u) ^ (uint64_t)(route & 0xFFFFu);
@@ -838,7 +860,7 @@ int RmR_UnifiedKernel_Audit(RmR_UnifiedKernel *kernel,
                             RmR_UnifiedAuditState *out) {
   RmR_ZiprafInput zipraf_in;
   RmR_ZiprafOutput zipraf_out;
-  uint8_t payload[68];
+  uint8_t payload[80];
   uint32_t p = 0u;
 #define RMR_ZIPRAF_PUSH_U32(x)                    \
   do {                                            \
@@ -858,6 +880,8 @@ int RmR_UnifiedKernel_Audit(RmR_UnifiedKernel *kernel,
                           ((uint64_t)out->toroidal.psi << 5u) ^ ((uint64_t)out->toroidal.chi << 7u) ^
                           ((uint64_t)out->toroidal.rho << 11u) ^ ((uint64_t)out->toroidal.delta << 13u) ^
                           ((uint64_t)out->toroidal.sigma << 17u);
+  out->audit_signature ^= ((uint64_t)route->theta_period << 19u) ^ ((uint64_t)route->theta_index << 23u) ^
+                          ((uint64_t)route->delta_theta_q16 << 27u);
 
   RMR_ZIPRAF_PUSH_U32(ingest->crc32c);
   RMR_ZIPRAF_PUSH_U32(ingest->entropy);
@@ -876,6 +900,9 @@ int RmR_UnifiedKernel_Audit(RmR_UnifiedKernel *kernel,
   RMR_ZIPRAF_PUSH_U32(route->toroidal.rho);
   RMR_ZIPRAF_PUSH_U32(route->toroidal.delta);
   RMR_ZIPRAF_PUSH_U32(route->toroidal.sigma);
+  RMR_ZIPRAF_PUSH_U32(route->theta_period);
+  RMR_ZIPRAF_PUSH_U32(route->theta_index);
+  RMR_ZIPRAF_PUSH_U32(route->delta_theta_q16);
 
   zipraf_in.seed = kernel->seed ^ verify->computed_crc32c;
   zipraf_in.trajectory_id = kernel->stage_counter + 1u;

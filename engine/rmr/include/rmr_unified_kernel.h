@@ -178,6 +178,9 @@ typedef struct {
   uint32_t storage_pressure;
   uint32_t io_pressure;
   uint64_t route_tag;
+  uint32_t theta_period;
+  uint32_t theta_index;
+  uint32_t delta_theta_q16;
   uint32_t bitomega_state;
   uint32_t bitomega_dir;
   uint32_t bitomega_operational_state;

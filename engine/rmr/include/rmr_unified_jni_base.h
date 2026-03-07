@@ -98,9 +98,19 @@ typedef struct {
   uint32_t route_id;
   uint64_t route_tag;
   RmR_ToroidalAddr7D toroidal;
+  uint32_t theta_period;
+  uint32_t theta_index;
+  uint32_t delta_theta_q16;
 } RmR_UnifiedRouteState;
 
 #define RMR_TOROIDAL_ADDR_MODE_LEGACY 0u
+/*
+ * RMR_TOROIDAL_ADDR_MODE_THETA_LCM contract:
+ *   Θ-period = lcm(n_ring_a, n_ring_b)
+ *   Θ-index  = input_scalar mod Θ-period
+ *   ΔΘ       = 2π / lcm(n_ring_a, n_ring_b)
+ *   delta_theta_q16 exports ΔΘ in Q16 fixed-point form.
+ */
 #define RMR_TOROIDAL_ADDR_MODE_THETA_LCM 1u
 
 typedef struct {
@@ -188,7 +198,8 @@ int RmR_Toroidal_MapThetaLcm(uint32_t n_ring_a,
                              uint64_t input_scalar,
                              RmR_ToroidalAddr7D *out,
                              uint32_t *out_period,
-                             uint32_t *out_theta_index);
+                             uint32_t *out_theta_index,
+                             uint32_t *out_delta_theta_q16);
 int RmR_UnifiedKernel_Verify(RmR_UnifiedKernel *kernel,
                              const uint8_t *data,
                              size_t len,
