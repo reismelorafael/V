@@ -99,6 +99,20 @@ public class Loader {
         return !actual.isEmpty() && expected.equals(actual);
     }
 
+    static String getSecurityValidationError(android.content.pm.PackageInfo targetInfo) {
+        return getSecurityValidationError(targetInfo, expectedSignatureDigests());
+    }
+
+    static String getSecurityValidationError(android.content.pm.PackageInfo targetInfo, java.util.List<String> expected) {
+        if (targetInfo == null) {
+            return BuildConfig.packageNotInstalledErrorText.replace("ARCH", android.os.Build.SUPPORTED_ABIS[0]);
+        }
+        if (!isTrustedSignature(targetInfo, expected)) {
+            return BuildConfig.packageSignatureMismatchErrorText;
+        }
+        return null;
+    }
+
     /**
      * Command-line entry point.
      * It is pretty simple.
@@ -113,15 +127,16 @@ public class Loader {
     public static void main(String[] args) {
         try {
             android.content.pm.PackageInfo targetInfo = getTargetPackageInfo();
-            assert targetInfo != null : BuildConfig.packageNotInstalledErrorText.replace("ARCH", android.os.Build.SUPPORTED_ABIS[0]);
-            assert isTrustedSignature(targetInfo) : BuildConfig.packageSignatureMismatchErrorText;
+            String validationError = getSecurityValidationError(targetInfo);
+            if (validationError != null) {
+                System.err.println(validationError);
+                return;
+            }
 
             android.util.Log.i(BuildConfig.logTag, "loading " + targetInfo.applicationInfo.sourceDir + "::" + BuildConfig.CLASS_ID + "::main of " + BuildConfig.APPLICATION_ID + " application (commit " + BuildConfig.COMMIT + ")");
             Class<?> targetClass = Class.forName(BuildConfig.CLASS_ID, true,
                     new dalvik.system.PathClassLoader(targetInfo.applicationInfo.sourceDir, null, ClassLoader.getSystemClassLoader()));
             targetClass.getMethod("main", String[].class).invoke(null, (Object) args);
-        } catch (AssertionError e) {
-            System.err.println(e.getMessage());
         } catch (java.lang.reflect.InvocationTargetException e) {
             e.getCause().printStackTrace(System.err);
         } catch (Throwable e) {

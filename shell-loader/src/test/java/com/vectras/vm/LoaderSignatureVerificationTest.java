@@ -56,4 +56,42 @@ public class LoaderSignatureVerificationTest {
 
         Assert.assertFalse(Loader.isTrustedSignature(packageInfo, expected));
     }
+
+    @Test
+    @Config(sdk = 27)
+    public void getSecurityValidationError_returnsNotInstalledMessage_whenTargetPackageMissing() {
+        Assert.assertEquals(
+                BuildConfig.packageNotInstalledErrorText.replace("ARCH", android.os.Build.SUPPORTED_ABIS[0]),
+                Loader.getSecurityValidationError(null, Collections.singletonList("expected"))
+        );
+    }
+
+    @Test
+    @Config(sdk = 27)
+    public void getSecurityValidationError_returnsSignatureMismatchMessage_whenSignatureIsUntrusted() throws Exception {
+        Signature signer = new Signature(new byte[]{42, 43, 44, 45});
+
+        PackageInfo packageInfo = new PackageInfo();
+        packageInfo.signatures = new Signature[]{signer};
+
+        List<String> expected = Collections.singletonList(sha256Hex(new byte[]{9, 9, 9, 9}));
+
+        Assert.assertEquals(
+                BuildConfig.packageSignatureMismatchErrorText,
+                Loader.getSecurityValidationError(packageInfo, expected)
+        );
+    }
+
+    @Test
+    @Config(sdk = 27)
+    public void getSecurityValidationError_returnsNull_whenSignatureIsTrusted() throws Exception {
+        Signature signer = new Signature(new byte[]{7, 7, 7, 7});
+
+        PackageInfo packageInfo = new PackageInfo();
+        packageInfo.signatures = new Signature[]{signer};
+
+        List<String> expected = Collections.singletonList(sha256Hex(signer.toByteArray()));
+
+        Assert.assertNull(Loader.getSecurityValidationError(packageInfo, expected));
+    }
 }
