@@ -263,8 +263,16 @@ def resolveGradleWrapperCommandLine(String taskPath, List<String> extraArgs = []
     return [wrapperFile.absolutePath, taskPath] + extraArgs
 }
 
-def nativeCheckAbiPolicies = ['arm64-only', 'with-32bit', 'all'].sort()
-def nativeCheckBuildVariants = ['debug', 'release', 'perfRelease'].sort()
+def officialNativeCheckAbiPolicies = ['arm64-only', 'with-32bit'].sort()
+def officialNativeCheckBuildVariants = ['release', 'perfRelease'].sort()
+
+def extendedNativeCheckAbiPolicies = (officialNativeCheckAbiPolicies + ['all']).unique().sort()
+def extendedNativeCheckBuildVariants = (officialNativeCheckBuildVariants + ['debug']).unique().sort()
+
+def enableExtendedAbiMatrix = providers.gradleProperty("ENABLE_EXTENDED_ABI_MATRIX")
+    .orElse("false")
+    .get()
+    .toBoolean()
 
 def abiPolicyTaskPart = { String policy ->
     policy.split('-').collect { token ->
@@ -276,37 +284,71 @@ def variantTaskPart = { String variant ->
     variant ? variant.substring(0, 1).toUpperCase() + variant.substring(1) : variant
 }
 
-def checkNativeMatrixTasks = []
+def registerNativeMatrixTasks = { List<String> abiPolicies, List<String> buildVariants, String taskNameSuffix, String matrixLabel ->
+    def matrixTasks = []
 
-nativeCheckAbiPolicies.each { policy ->
-    nativeCheckBuildVariants.each { variant ->
-        def nativeTaskName = "checkNative${abiPolicyTaskPart(policy)}${variantTaskPart(variant)}"
-        checkNativeMatrixTasks << nativeTaskName
+    abiPolicies.each { policy ->
+        buildVariants.each { variant ->
+            def nativeTaskName = "checkNative${taskNameSuffix}${abiPolicyTaskPart(policy)}${variantTaskPart(variant)}"
+            matrixTasks << nativeTaskName
 
-        tasks.register(nativeTaskName, Exec) {
-            group = "verification"
-            def isInternalValidationVariant = (variant == 'debug')
-            description = "Executa :app:assemble${variantTaskPart(variant)} com APP_ABI_POLICY=${policy}; bypass de Firebase placeholder é restrito à validação interna (debug) e não deve ser usado para publicação."
-            workingDir rootProject.projectDir
-            def gradleArgs = ["-PAPP_ABI_POLICY=${policy}", "-PALLOW_UNSIGNED_RELEASE=true"]
-            if (isInternalValidationVariant) {
-                gradleArgs << "-PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=true"
-            } else {
-                gradleArgs << "-PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=false"
+            tasks.register(nativeTaskName, Exec) {
+                group = "verification"
+                def isInternalValidationVariant = (variant == 'debug')
+                def releaseImpactDescription = matrixLabel == 'official'
+                    ? 'bloqueante para release/CI oficial'
+                    : 'somente diagnóstico interno (não bloqueante para release)'
+                description = "[${matrixLabel}] (${releaseImpactDescription}) Executa :app:assemble${variantTaskPart(variant)} com APP_ABI_POLICY=${policy}."
+                workingDir rootProject.projectDir
+                def gradleArgs = ["-PAPP_ABI_POLICY=${policy}", "-PALLOW_UNSIGNED_RELEASE=true"]
+                if (isInternalValidationVariant) {
+                    gradleArgs << "-PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=true"
+                } else {
+                    gradleArgs << "-PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=false"
+                }
+                commandLine(resolveGradleWrapperCommandLine(':app:assemble' + variantTaskPart(variant), gradleArgs))
             }
-            commandLine(resolveGradleWrapperCommandLine(':app:assemble' + variantTaskPart(variant), gradleArgs))
+        }
+    }
+
+    return matrixTasks.sort()
+}
+
+def checkNativeOfficialMatrixTasks = registerNativeMatrixTasks(
+    officialNativeCheckAbiPolicies,
+    officialNativeCheckBuildVariants,
+    'Official',
+    'official'
+)
+
+def checkNativeExtendedMatrixTasks = registerNativeMatrixTasks(
+    extendedNativeCheckAbiPolicies,
+    extendedNativeCheckBuildVariants,
+    'Extended',
+    'extended'
+)
+
+tasks.register('checkNativeExtendedMatrix') {
+    group = "verification"
+    description = "[diagnóstico] Matriz expandida opcional (não bloqueante para release). Requer -PENABLE_EXTENDED_ABI_MATRIX=true para executar combinações não-oficiais."
+
+    if (enableExtendedAbiMatrix) {
+        dependsOn(checkNativeExtendedMatrixTasks)
+    }
+
+    doFirst {
+        if (!enableExtendedAbiMatrix) {
+            logger.lifecycle("[checkNativeExtendedMatrix] Ignorado: use -PENABLE_EXTENDED_ABI_MATRIX=true para habilitar combinações não-oficiais.")
         }
     }
 }
 
-checkNativeMatrixTasks = checkNativeMatrixTasks.sort()
-
 tasks.register('checkNativeAllMatrix') {
     group = "verification"
-    description = "Executa verificações nativas de raiz e a matriz completa de APP_ABI_POLICY/variants."
+    description = "[bloqueante release] Alvo canônico de CI oficial: executa apenas combinações aprovadas de APP_ABI_POLICY/variants e validações de compatibilidade."
 
-    // Matriz dinâmica de assemble da app por política/variant.
-    dependsOn(checkNativeMatrixTasks)
+    // Matriz oficial de assemble da app por política/variant.
+    dependsOn(checkNativeOfficialMatrixTasks)
 
     // Verificações de compatibilidade registradas no build.gradle raiz.
     dependsOn(":verifyMinApiAbiCompatibility")
