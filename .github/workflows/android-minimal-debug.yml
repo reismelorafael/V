@@ -1,0 +1,92 @@
+name: android-minimal-debug
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'app/**'
+      - 'terminal-emulator/**'
+      - 'terminal-view/**'
+      - 'shell-loader/**'
+      - 'engine/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/android-minimal-debug.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      JAVA_VERSION: '17'
+      COMPILE_API: '35'
+      TARGET_API: '35'
+      MIN_API: '23'
+      TOOLS_VERSION: '35.0.0'
+      NDK_VERSION: '27.2.12479018'
+      CMAKE_VERSION: '3.22.1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${COMPILE_API}" \
+            "build-tools;${TOOLS_VERSION}" \
+            "cmake;${CMAKE_VERSION}" \
+            "ndk;${NDK_VERSION}"
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --stacktrace \
+            :app:assembleDebug \
+            -PbuildStrict=false \
+            -PcheckVariant=debug \
+            -PAPP_ABI_POLICY=arm64-only \
+            -Pcompile.api=${COMPILE_API} \
+            -Ptarget.api=${TARGET_API} \
+            -Pmin.api=${MIN_API} \
+            -Ptools.version=${TOOLS_VERSION} \
+            -Pndk.version=${NDK_VERSION} \
+            -Pcmake.version=${CMAKE_VERSION} \
+            -Pjava.language.version=${JAVA_VERSION}
+
+      - name: Upload debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vectras-debug-apk
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/**/*.apk
+            **/build/reports/**
+            **/build/outputs/logs/**
+          if-no-files-found: warn
