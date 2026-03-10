@@ -126,6 +126,8 @@ public final class TerminalEmulator {
     private static final int DECSET_BIT_LEFTRIGHT_MARGIN_MODE = 1 << 11;
     /** Not really DECSET bit... - http://www.vt100.net/docs/vt510-rm/DECSACE */
     private static final int DECSET_BIT_RECTANGULAR_CHANGEATTRIBUTE = 1 << 12;
+    /** DECSET 45 - reverse wrap-around mode (XTREVWRAP). */
+    private static final int DECSET_BIT_REVERSE_WRAPAROUND = 1 << 13;
 
     private String mTitle;
     private final Stack<String> mTitleStack = new Stack<>();
@@ -259,6 +261,8 @@ public final class TerminalEmulator {
                 return DECSET_BIT_AUTOWRAP;
             case 25:
                 return DECSET_BIT_SHOWING_CURSOR;
+            case 45:
+                return DECSET_BIT_REVERSE_WRAPAROUND;
             case 66:
                 return DECSET_BIT_APPLICATION_KEYPAD;
             case 69:
@@ -482,7 +486,7 @@ public final class TerminalEmulator {
                     mSession.onBell();
                 break;
             case 8: // Backspace (BS, ^H).
-                if (mLeftMargin == mCursorCol) {
+                if (isDecsetInternalBitSet(DECSET_BIT_REVERSE_WRAPAROUND) && mLeftMargin == mCursorCol) {
                     // Jump to previous line if it was auto-wrapped.
                     int previousRow = mCursorRow - 1;
                     if (previousRow >= 0 && mScreen.getLineWrap(previousRow)) {
@@ -1083,7 +1087,7 @@ public final class TerminalEmulator {
             case 12: // Control cursor blinking - ignore.
             case 25: // Hide/show cursor - no action needed, renderer will check with isShowingCursor().
             case 40: // Allow 80 => 132 Mode, ignore.
-            case 45: // TODO: Reverse wrap-around. Implement???
+            case 45: // Reverse wrap-around (XTREVWRAP).
             case 66: // Application keypad (DECNKM).
                 break;
             case 69: // Left and right margin mode (DECLRMM).
@@ -1422,7 +1426,7 @@ public final class TerminalEmulator {
                 setCursorCol(Math.min(mRightMargin - 1, mCursorCol + getArg0(1)));
                 break;
             case 'D': // "CSI${n}D" - Cursor backward (CUB) ${n} columns.
-                setCursorCol(Math.max(mLeftMargin, mCursorCol - getArg0(1)));
+                moveCursorBackward(getArg0(1));
                 break;
             case 'E': // "CSI{n}E - Cursor Next Line (CNL). From ISO-6428/ECMA-48.
                 setCursorPosition(0, mCursorRow + getArg0(1));
@@ -2300,6 +2304,33 @@ public final class TerminalEmulator {
     private void setCursorCol(int col) {
         mCursorCol = col;
         mAboutToAutoWrap = false;
+    }
+
+    private void moveCursorBackward(int amount) {
+        if (amount <= 0) return;
+
+        if (!isDecsetInternalBitSet(DECSET_BIT_REVERSE_WRAPAROUND)) {
+            setCursorCol(Math.max(mLeftMargin, mCursorCol - amount));
+            return;
+        }
+
+        while (amount > 0) {
+            if (mCursorCol > mLeftMargin) {
+                int step = Math.min(amount, mCursorCol - mLeftMargin);
+                setCursorCol(mCursorCol - step);
+                amount -= step;
+                continue;
+            }
+
+            int previousRow = mCursorRow - 1;
+            if (previousRow < mTopMargin || !mScreen.getLineWrap(previousRow)) {
+                break;
+            }
+
+            mScreen.clearLineWrap(previousRow);
+            setCursorRowCol(previousRow, mRightMargin - 1);
+            amount--;
+        }
     }
 
     /** Set the cursor mode, but limit it to margins if {@link #DECSET_BIT_ORIGIN_MODE} is enabled. */
