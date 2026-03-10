@@ -312,13 +312,13 @@
     <string name="pro_tools_methodology_spec">SPEC</string>
     <string name="pro_tools_methodology_mlperf">MLPerf</string>
 
-    <string name="pro_tools_estimated_time_item_placeholder">Недоступно для этого профиля</string>
+    <string name="pro_tools_estimated_time_item_select_and_run">Выберите категории и запустите анализ</string>
     <string name="pro_tools_estimated_time_item_format">~%1$ds</string>
-    <string name="pro_tools_stat_placeholder">Ожидание запуска</string>
-    <string name="pro_tools_confidence_placeholder">95%: Ожидание запуска</string>
+    <string name="pro_tools_stat_not_run_yet">Выберите категории и запустите анализ</string>
+    <string name="pro_tools_confidence_not_run_yet">95%%: Выберите категории и запустите анализ</string>
     <string name="pro_tools_stat_no_data">Данные не собраны</string>
-    <string name="pro_tools_stat_error">Бенчмарк прерван</string>
-    <string name="pro_tools_confidence_unavailable">95%: Доверительный интервал недоступен</string>
+    <string name="pro_tools_stat_collection_error">Ошибка анализа — запустите снова</string>
+    <string name="pro_tools_confidence_collection_error">95%%: Доверительный интервал недоступен из-за ошибки анализа</string>
     <string name="pro_tools_confidence_template">%1$d%%: %2$s</string>
     <string name="pro_tools_reproducibility_template">%1$.1f%%</string>
 

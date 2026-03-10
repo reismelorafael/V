@@ -334,13 +334,13 @@
     <string name="pro_tools_methodology_spec">SPEC</string>
     <string name="pro_tools_methodology_mlperf">MLPerf</string>
 
-    <string name="pro_tools_estimated_time_item_placeholder">غير متاح لهذا الملف الشخصي</string>
+    <string name="pro_tools_estimated_time_item_select_and_run">حدّد الفئات ثم نفّذ التحليل</string>
     <string name="pro_tools_estimated_time_item_format">~%1$ds</string>
-    <string name="pro_tools_stat_placeholder">بانتظار التنفيذ</string>
-    <string name="pro_tools_confidence_placeholder">95%: بانتظار التنفيذ</string>
+    <string name="pro_tools_stat_not_run_yet">حدّد الفئات ثم نفّذ التحليل</string>
+    <string name="pro_tools_confidence_not_run_yet">95%%: حدّد الفئات ثم نفّذ التحليل</string>
     <string name="pro_tools_stat_no_data">لا توجد بيانات مُجمّعة</string>
-    <string name="pro_tools_stat_error">تم إيقاف الاختبار المعياري</string>
-    <string name="pro_tools_confidence_unavailable">95%: فاصل الثقة غير متاح</string>
+    <string name="pro_tools_stat_collection_error">فشل التحليل — أعد التنفيذ</string>
+    <string name="pro_tools_confidence_collection_error">95%%: فاصل الثقة غير متاح بسبب خطأ في التحليل</string>
     <string name="pro_tools_confidence_template">%1$d%%: %2$s</string>
     <string name="pro_tools_reproducibility_template">%1$.1f%%</string>
 

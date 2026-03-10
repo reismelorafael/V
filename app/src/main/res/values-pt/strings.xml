@@ -148,13 +148,13 @@
     <string name="pro_tools_methodology_spec">SPEC</string>
     <string name="pro_tools_methodology_mlperf">MLPerf</string>
 
-    <string name="pro_tools_estimated_time_item_placeholder">Não disponível para este perfil</string>
+    <string name="pro_tools_estimated_time_item_select_and_run">Selecione categorias e execute análise</string>
     <string name="pro_tools_estimated_time_item_format">~%1$ds</string>
-    <string name="pro_tools_stat_placeholder">Aguardando execução</string>
-    <string name="pro_tools_confidence_placeholder">95%: Aguardando execução</string>
+    <string name="pro_tools_stat_not_run_yet">Selecione categorias e execute análise</string>
+    <string name="pro_tools_confidence_not_run_yet">95%%: Selecione categorias e execute análise</string>
     <string name="pro_tools_stat_no_data">Sem dados coletados</string>
-    <string name="pro_tools_stat_error">Benchmark interrompido</string>
-    <string name="pro_tools_confidence_unavailable">95%: Intervalo de confiança indisponível</string>
+    <string name="pro_tools_stat_collection_error">Falha na análise — execute novamente</string>
+    <string name="pro_tools_confidence_collection_error">95%%: Intervalo de confiança indisponível por erro na análise</string>
     <string name="pro_tools_confidence_template">%1$d%%: %2$s</string>
     <string name="pro_tools_reproducibility_template">%1$.1f%%</string>
 

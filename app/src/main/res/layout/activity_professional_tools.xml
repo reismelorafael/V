@@ -268,7 +268,7 @@
                     android:id="@+id/tvCpuSingleTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/pro_tools_estimated_time_item_placeholder"
+                    android:text="@string/pro_tools_estimated_time_item_select_and_run"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -313,7 +313,7 @@
                     android:id="@+id/tvCpuMultiTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/pro_tools_estimated_time_item_placeholder"
+                    android:text="@string/pro_tools_estimated_time_item_select_and_run"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -358,7 +358,7 @@
                     android:id="@+id/tvMemoryTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/pro_tools_estimated_time_item_placeholder"
+                    android:text="@string/pro_tools_estimated_time_item_select_and_run"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -403,7 +403,7 @@
                     android:id="@+id/tvStorageTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/pro_tools_estimated_time_item_placeholder"
+                    android:text="@string/pro_tools_estimated_time_item_select_and_run"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -448,7 +448,7 @@
                     android:id="@+id/tvIntegrityTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/pro_tools_estimated_time_item_placeholder"
+                    android:text="@string/pro_tools_estimated_time_item_select_and_run"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -493,7 +493,7 @@
                     android:id="@+id/tvEmulationTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/pro_tools_estimated_time_item_placeholder"
+                    android:text="@string/pro_tools_estimated_time_item_select_and_run"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorPrimary" />
             </LinearLayout>
@@ -714,7 +714,7 @@
                                     android:id="@+id/tvStatMean"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="@string/pro_tools_stat_placeholder"
+                                    android:text="@string/pro_tools_stat_not_run_yet"
                                     android:textAppearance="?attr/textAppearanceBodyLarge"
                                     android:textStyle="bold" />
                             </LinearLayout>
@@ -735,7 +735,7 @@
                                     android:id="@+id/tvStatMedian"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="@string/pro_tools_stat_placeholder"
+                                    android:text="@string/pro_tools_stat_not_run_yet"
                                     android:textAppearance="?attr/textAppearanceBodyLarge"
                                     android:textStyle="bold" />
                             </LinearLayout>
@@ -756,7 +756,7 @@
                                     android:id="@+id/tvStatStdDev"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="@string/pro_tools_stat_placeholder"
+                                    android:text="@string/pro_tools_stat_not_run_yet"
                                     android:textAppearance="?attr/textAppearanceBodyLarge"
                                     android:textStyle="bold" />
                             </LinearLayout>
@@ -784,7 +784,7 @@
                                     android:id="@+id/tvStatConfidence"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="@string/pro_tools_confidence_placeholder"
+                                    android:text="@string/pro_tools_confidence_not_run_yet"
                                     android:textAppearance="?attr/textAppearanceBodyMedium" />
                             </LinearLayout>
 
@@ -804,7 +804,7 @@
                                     android:id="@+id/tvStatReproducibility"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="@string/pro_tools_stat_placeholder"
+                                    android:text="@string/pro_tools_stat_not_run_yet"
                                     android:textAppearance="?attr/textAppearanceBodyMedium" />
                             </LinearLayout>
                         </LinearLayout>

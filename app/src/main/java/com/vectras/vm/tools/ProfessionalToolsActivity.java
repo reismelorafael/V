@@ -274,24 +274,24 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
         if (seconds > 0) {
             target.setText(getString(R.string.pro_tools_estimated_time_item_format, seconds));
         } else {
-            target.setText(R.string.pro_tools_estimated_time_item_placeholder);
+            target.setText(R.string.pro_tools_estimated_time_item_select_and_run);
         }
     }
 
     private void applyStatisticsFallback() {
-        tvStatMean.setText(R.string.pro_tools_stat_placeholder);
-        tvStatMedian.setText(R.string.pro_tools_stat_placeholder);
-        tvStatStdDev.setText(R.string.pro_tools_stat_placeholder);
-        tvStatConfidence.setText(R.string.pro_tools_confidence_placeholder);
-        tvStatReproducibility.setText(R.string.pro_tools_stat_placeholder);
+        tvStatMean.setText(R.string.pro_tools_stat_not_run_yet);
+        tvStatMedian.setText(R.string.pro_tools_stat_not_run_yet);
+        tvStatStdDev.setText(R.string.pro_tools_stat_not_run_yet);
+        tvStatConfidence.setText(R.string.pro_tools_confidence_not_run_yet);
+        tvStatReproducibility.setText(R.string.pro_tools_stat_not_run_yet);
     }
 
     private void applyStatisticsCollectionError() {
-        tvStatMean.setText(R.string.pro_tools_stat_error);
-        tvStatMedian.setText(R.string.pro_tools_stat_error);
-        tvStatStdDev.setText(R.string.pro_tools_stat_error);
-        tvStatConfidence.setText(R.string.pro_tools_confidence_unavailable);
-        tvStatReproducibility.setText(R.string.pro_tools_stat_error);
+        tvStatMean.setText(R.string.pro_tools_stat_collection_error);
+        tvStatMedian.setText(R.string.pro_tools_stat_collection_error);
+        tvStatStdDev.setText(R.string.pro_tools_stat_collection_error);
+        tvStatConfidence.setText(R.string.pro_tools_confidence_collection_error);
+        tvStatReproducibility.setText(R.string.pro_tools_stat_collection_error);
     }
 
     private void updateEstimatedTime() {
@@ -699,7 +699,7 @@ public class ProfessionalToolsActivity extends AppCompatActivity {
             String ciHigh = VectraBenchmark.formatTime((long) report.confidenceInterval95[1]);
             tvStatConfidence.setText(getString(R.string.pro_tools_confidence_template, 95, String.format(Locale.US, "[%s, %s]", ciLow, ciHigh)));
         } else {
-            tvStatConfidence.setText(R.string.pro_tools_confidence_unavailable);
+            tvStatConfidence.setText(R.string.pro_tools_confidence_collection_error);
         }
 
         if (report.reproducibilityScore > 0) {

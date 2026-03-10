@@ -41,6 +41,8 @@ import com.vectras.vm.utils.JSONUtils;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
@@ -259,20 +261,7 @@ public class RomInfo extends AppCompatActivity {
         downloadViewModel.observeState(romId).observe(this, this::renderDownloadState);
         renderDownloadState(downloadViewModel.getCurrent(romId));
 
-        if (getIntent().hasExtra("title")) {
-            binding.textName.setText(getIntent().getStringExtra("title"));
-        }
-        if (getIntent().hasExtra("shortdesc")) {
-            String shortDesc = getIntent().getStringExtra("shortdesc");
-            String osFamily = getIntent().getStringExtra("os_family");
-            String osFlavor = getIntent().getStringExtra("os_flavor");
-            String releaseChannel = getIntent().getStringExtra("release_channel");
-            if (com.vectras.vm.main.romstore.RomCatalogLabels.isRafLinuxEnterprise(osFamily, osFlavor, releaseChannel)) {
-                binding.textSize.setText("RafLinux Enterprise • " + shortDesc);
-            } else {
-                binding.textSize.setText(shortDesc);
-            }
-        }
+        applyHeaderSummary();
         if (getIntent().hasExtra("desc")) {
             binding.descTxt.setText(getIntent().getStringExtra("desc"));
         }
@@ -499,6 +488,7 @@ public class RomInfo extends AppCompatActivity {
             binding.tvDownloadState.setText(DownloadStatus.QUEUED);
             binding.tvDownloadProgress.setText("0 B / 0 B (0%)");
             binding.progressDownload.setProgress(0);
+            applyHeaderSummary();
             return;
         }
 
@@ -541,6 +531,51 @@ public class RomInfo extends AppCompatActivity {
             binding.btnPick.setText(R.string.import_settings);
             binding.btnPick.setEnabled(false);
         }
+        applyHeaderSummary();
+    }
+
+    private void applyHeaderSummary() {
+        String title = stringOrEmpty(getIntent().getStringExtra("title")).trim();
+        String filename = stringOrEmpty(getIntent().getStringExtra("filename")).trim();
+        if (title.isEmpty()) {
+            title = filename.isEmpty() ? finalName : filename;
+        }
+        if (title.isEmpty()) {
+            title = "rom-" + romId;
+        }
+        binding.textName.setText(title);
+
+        String shortDesc = stringOrEmpty(getIntent().getStringExtra("shortdesc")).trim();
+        if (!shortDesc.isEmpty()) {
+            String osFamily = getIntent().getStringExtra("os_family");
+            String osFlavor = getIntent().getStringExtra("os_flavor");
+            String releaseChannel = getIntent().getStringExtra("release_channel");
+            if (com.vectras.vm.main.romstore.RomCatalogLabels.isRafLinuxEnterprise(osFamily, osFlavor, releaseChannel)) {
+                binding.textSize.setText("RafLinux Enterprise • " + shortDesc);
+            } else {
+                binding.textSize.setText(shortDesc);
+            }
+            return;
+        }
+
+        List<String> details = new ArrayList<>();
+        String arch = stringOrEmpty(getIntent().getStringExtra("arch")).trim();
+        if (!arch.isEmpty()) {
+            details.add(getArchName(arch));
+        }
+        String size = stringOrEmpty(getIntent().getStringExtra("size")).trim();
+        if (!size.isEmpty()) {
+            details.add(size);
+        }
+        if (!lastDownloadStatus.isEmpty()) {
+            details.add(lastDownloadStatus);
+        } else {
+            details.add(DownloadStatus.QUEUED);
+        }
+        if (details.isEmpty()) {
+            details.add(filename.isEmpty() ? finalName : filename);
+        }
+        binding.textSize.setText(TextUtils.join(" • ", details));
     }
 
     @NonNull
