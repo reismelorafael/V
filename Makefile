@@ -7,6 +7,8 @@ CPPFLAGS ?= -Iengine/rmr/include -DRMR_JNI_BUILD=$(RMR_JNI_BUILD) -DRMR_BUILD_HO
 CFLAGS ?= -O3 -std=c11 -Wall -Wextra -pedantic
 LDFLAGS ?=
 
+include engine/rmr/sources_rmr_core.mk
+
 UNAME_S := $(shell uname -s 2>/dev/null || echo Unknown)
 SHARED_EXT := so
 ifeq ($(OS),Windows_NT)
@@ -15,44 +17,20 @@ else ifeq ($(UNAME_S),Darwin)
   SHARED_EXT := dylib
 endif
 
-ENGINE_CORE_SRCS := \
-	engine/rmr/src/bitomega.c \
-	engine/rmr/src/rmr_baremetal_compat.c \
-	engine/rmr/src/rmr_cycles.c \
-	engine/rmr/src/rmr_hw_detect.c \
-	engine/rmr/src/rmr_bench.c \
-	engine/rmr/src/rmr_bench_suite.c \
-	engine/rmr/src/rmr_isorf.c \
-	engine/rmr/src/rmr_apk_module.c \
-	engine/rmr/src/rmr_qemu_bridge.c \
-	engine/rmr/src/rmr_math_fabric.c \
-	engine/rmr/src/rafaelia_formulas_core.c \
-	engine/rmr/src/rmr_corelib.c \
-	engine/rmr/src/rmr_ll_ops.c \
-	engine/rmr/src/rmr_ll_tuning.c \
-	engine/rmr/src/rmr_casm_bridge.c \
-	engine/rmr/src/rmr_unified_kernel.c \
-	engine/rmr/src/rmr_unified_jni_bridge.c \
-	engine/rmr/src/rmr_host_compat.c \
-	engine/rmr/src/rmr_zipraf_core.c \
-	engine/rmr/src/rmr_lowlevel_portable.c \
-	engine/rmr/src/rmr_lowlevel_mix.c \
-	engine/rmr/src/rmr_lowlevel_reduce.c \
-	engine/rmr/src/rmr_neon_simd.c
+ENGINE_CORE_SRCS := $(RMR_SOURCE_GROUP_CORE) $(RMR_SOURCE_GROUP_HOST_ONLY)
 
 ENGINE_SRCS := $(ENGINE_CORE_SRCS)
 ifeq ($(RMR_ENABLE_POLICY_MODULE),1)
-ENGINE_SRCS += engine/rmr/src/rmr_policy_kernel.c
+ENGINE_SRCS += $(RMR_SOURCE_GROUP_OPTIONAL_POLICY)
 endif
 ENGINE_OBJS := $(patsubst %.c,build/%.o,$(ENGINE_SRCS))
 
 CASM_ASM_SRCS :=
 ifeq ($(UNAME_S),Linux)
 ifeq ($(shell uname -m 2>/dev/null),x86_64)
-  CASM_ASM_SRCS += engine/rmr/interop/rmr_lowlevel_x86_64.S
-  CASM_ASM_SRCS += engine/rmr/interop/rmr_casm_x86_64.S
+  CASM_ASM_SRCS += $(RMR_SOURCE_GROUP_ASM_X86_64)
 else ifeq ($(shell uname -m 2>/dev/null),riscv64)
-  CASM_ASM_SRCS += engine/rmr/interop/rmr_casm_riscv64.S
+  CASM_ASM_SRCS += $(RMR_SOURCE_GROUP_ASM_RISCV64)
 endif
 endif
 CASM_ASM_OBJS := $(patsubst %.S,build/%.o,$(CASM_ASM_SRCS))
@@ -98,7 +76,10 @@ NEON_SELFTEST_TARGETS += $(NEON_SIMD_SELFTEST_BIN)
 endif
 endif
 
-all: $(LIB_STATIC) verify-librmr-symbols $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_SELFTEST_TARGETS) $(BITOMEGA_SMOKETEST_BIN) $(UNIFIED_ARENA_SELFTEST_BIN) $(LEGACY_KERNEL_SELFTEST_BIN) $(HW_DETECT_SELFTEST_BIN) $(ASM_EQUIVALENCE_SELFTEST_BIN) $(ZIPRAF_CORE_SELFTEST_BIN) $(NEON_SELFTEST_TARGETS) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
+all: verify-rmr-source-alignment $(LIB_STATIC) verify-librmr-symbols $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_SELFTEST_TARGETS) $(BITOMEGA_SMOKETEST_BIN) $(UNIFIED_ARENA_SELFTEST_BIN) $(LEGACY_KERNEL_SELFTEST_BIN) $(HW_DETECT_SELFTEST_BIN) $(ASM_EQUIVALENCE_SELFTEST_BIN) $(ZIPRAF_CORE_SELFTEST_BIN) $(NEON_SELFTEST_TARGETS) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
+
+verify-rmr-source-alignment:
+	tools/verify_rmr_source_alignment.sh
 
 build/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -275,7 +256,7 @@ run-release-gate: run-selftest run-bench run-baremetal-gate
 clean:
 	rm -rf build
 
-.PHONY: all clean verify-librmr-symbols run-demo run-casm-selftest run-selftest run-bitomega-smoketest run-bench run-baremetal-gate run-release-gate
+.PHONY: all clean verify-rmr-source-alignment verify-librmr-symbols run-demo run-casm-selftest run-selftest run-bitomega-smoketest run-bench run-baremetal-gate run-release-gate
 
 print-build-config:
 	@echo "RMR_JNI_BUILD=$(RMR_JNI_BUILD)"

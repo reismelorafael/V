@@ -11,57 +11,44 @@ option(RMR_ASM_CORE_RISCV64_VALIDATED "Enable RV64I-compatible CASM path on risc
 set(VECTRA_REPO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../../../)
 set(VECTRA_RMR_INCLUDE_DIR ${VECTRA_REPO_ROOT}/engine/rmr/include)
 
+set(RMR_SOURCE_BASE ../../../../)
+include(${VECTRA_REPO_ROOT}/engine/rmr/sources_rmr_core.cmake)
+rmr_manifest_apply_base(VECTRA_RMR_CORE_SOURCES ${RMR_SOURCE_GROUP_CORE})
+rmr_manifest_apply_base(VECTRA_RMR_ANDROID_ONLY_SOURCES ${RMR_SOURCE_GROUP_ANDROID_ONLY})
+rmr_manifest_apply_base(VECTRA_RMR_OPTIONAL_POLICY_SOURCES ${RMR_SOURCE_GROUP_OPTIONAL_POLICY})
+rmr_manifest_apply_base(VECTRA_RMR_ASM_X86_64_SOURCES ${RMR_SOURCE_GROUP_ASM_X86_64})
+rmr_manifest_apply_base(VECTRA_RMR_ASM_ARM64_SOURCES ${RMR_SOURCE_GROUP_ASM_ARM64})
+rmr_manifest_apply_base(VECTRA_RMR_ASM_RISCV64_SOURCES ${RMR_SOURCE_GROUP_ASM_RISCV64})
+
 set(VECTRA_LOWLEVEL_SOURCES)
 set(VECTRA_CASM_SOURCES)
 
 if(RMR_ASM_CORE_EXPERIMENTAL AND ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64" AND RMR_ASM_CORE_X86_64_VALIDATED)
-    list(APPEND VECTRA_LOWLEVEL_SOURCES ../../../../engine/rmr/interop/rmr_lowlevel_x86_64.S)
-    list(APPEND VECTRA_CASM_SOURCES ../../../../engine/rmr/interop/rmr_casm_x86_64.S)
+    list(APPEND VECTRA_LOWLEVEL_SOURCES ${VECTRA_RMR_ASM_X86_64_SOURCES})
 endif()
 
 if(RMR_ASM_CORE_EXPERIMENTAL AND NOT ANDROID AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64") AND RMR_ASM_CORE_X86_64_VALIDATED)
-    list(APPEND VECTRA_LOWLEVEL_SOURCES ../../../../engine/rmr/interop/rmr_lowlevel_x86_64.S)
-    list(APPEND VECTRA_CASM_SOURCES ../../../../engine/rmr/interop/rmr_casm_x86_64.S)
+    list(APPEND VECTRA_LOWLEVEL_SOURCES ${VECTRA_RMR_ASM_X86_64_SOURCES})
 endif()
 
 if(RMR_ASM_CORE_EXPERIMENTAL AND ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a" AND RMR_ASM_CORE_ARM64_VALIDATED)
-    set(VECTRA_CASM_ARM64_SOURCE ../../../../engine/rmr/interop/rmr_casm_arm64.S)
-    list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_ARM64_SOURCE})
+    list(APPEND VECTRA_CASM_SOURCES ${VECTRA_RMR_ASM_ARM64_SOURCES})
 endif()
 
 # Roadmap explícito: ABI riscv64 permanece INATIVA por política Android
 # (APP_ABI_POLICY/SUPPORTED_ABIS). A rotina CASM riscv64 já é RV64I-compatible
 # (sem extensão M) e depende apenas de habilitação dessa política ABI.
 # if(RMR_ASM_CORE_EXPERIMENTAL AND ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "riscv64" AND RMR_ASM_CORE_RISCV64_VALIDATED)
-#     set(VECTRA_CASM_RISCV64_SOURCE ../../../../engine/rmr/interop/rmr_casm_riscv64.S)
-#     list(APPEND VECTRA_CASM_SOURCES ${VECTRA_CASM_RISCV64_SOURCE})
+#     list(APPEND VECTRA_CASM_SOURCES ${VECTRA_RMR_ASM_RISCV64_SOURCES})
 # endif()
 
 add_library(vectra_core_accel SHARED
     vectra_core_accel.c
     lowlevel_bridge.c
     hardware_profile_bridge.c
-    ../../../../engine/rmr/src/rmr_baremetal_compat.c
-    ../../../../engine/rmr/src/rmr_casm_bridge.c
-    ../../../../engine/rmr/src/rmr_unified_kernel.c
-    ../../../../engine/rmr/src/rmr_unified_jni_bridge.c
-    ../../../../engine/rmr/src/rmr_host_compat.c
-    ../../../../engine/rmr/src/rmr_zipraf_core.c
-    ../../../../engine/rmr/src/rmr_hw_detect.c
-    ../../../../engine/rmr/src/rmr_corelib.c
-    ../../../../engine/rmr/src/rmr_ll_ops.c
-    ../../../../engine/rmr/src/rmr_ll_tuning.c
-    ../../../../engine/rmr/src/rmr_cycles.c
-    ../../../../engine/rmr/src/rmr_lowlevel_portable.c
-    ../../../../engine/rmr/src/rmr_lowlevel_mix.c
-    ../../../../engine/rmr/src/rmr_lowlevel_reduce.c
-    ../../../../engine/rmr/src/rmr_neon_simd.c
-    ../../../../engine/rmr/src/bitomega.c
-    ../../../../engine/rmr/src/rmr_tcg_cache.c
-    ../../../../engine/rmr/src/rmr_virtio_blk.c
-    ../../../../engine/rmr/src/rmr_attractor.c
-    ../../../../engine/rmr/src/rmr_vhw_model.c
-    ../../../../engine/rmr/src/rmr_ethica_loss.c
+    ${VECTRA_RMR_CORE_SOURCES}
+    # Android-only engine units: intentionally excluded from host/root build targets.
+    ${VECTRA_RMR_ANDROID_ONLY_SOURCES}
     ${VECTRA_LOWLEVEL_SOURCES}
     ${VECTRA_CASM_SOURCES})
 
@@ -74,7 +61,7 @@ endif()
 if(RMR_ENABLE_POLICY_MODULE)
     add_library(rmr_policy_static STATIC
         ../../../../engine/rmr/src/rmr_baremetal_compat.c
-        ../../../../engine/rmr/src/rmr_policy_kernel.c
+        ${VECTRA_RMR_OPTIONAL_POLICY_SOURCES}
         ../../../../engine/rmr/src/rmr_math_fabric.c
         ../../../../engine/rmr/src/rmr_ll_tuning.c)
 endif()
