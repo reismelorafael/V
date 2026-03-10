@@ -320,9 +320,10 @@ jobs:
       - name: "Build RMR engine (portable, no Android)"
         working-directory: engine/rmr
         run: |
-          cmake -B build -G Ninja \
+          cmake -S ../.. -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_FLAGS="-Wall -Wextra -DRMR_JNI_BUILD=0"
+            -DCMAKE_C_FLAGS="-Wall -Wextra" \
+            -DRMR_JNI_BUILD=OFF
           cmake --build build --parallel $(nproc)
           echo "✅ RMR engine build complete"
           ls build/
