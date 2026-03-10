@@ -9,7 +9,12 @@ set -euo pipefail
 #   ALPINE_ARCH (default: aarch64)
 #   ALPINE_REPOS (linhas com URLs base de repositório)
 
-ROOT_DIR="$(git rev-parse --show-toplevel)"
+if git rev-parse --show-toplevel >/dev/null 2>&1; then
+  ROOT_DIR="$(git rev-parse --show-toplevel)"
+else
+  SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+  ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+fi
 cd "$ROOT_DIR"
 
 DEST_ROOT="${1:-archive/download-mirror/alpine-apk-failures}"

@@ -6,7 +6,12 @@ set -euo pipefail
 # Uso:
 #   ./tools/prefetch_bootstrap_downloads.sh
 
-ROOT_DIR="$(git rev-parse --show-toplevel)"
+if git rev-parse --show-toplevel >/dev/null 2>&1; then
+  ROOT_DIR="$(git rev-parse --show-toplevel)"
+else
+  SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+  ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+fi
 cd "$ROOT_DIR"
 
 MIRROR_ROOT="${MIRROR_ROOT:-$ROOT_DIR/archive/download-mirror}"

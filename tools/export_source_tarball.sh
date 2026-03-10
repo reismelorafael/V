@@ -12,7 +12,14 @@ set -euo pipefail
 #   ./tools/export_source_tarball.sh archive/source-export
 
 BASE_DIR="${1:-archive/source-export}"
-ROOT_DIR="$(git rev-parse --show-toplevel)"
+if git rev-parse --show-toplevel >/dev/null 2>&1; then
+  ROOT_DIR="$(git rev-parse --show-toplevel)"
+  IN_GIT_REPO=1
+else
+  SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+  ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+  IN_GIT_REPO=0
+fi
 cd "$ROOT_DIR"
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -35,11 +42,19 @@ printf 'android_sdk_root=%s\n' "$ANDROID_SDK_ROOT" >> "$MANIFEST"
 printf 'android_cache_home=%s\n' "$ANDROID_CACHE_HOME" >> "$MANIFEST"
 
 # 1) Repo sources versionados
-git ls-files | awk '
-  /\.(java|kt|kts|c|cc|cpp|cxx|h|hh|hpp|hxx|s|S|asm|aidl|rs|proto|gradle|properties|xml|json|yml|yaml|sh|mk|cmake|txt|md)$/ {
-    print
-  }
-' > "$REPO_LIST"
+if [[ "$IN_GIT_REPO" -eq 1 ]]; then
+  git ls-files | awk '
+    /\.(java|kt|kts|c|cc|cpp|cxx|h|hh|hpp|hxx|s|S|asm|aidl|rs|proto|gradle|properties|xml|json|yml|yaml|sh|mk|cmake|txt|md)$/ {
+      print
+    }
+  ' > "$REPO_LIST"
+else
+  find . -type f -print | sed 's#^\./##' | awk '
+    /\.(java|kt|kts|c|cc|cpp|cxx|h|hh|hpp|hxx|s|S|asm|aidl|rs|proto|gradle|properties|xml|json|yml|yaml|sh|mk|cmake|txt|md)$/ {
+      print
+    }
+  ' | LC_ALL=C sort -u > "$REPO_LIST"
+fi
 
 if [[ -s "$REPO_LIST" ]]; then
   while IFS= read -r file; do
