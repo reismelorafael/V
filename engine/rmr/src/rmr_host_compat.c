@@ -1,10 +1,10 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "rmr_host_compat.h"
 
 #include <stdarg.h>
 
 #if defined(RMR_BUILD_HOST_TOOLING) && (RMR_BUILD_HOST_TOOLING == 1)
-
-#define _POSIX_C_SOURCE 200809L
 
 #include <stdio.h>
 #include <stdlib.h>
