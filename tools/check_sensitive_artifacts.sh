@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+if git rev-parse --show-toplevel >/dev/null 2>&1; then
+  REPO_ROOT="$(git rev-parse --show-toplevel)"
+  IN_GIT=1
+else
+  REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  IN_GIT=0
+fi
 ALLOWLIST_FILE="$REPO_ROOT/security/sensitive-artifacts-allowlist.txt"
 
 if [[ ! -f "$ALLOWLIST_FILE" ]]; then
@@ -19,7 +25,7 @@ resolve_range() {
     echo "$SENSITIVE_CHECK_RANGE"
     return
   fi
-  if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+  if [[ "$IN_GIT" -eq 1 ]] && git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
     echo "HEAD~1..HEAD"
     return
   fi
@@ -29,10 +35,14 @@ resolve_range() {
 RANGE="$(resolve_range)"
 violations=()
 
-if [[ -n "$RANGE" ]]; then
-  mapfile -t ADDED_FILES < <(git diff --name-only --diff-filter=A "$RANGE")
+if [[ "$IN_GIT" -eq 1 ]]; then
+  if [[ -n "$RANGE" ]]; then
+    mapfile -t ADDED_FILES < <(git diff --name-only --diff-filter=A "$RANGE")
+  else
+    mapfile -t ADDED_FILES < <(git ls-files)
+  fi
 else
-  mapfile -t ADDED_FILES < <(git ls-files)
+  mapfile -t ADDED_FILES < <(cd "$REPO_ROOT" && find . -type f | sed "s#^\./##")
 fi
 
 for file in "${ADDED_FILES[@]}"; do
@@ -46,7 +56,7 @@ for file in "${ADDED_FILES[@]}"; do
 done
 
 added_lines=""
-if [[ -n "$RANGE" ]]; then
+if [[ "$IN_GIT" -eq 1 && -n "$RANGE" ]]; then
   added_lines="$(git diff -U0 "$RANGE" | grep -E '^\+[^+]' || true)"
 fi
 

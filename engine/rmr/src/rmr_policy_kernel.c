@@ -199,8 +199,8 @@ static uint32_t crc32c_sw_update(uint32_t crc, const uint8_t *buf, size_t len) {
   return crc;
 }
 
-static uint32_t crc32c_aarch64_update(uint32_t crc, const uint8_t *buf, size_t len) {
 #if defined(__aarch64__) && defined(__ARM_FEATURE_CRC32)
+static uint32_t crc32c_aarch64_update(uint32_t crc, const uint8_t *buf, size_t len) {
   size_t i = 0;
   for (; i + 8 <= len; i += 8) {
     uint64_t x;
@@ -209,12 +209,8 @@ static uint32_t crc32c_aarch64_update(uint32_t crc, const uint8_t *buf, size_t l
   }
   for (; i < len; ++i) crc = __crc32cb(crc, buf[i]);
   return crc;
-#else
-  (void)buf;
-  (void)len;
-  return crc;
-#endif
 }
+#endif
 
 uint32_t RmR_CRC32C_RawUpdate(uint32_t initial, const uint8_t *buf, size_t len) {
   if ((!buf && len != 0u) || len == 0u) return initial;

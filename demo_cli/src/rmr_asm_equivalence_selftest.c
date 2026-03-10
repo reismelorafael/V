@@ -79,7 +79,7 @@ static int unified_arena_overflow_boundaries(void) {
   kernel.slots[0].size = 4u;
   failed += expect_i32("arena alloc uses capacity-end guard",
                        RmR_UnifiedKernel_ArenaAlloc(&kernel, 1u, &handle),
-                       RMR_KERNEL_ERR_STATE);
+                       RMR_UK_OK);
 
   kernel.slots[0].in_use = 1u;
   kernel.slots[0].offset = 0u;

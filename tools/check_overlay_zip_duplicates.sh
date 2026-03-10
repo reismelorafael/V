@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+if git rev-parse --show-toplevel >/dev/null 2>&1; then
+  REPO_ROOT="$(git rev-parse --show-toplevel)"
+else
+  REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
 
 is_source_entry() {
   local entry="$1"

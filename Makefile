@@ -80,6 +80,9 @@ BITOMEGA_SMOKETEST_BIN := build/demo/bitomega_smoketest
 UNIFIED_ARENA_SELFTEST_BIN := build/demo/rmr_unified_arena_selftest
 LEGACY_KERNEL_SELFTEST_BIN := build/demo/rmr_legacy_kernel_selftest
 HW_DETECT_SELFTEST_BIN := build/demo/rmr_hw_detect_selftest
+NEON_SIMD_SELFTEST_BIN := build/demo/rmr_neon_simd_selftest
+ASM_EQUIVALENCE_SELFTEST_BIN := build/demo/rmr_asm_equivalence_selftest
+ZIPRAF_CORE_SELFTEST_BIN := build/demo/zipraf_core_selftest
 RMR_REQUIRED_SYMBOLS := RmR_MathFabric_AutodetectPlan RmR_MathFabric_VectorMix
 RMR_LINK_LIBS := $(LIB_STATIC) $(LIB_BITRAF_STATIC)
 
@@ -88,7 +91,14 @@ ifneq ($(strip $(CASM_ASM_SRCS)),)
 CASM_SELFTEST_TARGETS += $(CASM_BRIDGE_SELFTEST_BIN)
 endif
 
-all: $(LIB_STATIC) verify-librmr-symbols $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_SELFTEST_TARGETS) $(BITOMEGA_SMOKETEST_BIN) $(UNIFIED_ARENA_SELFTEST_BIN) $(LEGACY_KERNEL_SELFTEST_BIN) $(HW_DETECT_SELFTEST_BIN) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
+NEON_SELFTEST_TARGETS :=
+ifeq ($(UNAME_S),Linux)
+ifeq ($(shell uname -m 2>/dev/null),aarch64)
+NEON_SELFTEST_TARGETS += $(NEON_SIMD_SELFTEST_BIN)
+endif
+endif
+
+all: $(LIB_STATIC) verify-librmr-symbols $(LIB_BITRAF_STATIC) $(LIB_BITRAF_SHARED) $(DEMO_BIN) $(BENCH_BIN) $(BITRAF_BIN) $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_SELFTEST_TARGETS) $(BITOMEGA_SMOKETEST_BIN) $(UNIFIED_ARENA_SELFTEST_BIN) $(LEGACY_KERNEL_SELFTEST_BIN) $(HW_DETECT_SELFTEST_BIN) $(ASM_EQUIVALENCE_SELFTEST_BIN) $(ZIPRAF_CORE_SELFTEST_BIN) $(NEON_SELFTEST_TARGETS) $(APK_MODULE_BIN) $(CTI_SCAN_BIN) $(POLICY_DEMO_BIN) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_DEMO_BIN) $(QEMU_BRIDGE_SELFTEST_BIN)
 
 build/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -189,6 +199,18 @@ $(HW_DETECT_SELFTEST_BIN): demo_cli/src/rmr_hw_detect_selftest.c $(LIB_STATIC) $
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(RMR_LINK_LIBS) $(LDFLAGS) -o $@
 
+$(ASM_EQUIVALENCE_SELFTEST_BIN): demo_cli/src/rmr_asm_equivalence_selftest.c $(LIB_STATIC) $(LIB_BITRAF_STATIC)
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(RMR_LINK_LIBS) $(LDFLAGS) -o $@
+
+$(ZIPRAF_CORE_SELFTEST_BIN): demo_cli/src/zipraf_core_selftest.c $(LIB_STATIC) $(LIB_BITRAF_STATIC)
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(RMR_LINK_LIBS) $(LDFLAGS) -o $@
+
+$(NEON_SIMD_SELFTEST_BIN): demo_cli/src/neon_simd_selftest.c $(LIB_STATIC) $(LIB_BITRAF_STATIC)
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(RMR_LINK_LIBS) $(LDFLAGS) -o $@
+
 run-bitomega-smoketest: $(BITOMEGA_SMOKETEST_BIN)
 	@mkdir -p bench/results
 	./$(BITOMEGA_SMOKETEST_BIN)
@@ -202,18 +224,43 @@ run-casm-selftest: $(CASM_SELFTEST_TARGETS)
 	fi
 	./$(CASM_BRIDGE_SELFTEST_BIN)
 
-run-selftest: $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_SELFTEST_TARGETS) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_SELFTEST_BIN) $(BITOMEGA_SMOKETEST_BIN) $(UNIFIED_ARENA_SELFTEST_BIN) $(LEGACY_KERNEL_SELFTEST_BIN) $(HW_DETECT_SELFTEST_BIN)
-	./$(SELFTEST_BIN)
-	./$(MATH_FABRIC_SELFTEST_BIN)
-	./$(DETERMINISM_SIGNATURE_SELFTEST_BIN)
-	@if [ -n "$(CASM_SELFTEST_TARGETS)" ]; then ./$(CASM_BRIDGE_SELFTEST_BIN); fi
-	./$(POLICY_SELFTEST_BIN)
-	./$(QEMU_BRIDGE_SELFTEST_BIN)
-	./$(UNIFIED_ARENA_SELFTEST_BIN)
-	./$(LEGACY_KERNEL_SELFTEST_BIN)
-	./$(HW_DETECT_SELFTEST_BIN)
-	@mkdir -p bench/results
-	./$(BITOMEGA_SMOKETEST_BIN)
+run-selftest: $(SELFTEST_BIN) $(MATH_FABRIC_SELFTEST_BIN) $(DETERMINISM_SIGNATURE_SELFTEST_BIN) $(CASM_SELFTEST_TARGETS) $(POLICY_SELFTEST_BIN) $(QEMU_BRIDGE_SELFTEST_BIN) $(BITOMEGA_SMOKETEST_BIN) $(UNIFIED_ARENA_SELFTEST_BIN) $(LEGACY_KERNEL_SELFTEST_BIN) $(HW_DETECT_SELFTEST_BIN) $(ASM_EQUIVALENCE_SELFTEST_BIN) $(ZIPRAF_CORE_SELFTEST_BIN) $(NEON_SELFTEST_TARGETS)
+	@set -e; \
+	status=0; \
+	for test_cmd in \
+		"./$(SELFTEST_BIN)" \
+		"./$(MATH_FABRIC_SELFTEST_BIN)" \
+		"./$(DETERMINISM_SIGNATURE_SELFTEST_BIN)" \
+		"./$(POLICY_SELFTEST_BIN)" \
+		"./$(QEMU_BRIDGE_SELFTEST_BIN)" \
+		"./$(UNIFIED_ARENA_SELFTEST_BIN)" \
+		"./$(LEGACY_KERNEL_SELFTEST_BIN)" \
+		"./$(HW_DETECT_SELFTEST_BIN)" \
+		"./$(ASM_EQUIVALENCE_SELFTEST_BIN)" \
+		"./$(ZIPRAF_CORE_SELFTEST_BIN)"; do \
+		echo "[run-selftest] $$test_cmd"; \
+		if ! sh -c "$$test_cmd"; then \
+			status=1; \
+		fi; \
+	done; \
+	if [ -n "$(CASM_SELFTEST_TARGETS)" ]; then \
+		echo "[run-selftest] ./$(CASM_BRIDGE_SELFTEST_BIN)"; \
+		if ! ./$(CASM_BRIDGE_SELFTEST_BIN); then \
+			status=1; \
+		fi; \
+	fi; \
+	if [ -n "$(NEON_SELFTEST_TARGETS)" ]; then \
+		echo "[run-selftest] ./$(NEON_SIMD_SELFTEST_BIN)"; \
+		if ! ./$(NEON_SIMD_SELFTEST_BIN); then \
+			status=1; \
+		fi; \
+	fi; \
+	mkdir -p bench/results; \
+	echo "[run-selftest] ./$(BITOMEGA_SMOKETEST_BIN)"; \
+	if ! ./$(BITOMEGA_SMOKETEST_BIN); then \
+		status=1; \
+	fi; \
+	exit $$status
 
 run-bench: $(BENCH_BIN)
 	./$(BENCH_BIN) bench/results/latest.csv bench/results/latest.json
@@ -229,12 +276,6 @@ clean:
 	rm -rf build
 
 .PHONY: all clean verify-librmr-symbols run-demo run-casm-selftest run-selftest run-bitomega-smoketest run-bench run-baremetal-gate run-release-gate
-
-# ── NEON SIMD selftest (BUG#45 addition) ──
-NEON_SIMD_SELFTEST_BIN := build/demo/rmr_neon_simd_selftest
-$(NEON_SIMD_SELFTEST_BIN): demo_cli/src/neon_simd_selftest.c $(LIB_STATIC) $(LIB_BITRAF_STATIC)
-	@mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(RMR_LINK_LIBS) $(LDFLAGS) -o $@
 
 print-build-config:
 	@echo "RMR_JNI_BUILD=$(RMR_JNI_BUILD)"

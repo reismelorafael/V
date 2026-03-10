@@ -4,6 +4,7 @@
 #include <intrin.h>
 #endif
 
+#if !(defined(__GNUC__) || defined(__clang__))
 static uint32_t rmr_popcount32_fallback(uint32_t v) {
   uint32_t c = 0;
   while (v) {
@@ -21,6 +22,7 @@ static uint32_t rmr_popcount64_fallback(uint64_t v) {
   }
   return c;
 }
+#endif
 
 uint64_t RmR_LL_ReadCycles(void) {
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))

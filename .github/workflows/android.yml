@@ -597,7 +597,12 @@ jobs:
       env:
         ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      run: ./gradlew :app:validateFirebaseReleaseConfig ${{ env.GRADLE_ARGS }}
+      run: |
+        EXTRA_VALIDATE_FLAGS=""
+        if [[ -z "${{ secrets.VECTRAS_GOOGLE_SERVICES_JSON_B64 }}" && !(("${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.sign_release }}" == "true") || "${{ needs.preflight.outputs.has_signing_secrets }}" == "true") ]]; then
+          EXTRA_VALIDATE_FLAGS="-PALLOW_PLACEHOLDER_FIREBASE_FOR_RELEASE=true"
+        fi
+        ./gradlew :app:validateFirebaseReleaseConfig ${{ env.GRADLE_ARGS }} ${EXTRA_VALIDATE_FLAGS}
 
     - name: Build Release APK (unsigned fallback)
       if: ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.build_release == 'true') && !((github.event_name == 'workflow_dispatch' && github.event.inputs.sign_release == 'true') || needs.preflight.outputs.has_signing_secrets == 'true') }}

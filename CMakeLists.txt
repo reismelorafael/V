@@ -103,6 +103,7 @@ if(RMR_ENABLE_POLICY_MODULE)
 endif()
 
 set(RMR_HAS_CASM FALSE)
+set(RMR_HAS_NEON_SELFTEST FALSE)
 
 if(RMR_ASM_CORE_EXPERIMENTAL AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64" AND RMR_ASM_CORE_X86_64_VALIDATED)
   list(APPEND RMR_SOURCES
@@ -117,6 +118,10 @@ if(RMR_ASM_CORE_EXPERIMENTAL AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SY
     engine/rmr/interop/rmr_casm_riscv64.S
   )
   set(RMR_HAS_CASM TRUE)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+  set(RMR_HAS_NEON_SELFTEST TRUE)
 endif()
 
 add_library(rmr STATIC ${RMR_SOURCES})
@@ -209,6 +214,12 @@ add_executable(zipraf_core_selftest demo_cli/src/zipraf_core_selftest.c)
 target_link_libraries(zipraf_core_selftest PRIVATE rmr)
 rmr_apply_common_flags(zipraf_core_selftest)
 
+if(RMR_HAS_NEON_SELFTEST)
+  add_executable(rmr_neon_simd_selftest demo_cli/src/neon_simd_selftest.c)
+  target_link_libraries(rmr_neon_simd_selftest PRIVATE rmr)
+  rmr_apply_common_flags(rmr_neon_simd_selftest)
+endif()
+
 target_link_libraries(rmr_unified_arena_selftest PRIVATE bitraf_static rmr)
 rmr_apply_common_flags(rmr_unified_arena_selftest)
 
@@ -222,6 +233,7 @@ set(RMR_RUN_SELFTEST_COMMANDS
   rmr_unified_arena_selftest
   rmr_legacy_kernel_selftest
   rmr_hw_detect_selftest
+  rmr_asm_equivalence_selftest
   zipraf_core_selftest
   bitomega_smoketest
 )
@@ -235,6 +247,7 @@ set(RMR_RUN_SELFTEST_DEPENDS
   rmr_unified_arena_selftest
   rmr_legacy_kernel_selftest
   rmr_hw_detect_selftest
+  rmr_asm_equivalence_selftest
   zipraf_core_selftest
   bitomega_smoketest
 )
@@ -242,6 +255,11 @@ set(RMR_RUN_SELFTEST_DEPENDS
 if(RMR_HAS_CASM)
   list(INSERT RMR_RUN_SELFTEST_COMMANDS 3 rmr_casm_bridge_selftest)
   list(INSERT RMR_RUN_SELFTEST_DEPENDS 3 rmr_casm_bridge_selftest)
+endif()
+
+if(RMR_HAS_NEON_SELFTEST)
+  list(APPEND RMR_RUN_SELFTEST_COMMANDS rmr_neon_simd_selftest)
+  list(APPEND RMR_RUN_SELFTEST_DEPENDS rmr_neon_simd_selftest)
 endif()
 
 add_custom_target(run_selftest
