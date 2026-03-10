@@ -165,7 +165,24 @@ object CRC32C {
     }
 
     fun update(initial: Int, data: ByteArray, offset: Int = 0, length: Int = data.size): Int {
-        return NativeFastPath.crc32c(initial, data, offset, length)
+        if (length <= 0) return initial
+        require(offset >= 0 && length >= 0 && offset + length <= data.size) { "Invalid crc range" }
+        if (NativeFastPath.isNativeAvailable()) {
+            return NativeFastPath.crc32c(initial, data, offset, length)
+        }
+        return updateSoftware(initial, data, offset, length)
+    }
+
+    private fun updateSoftware(initial: Int, data: ByteArray, offset: Int, length: Int): Int {
+        var crc = initial.inv()
+        var i = offset
+        val end = offset + length
+        while (i < end) {
+            val tableIndex = (crc xor (data[i].toInt() and 0xFF)) and 0xFF
+            crc = (crc ushr 8) xor table[tableIndex]
+            i++
+        }
+        return crc.inv()
     }
 }
 
