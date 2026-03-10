@@ -75,4 +75,22 @@ public class DecSetTest extends TerminalTestCase {
 		enterString("\033[?7hhij").assertLinesAre("abh", "ij ", "   ");
 	}
 
+	/** DECSET 45, DECRAWM, controls reverse wraparound for backspace at left margin. */
+	public void testReverseWrapAroundMode() {
+		withTerminalSized(3, 3).enterString("abcd");
+		assertCursorAt(1, 1);
+
+		enterString("\b\b");
+		assertCursorAt(1, 0);
+
+		enterString("\b");
+		assertCursorAt(1, 0);
+
+		enterString("\033[?45h\b");
+		assertCursorAt(0, 2);
+
+		enterString("\033[?45l\b");
+		assertCursorAt(0, 1);
+	}
+
 }
