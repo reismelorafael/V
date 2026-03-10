@@ -281,9 +281,9 @@ add_custom_target(run_bitomega_smoketest
   DEPENDS bitomega_smoketest
 )
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
+find_package(Python3 COMPONENTS Interpreter QUIET)
 find_program(GRAPHVIZ_DOT_EXECUTABLE dot)
-if(GRAPHVIZ_DOT_EXECUTABLE)
+if(Python3_Interpreter_FOUND AND GRAPHVIZ_DOT_EXECUTABLE)
   add_custom_target(bitomega_transition_graph
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/reports
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/bitomega_csv_to_dot.py
@@ -297,5 +297,13 @@ if(GRAPHVIZ_DOT_EXECUTABLE)
     DEPENDS run_bitomega_smoketest
   )
 else()
-  message(STATUS "Graphviz dot not found; skipping bitomega_transition_graph target")
+  set(RMR_REPORT_MISSING_TOOLS "")
+  if(NOT Python3_Interpreter_FOUND)
+    list(APPEND RMR_REPORT_MISSING_TOOLS "Python3 interpreter")
+  endif()
+  if(NOT GRAPHVIZ_DOT_EXECUTABLE)
+    list(APPEND RMR_REPORT_MISSING_TOOLS "Graphviz dot")
+  endif()
+  string(JOIN ", " RMR_REPORT_MISSING_TOOLS_TEXT ${RMR_REPORT_MISSING_TOOLS})
+  message(STATUS "Skipping bitomega_transition_graph target: missing ${RMR_REPORT_MISSING_TOOLS_TEXT}")
 endif()
