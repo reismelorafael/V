@@ -270,13 +270,13 @@ add_custom_target(run_selftest
 
 foreach(RMR_SELFTEST_CMD IN LISTS RMR_RUN_SELFTEST_COMMANDS)
   add_custom_command(TARGET run_selftest POST_BUILD
-    COMMAND ${RMR_SELFTEST_CMD}
+    COMMAND $<TARGET_FILE:${RMR_SELFTEST_CMD}>
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   )
 endforeach()
 add_custom_target(run_bitomega_smoketest
   COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bench/results
-  COMMAND bitomega_smoketest
+  COMMAND $<TARGET_FILE:bitomega_smoketest>
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   DEPENDS bitomega_smoketest
 )

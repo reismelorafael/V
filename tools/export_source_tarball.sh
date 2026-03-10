@@ -12,11 +12,11 @@ set -euo pipefail
 #   ./tools/export_source_tarball.sh archive/source-export
 
 BASE_DIR="${1:-archive/source-export}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if git rev-parse --show-toplevel >/dev/null 2>&1; then
   ROOT_DIR="$(git rev-parse --show-toplevel)"
 else
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+  ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 fi
 cd "$ROOT_DIR"
 
