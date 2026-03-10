@@ -17,11 +17,43 @@ else ifeq ($(UNAME_S),Darwin)
   SHARED_EXT := dylib
 endif
 
-ENGINE_CORE_SRCS := $(RMR_SOURCE_GROUP_CORE) $(RMR_SOURCE_GROUP_HOST_ONLY)
+ENGINE_CORE_COMMON_SRCS := \
+	engine/rmr/src/bitomega.c \
+	engine/rmr/src/rmr_baremetal_compat.c \
+	engine/rmr/src/rmr_cycles.c \
+	engine/rmr/src/rmr_hw_detect.c \
+	engine/rmr/src/rmr_bench.c \
+	engine/rmr/src/rmr_bench_suite.c \
+	engine/rmr/src/rmr_isorf.c \
+	engine/rmr/src/rmr_apk_module.c \
+	engine/rmr/src/rmr_qemu_bridge.c \
+	engine/rmr/src/rmr_math_fabric.c \
+	engine/rmr/src/rafaelia_formulas_core.c \
+	engine/rmr/src/rmr_corelib.c \
+	engine/rmr/src/rmr_ll_ops.c \
+	engine/rmr/src/rmr_ll_tuning.c \
+	engine/rmr/src/rmr_casm_bridge.c \
+	engine/rmr/src/rmr_unified_kernel.c \
+	engine/rmr/src/rmr_unified_jni_bridge.c \
+	engine/rmr/src/rmr_host_compat.c \
+	engine/rmr/src/rmr_zipraf_core.c \
+	engine/rmr/src/rmr_lowlevel_portable.c \
+	engine/rmr/src/rmr_lowlevel_mix.c \
+	engine/rmr/src/rmr_lowlevel_reduce.c \
+	engine/rmr/src/rmr_neon_simd.c
 
-ENGINE_SRCS := $(ENGINE_CORE_SRCS)
+ENGINE_EXTENDED_SRCS := \
+	engine/rmr/src/rmr_tcg_cache.c \
+	engine/rmr/src/rmr_virtio_blk.c \
+	engine/rmr/src/rmr_attractor.c \
+	engine/rmr/src/rmr_vhw_model.c \
+	engine/rmr/src/rmr_ethica_loss.c
+
+ENGINE_POLICY_SRCS := engine/rmr/src/rmr_policy_kernel.c
+
+ENGINE_SRCS := $(ENGINE_CORE_COMMON_SRCS) $(ENGINE_EXTENDED_SRCS)
 ifeq ($(RMR_ENABLE_POLICY_MODULE),1)
-ENGINE_SRCS += $(RMR_SOURCE_GROUP_OPTIONAL_POLICY)
+ENGINE_SRCS += $(ENGINE_POLICY_SRCS)
 endif
 ENGINE_OBJS := $(patsubst %.c,build/%.o,$(ENGINE_SRCS))
 
@@ -30,7 +62,9 @@ ifeq ($(UNAME_S),Linux)
 ifeq ($(shell uname -m 2>/dev/null),x86_64)
   CASM_ASM_SRCS += $(RMR_SOURCE_GROUP_ASM_X86_64)
 else ifeq ($(shell uname -m 2>/dev/null),riscv64)
-  CASM_ASM_SRCS += $(RMR_SOURCE_GROUP_ASM_RISCV64)
+  CASM_ASM_SRCS += engine/rmr/interop/rmr_casm_riscv64.S
+else ifeq ($(shell uname -m 2>/dev/null),aarch64)
+  CASM_ASM_SRCS += engine/rmr/interop/rmr_casm_arm64.S
 endif
 endif
 CASM_ASM_OBJS := $(patsubst %.S,build/%.o,$(CASM_ASM_SRCS))
