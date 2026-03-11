@@ -5,7 +5,6 @@
 #include <jni.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <time.h>
@@ -487,11 +486,8 @@ JNIEXPORT jstring JNICALL Java_com_vectras_vm_core_NativeLogcatBridge_nativeRead
     if(maxEvents<=0)maxEvents=1;
     if(maxEvents>256)maxEvents=256;
 
-    const size_t payloadBytes = (size_t)LOGCAT_BATCH_PAYLOAD_BYTES;
-    char* payload = (char*)malloc(payloadBytes);
-    if(!payload){
-        return (*env)->NewStringUTF(env, "");
-    }
+    const uint32_t payloadBytes = (uint32_t)LOGCAT_BATCH_PAYLOAD_BYTES;
+    char payload[LOGCAT_BATCH_PAYLOAD_BYTES];
 
     uint32_t out=0;
     int count=0;
@@ -514,9 +510,7 @@ JNIEXPORT jstring JNICALL Java_com_vectras_vm_core_NativeLogcatBridge_nativeRead
     pthread_mutex_unlock(&g_ring_lock);
 
     payload[out]='\0';
-    jstring result = (*env)->NewStringUTF(env,payload);
-    free(payload);
-    return result;
+    return (*env)->NewStringUTF(env,payload);
 }
 JNIEXPORT void JNICALL Java_com_vectras_vm_core_NativeLogcatBridge_nativeShutdownCapture(JNIEnv* env, jclass clazz){(void)env;(void)clazz; if(atomic_exchange(&g_capture_running,0)==1) pthread_join(g_capture_thread,NULL);}
 
