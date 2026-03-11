@@ -12,6 +12,21 @@ public final class ExecutionBudgetPolicy {
         public final long keepAliveMs;
 
         Budget(int coreThreads, int maxThreads, int queueCapacity, long keepAliveMs) {
+            if (coreThreads <= 0) {
+                throw new IllegalArgumentException("coreThreads must be > 0");
+            }
+            if (maxThreads <= 0) {
+                throw new IllegalArgumentException("maxThreads must be > 0");
+            }
+            if (maxThreads < coreThreads) {
+                throw new IllegalArgumentException("maxThreads must be >= coreThreads");
+            }
+            if (queueCapacity <= 0) {
+                throw new IllegalArgumentException("queueCapacity must be > 0");
+            }
+            if (keepAliveMs < 0L) {
+                throw new IllegalArgumentException("keepAliveMs must be >= 0");
+            }
             this.coreThreads = coreThreads;
             this.maxThreads = maxThreads;
             this.queueCapacity = queueCapacity;
