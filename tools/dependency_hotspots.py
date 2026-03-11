@@ -1,135 +1,21 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_FILE = ROOT / "app" / "build.gradle"
-SRC_ROOT = ROOT / "app" / "src"
 REPORT = ROOT / "reports" / "external-dependency-hotspots.md"
 
 DEP_RE = re.compile(r"^\s*(implementation|testImplementation|androidTestImplementation|annotationProcessor)\s+['\"]([^'\"]+)['\"]")
-IMPORT_RE = re.compile(r"^\s*import\s+([a-zA-Z0-9_.]+)")
-
-PACKAGE_HINTS = {
-    "androidx.appcompat": ["androidx.appcompat"],
-    "com.google.android.material": ["com.google.android.material"],
-    "androidx.annotation": ["androidx.annotation"],
-    "androidx.core": ["androidx.core"],
-    "androidx.drawerlayout": ["androidx.drawerlayout"],
-    "androidx.preference": ["androidx.preference"],
-    "androidx.swiperefreshlayout": ["androidx.swiperefreshlayout"],
-    "androidx.viewpager": ["androidx.viewpager"],
-    "com.google.code.gson": ["com.google.gson"],
-    "com.squareup.okhttp3": ["okhttp3", "okio"],
-    "androidx.window": ["androidx.window"],
-    "org.apache.commons": ["org.apache.commons"],
-    "androidx.activity": ["androidx.activity"],
-    "androidx.constraintlayout": ["androidx.constraintlayout"],
-    "androidx.documentfile": ["androidx.documentfile"],
-    "androidx.work": ["androidx.work"],
-    "com.github.bumptech.glide": ["com.bumptech.glide"],
-    "org.robolectric": ["org.robolectric"],
-    "org.mockito": ["org.mockito"],
-    "androidx.test": ["androidx.test"],
-}
-
-DEPENDENCY_CONCEPTS = {
-    "androidx": "Jetpack/AndroidX: bibliotecas oficiais de alto nível para UI, ciclo de vida, storage e compatibilidade Android.",
-    "com.google.android.material": "Material Components: toolkit de UI do Android para componentes visuais padronizados.",
-    "com.google.code.gson": "Serialização JSON em runtime (parse/mapeamento de objetos), frequentemente sensível a alocação/GC.",
-    "com.squareup.okhttp3": "Stack HTTP cliente (rede, pooling e conexões), impacta latência, throughput e uso de memória.",
-    "org.apache.commons": "Utilitários Java de propósito geral (aqui: compressão/arquivamento), com impacto de I/O e buffers.",
-    "com.github.bumptech.glide": "Pipeline de imagem (decode/cache/transform), tipicamente um hotspot de heap e GC em listas.",
-    "junit": "Framework de testes unitários (não embarca em runtime de produção).",
-    "org.robolectric": "Ambiente de teste Android em JVM local (somente testes).",
-    "org.mockito": "Mocking para testes unitários/instrumentados (somente testes).",
-    "androidx.test": "Infra de testes Android (runner, core, espresso, ext).",
-}
-
-RUNTIME_CLASS = {
-    "implementation": "produção",
-    "annotationProcessor": "build-time",
-    "testImplementation": "teste-local",
-    "androidTestImplementation": "teste-instrumentado",
-}
-
-REFACTOR_NOTES = {
-    "com.google.code.gson:gson": "Reduzir alocações evitando parse completo para objetos grandes; priorizar streaming em caminhos críticos.",
-    "com.squareup.okhttp3:okhttp": "Reutilizar singleton de cliente HTTP e pools, evitando novos clients por request para diminuir GC e overhead de conexão.",
-    "com.github.bumptech.glide:glide": "Fixar tamanhos alvo, downsampling e recycle de targets para reduzir picos de heap/GC em listas.",
-    "androidx.work:work-runtime": "Consolidar jobs periódicos e evitar enfileiramento redundante para reduzir wakeups.",
-    "org.apache.commons:commons-compress": "Usar buffers fixos maiores em I/O pesado para reduzir churn de objetos.",
-}
-
-LOW_LEVEL_PLAN = {
-    "com.google.code.gson:gson": {
-        "module": "vectra_json_det",
-        "deliverable": "parser JSON autoral orientado a tokens (scanner determinístico), sem reflexão dinâmica",
-        "steps": [
-            "Mapear schemas fixos de VM metadata e store payloads",
-            "Implementar scanner de bytes com tabela de estados e arena de strings reutilizável",
-            "Trocar parsing quente em JSONUtils/VMManager por caminho autoral",
-        ],
-    },
-    "com.squareup.okhttp3:okhttp": {
-        "module": "vectra_net_det",
-        "deliverable": "cliente HTTP autoral com pool fixo de conexões e buffers reaproveitáveis",
-        "steps": [
-            "Introduzir dispatcher determinístico com fila fixa",
-            "Separar handshake/retry em estado explícito sem alocação por request",
-            "Migrar DownloadWorker e RomInfo para camada autoral",
-        ],
-    },
-    "com.github.bumptech.glide:glide": {
-        "module": "vectra_img_det",
-        "deliverable": "pipeline autoral de decode/caching com política de blocos fixos",
-        "steps": [
-            "Criar cache slab para thumbnails e capas",
-            "Converter decode para tamanho-alvo fixo por viewport",
-            "Migrar adapters de listagem para loader autoral",
-        ],
-    },
-    "androidx.work:work-runtime": {
-        "module": "vectra_sched_det",
-        "deliverable": "scheduler autoral orientado a state-machine com reexecução idempotente",
-        "steps": [
-            "Unificar jobs de download/import em fila única",
-            "Persistir estado mínimo em estrutura compacta",
-            "Adicionar reconciliador com backoff determinístico",
-        ],
-    },
-    "org.apache.commons:commons-compress": {
-        "module": "vectra_archive_det",
-        "deliverable": "stream de tar/compactação autoral com buffers fixos e cópia zero quando possível",
-        "steps": [
-            "Implementar leitura de headers em bloco",
-            "Padronizar buffer único por operação",
-            "Migrar TarUtils para rotinas autorais de I/O",
-        ],
-    },
-}
 
 
-@dataclass(frozen=True)
-class DependencyEntry:
-    config: str
-    coord: str
-
-    @property
-    def group(self) -> str:
-        return self.coord.split(":", 1)[0]
-
-    @property
-    def ga(self) -> str:
-        chunks = (self.coord.split(":") + [""])[:2]
-        return f"{chunks[0]}:{chunks[1]}"
-
-
-def parse_dependencies() -> list[DependencyEntry]:
-    deps: list[DependencyEntry] = []
+def parse_dependencies() -> list[tuple[str, str]]:
+    deps: list[tuple[str, str]] = []
+    if not BUILD_FILE.exists():
+        return deps
     for line in BUILD_FILE.read_text(encoding="utf-8").splitlines():
         m = DEP_RE.match(line)
         if not m:
@@ -137,167 +23,218 @@ def parse_dependencies() -> list[DependencyEntry]:
         cfg, coord = m.groups()
         if ":" not in coord:
             continue
-        deps.append(DependencyEntry(cfg, coord))
+        deps.append((cfg, coord))
     return deps
 
 
-def collect_imports() -> dict[Path, list[str]]:
-    imports_by_file: dict[Path, list[str]] = {}
-    for file in SRC_ROOT.rglob("*"):
-        if file.suffix not in {".kt", ".java"}:
+def existing(paths: list[Path]) -> list[Path]:
+    return [p for p in paths if p.exists()]
+
+
+def detect_sdk_root() -> Path | None:
+    candidates = [
+        os.environ.get("ANDROID_SDK_ROOT", ""),
+        os.environ.get("ANDROID_HOME", ""),
+        str(Path.home() / "Android" / "Sdk"),
+        "/opt/android-sdk",
+        "/usr/local/lib/android/sdk",
+    ]
+    for c in candidates:
+        if not c:
             continue
-        imports: list[str] = []
-        try:
-            for line in file.read_text(encoding="utf-8", errors="ignore").splitlines():
-                m = IMPORT_RE.match(line)
-                if m:
-                    imports.append(m.group(1))
-        except OSError:
-            continue
-        if imports:
-            imports_by_file[file] = imports
-    return imports_by_file
+        p = Path(c)
+        if p.exists():
+            return p
+    return None
 
 
-def find_matches(dep: DependencyEntry, imports_by_file: dict[Path, list[str]]) -> list[Path]:
-    hints = PACKAGE_HINTS.get(dep.group, [dep.group])
-    matched: list[Path] = []
-    for file, imports in imports_by_file.items():
-        if any(any(imp.startswith(prefix) for prefix in hints) for imp in imports):
-            matched.append(file.relative_to(ROOT))
-    return sorted(matched)
+def detect_ndk_root(sdk_root: Path | None) -> Path | None:
+    env = [os.environ.get("ANDROID_NDK_HOME", ""), os.environ.get("NDK_HOME", "")]
+    for c in env:
+        if c and Path(c).exists():
+            return Path(c)
+
+    if sdk_root is None:
+        return None
+    ndk_base = sdk_root / "ndk"
+    if not ndk_base.exists():
+        return None
+    versions = sorted([d for d in ndk_base.iterdir() if d.is_dir()], reverse=True)
+    return versions[0] if versions else None
 
 
-def score_priority(dep: DependencyEntry, impacted_count: int) -> int:
-    runtime_weight = {
-        "implementation": 100,
-        "annotationProcessor": 20,
-        "testImplementation": 10,
-        "androidTestImplementation": 5,
-    }.get(dep.config, 0)
-    strategic_bonus = 120 if dep.ga in LOW_LEVEL_PLAN else 0
-    return runtime_weight + strategic_bonus + impacted_count
+def detect_jdk_root() -> Path | None:
+    java_home = os.environ.get("JAVA_HOME", "")
+    if java_home and Path(java_home).exists():
+        return Path(java_home)
+
+    javac = shutil_which("javac")
+    if javac:
+        p = Path(javac).resolve()
+        if p.parent.name == "bin":
+            return p.parent.parent
+    return None
 
 
+def shutil_which(binary: str) -> str | None:
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = Path(folder) / binary
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
 
-FILE_CRITICAL_LIMIT = 2
 
+def collect_sdk_files(sdk: Path | None) -> list[Path]:
+    if sdk is None:
+        return []
+    out: list[Path] = []
 
-def build_critical_files(prioritized_entries: list[tuple[int, DependencyEntry, list[Path]]]) -> list[tuple[int, Path, list[str]]]:
-    file_scores: dict[Path, int] = {}
-    file_reasons: dict[Path, list[str]] = {}
-    for score, dep, impacted in prioritized_entries:
-        if dep.ga not in LOW_LEVEL_PLAN:
-            continue
-        for path in impacted:
-            file_scores[path] = file_scores.get(path, 0) + score
-            reasons = file_reasons.setdefault(path, [])
-            reasons.append(dep.coord)
+    platforms = sorted((sdk / "platforms").glob("android-*"), reverse=True)
+    if platforms:
+        out += existing([platforms[0] / "android.jar", platforms[0] / "framework.aidl"])
 
-    ranked = sorted(file_scores.items(), key=lambda item: item[1], reverse=True)
-    out: list[tuple[int, Path, list[str]]] = []
-    for path, score in ranked[:FILE_CRITICAL_LIMIT]:
-        out.append((score, path, sorted(set(file_reasons.get(path, [])))))
+    build_tools = sorted((sdk / "build-tools").glob("*"), reverse=True)
+    if build_tools:
+        bt = build_tools[0]
+        out += existing([
+            bt / "aapt2",
+            bt / "d8",
+            bt / "zipalign",
+            bt / "apksigner",
+            bt / "aidl",
+        ])
+
+    out += existing([
+        sdk / "platform-tools" / "adb",
+        sdk / "cmdline-tools" / "latest" / "bin" / "sdkmanager",
+        sdk / "cmdline-tools" / "latest" / "bin" / "avdmanager",
+    ])
+
+    cmakes = sorted((sdk / "cmake").glob("*"), reverse=True)
+    if cmakes:
+        out += existing([cmakes[0] / "bin" / "cmake", cmakes[0] / "bin" / "ninja"])
+
     return out
 
-def concept_for(dep: DependencyEntry) -> str:
-    for prefix, text in DEPENDENCY_CONCEPTS.items():
-        if dep.group.startswith(prefix):
-            return text
-    return "Dependência externa de suporte; validar necessidade em runtime e possibilidade de módulo autoral equivalente."
+
+def collect_ndk_files(ndk: Path | None) -> list[Path]:
+    if ndk is None:
+        return []
+    out: list[Path] = []
+    prebuilt_dirs = sorted((ndk / "toolchains" / "llvm" / "prebuilt").glob("*"))
+    for pb in prebuilt_dirs[:1]:
+        out += existing([
+            pb / "bin" / "clang",
+            pb / "bin" / "clang++",
+            pb / "bin" / "ld.lld",
+            pb / "bin" / "llvm-ar",
+            pb / "bin" / "llvm-strip",
+            pb / "sysroot" / "usr" / "include" / "android" / "api-level.h",
+        ])
+    out += existing([
+        ndk / "build" / "cmake" / "android.toolchain.cmake",
+        ndk / "source.properties",
+    ])
+    return out
+
+
+def collect_jdk_files(jdk: Path | None) -> list[Path]:
+    if jdk is None:
+        return []
+    return existing([
+        jdk / "bin" / "java",
+        jdk / "bin" / "javac",
+        jdk / "bin" / "jar",
+        jdk / "bin" / "jlink",
+        jdk / "release",
+    ])
+
+
+def collect_gradle_files() -> list[Path]:
+    home = Path.home()
+    out: list[Path] = []
+    for f in sorted((home / ".gradle" / "wrapper" / "dists").glob("**/gradle*/bin/gradle"))[:5]:
+        out.append(f)
+    for f in sorted((home / ".gradle" / "caches" / "modules-2" / "files-2.1").glob("**/*.jar"))[:20]:
+        out.append(f)
+    return out
+
+
+def collect_maven_artifacts_for_deps(deps: list[tuple[str, str]]) -> list[Path]:
+    base = Path.home() / ".gradle" / "caches" / "modules-2" / "files-2.1"
+    if not base.exists():
+        return []
+
+    out: list[Path] = []
+    for cfg, coord in deps:
+        if cfg != "implementation":
+            continue
+        parts = coord.split(":")
+        if len(parts) < 3:
+            continue
+        group, artifact, version = parts[:3]
+        p = base / group / artifact / version
+        if not p.exists():
+            continue
+        jars = sorted(p.glob("**/*.jar"))
+        poms = sorted(p.glob("**/*.pom"))
+        if jars:
+            out.append(jars[0])
+        if poms:
+            out.append(poms[0])
+    return out
+
+
+def rel_or_abs(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def emit_section(lines: list[str], title: str, files: list[Path]) -> None:
+    lines.append(f"## {title}")
+    lines.append("")
+    if not files:
+        lines.append("- nenhum arquivo detectado neste ambiente.")
+        lines.append("")
+        return
+    for i, f in enumerate(files, start=1):
+        lines.append(f"- [{i:02d}] `{rel_or_abs(f)}`")
+    lines.append("")
 
 
 def main() -> None:
     deps = parse_dependencies()
-    imports_by_file = collect_imports()
+    sdk = detect_sdk_root()
+    ndk = detect_ndk_root(sdk)
+    jdk = detect_jdk_root()
+
+    sdk_files = collect_sdk_files(sdk)
+    ndk_files = collect_ndk_files(ndk)
+    jdk_files = collect_jdk_files(jdk)
+    gradle_files = collect_gradle_files()
+    dep_artifacts = collect_maven_artifacts_for_deps(deps)
+
     REPORT.parent.mkdir(parents=True, exist_ok=True)
 
-    matches: dict[str, list[Path]] = {dep.coord: find_matches(dep, imports_by_file) for dep in deps}
-
     lines: list[str] = []
-    lines.append("# External Dependency Hotspots (Performance/GC)")
+    lines.append("# External Build/Toolchain Files (SDK/NDK/JDK/Gradle)")
     lines.append("")
-    lines.append("Relatório gerado automaticamente a partir de `app/build.gradle` + imports em `app/src`. Foco: pontos para refatoração visando reduzir GC, overhead e fricção de runtime.")
+    lines.append("Inventário direto de arquivos externos ao repositório que participam da compilação e resolução de dependências Android.")
     lines.append("")
-    lines.append("## Dependências externas detectadas")
+    lines.append("## Roots detectados")
     lines.append("")
-    for dep in deps:
-        lines.append(f"- `{dep.config}` ({RUNTIME_CLASS.get(dep.config, 'desconhecido')}) → `{dep.coord}`")
-
-    lines.append("")
-    lines.append("## Conceitos (AndroidX, JDK, SDK e tipos)")
-    lines.append("")
-    lines.append("- **AndroidX (Jetpack)**: conjunto de bibliotecas Android mantidas pelo Google, distribuídas via Maven (não fazem parte do Java SE puro).")
-    lines.append("- **Android SDK**: APIs da plataforma Android (`android.*`) fornecidas pelo sistema e pelo compile SDK; não aparecem como coordenadas Maven em `dependencies {}`.")
-    lines.append("- **JDK/JVM**: toolchain de compilação/execução Java/Kotlin no build e testes locais; também não aparece como dependência de app em `build.gradle`.")
-    lines.append("- **Tipos de dependência Gradle**: `implementation` (runtime de produção), `annotationProcessor` (build-time), `testImplementation` (teste local), `androidTestImplementation` (teste instrumentado).")
-    lines.append("- **Foco de otimização**: para reduzir GC/overhead, priorizar primeiro bibliotecas de `implementation` em caminhos quentes de UI, I/O, rede e parse.")
-
-    lines.append("")
-    lines.append("## Classificação conceitual por dependência")
-    lines.append("")
-    for dep in deps:
-        lines.append(f"- `{dep.coord}`: {concept_for(dep)}")
-
-    lines.append("")
-    prioritized = []
-    for dep in deps:
-        impacted = matches[dep.coord]
-        prioritized.append((score_priority(dep, len(impacted)), dep, impacted))
-    prioritized.sort(key=lambda x: x[0], reverse=True)
-
-    lines.append("## Arquivos críticos (o 1-2 que mais fazem diferença)")
-    lines.append("")
-    critical_files = build_critical_files(prioritized)
-    if critical_files:
-        for idx, (file_score, file_path, reasons) in enumerate(critical_files, start=1):
-            lines.append(f"### arquivo-crítico #{idx} | score={file_score}")
-            lines.append(f"- Arquivo: `{file_path.as_posix()}`")
-            lines.append(f"- Dependências críticas relacionadas: {', '.join(f'`{r}`' for r in reasons)}")
-            lines.append("- Ação low-level direta: concentrar migração autoral primeiro neste arquivo para maximizar redução de GC/overhead.")
-            lines.append("")
-    else:
-        lines.append("- Nenhum arquivo crítico identificado para dependências com plano low-level.")
-        lines.append("")
-
-    lines.append("## Itens priorizados para refatoração low-level autoral")
+    lines.append(f"- SDK root: `{sdk}`")
+    lines.append(f"- NDK root: `{ndk}`")
+    lines.append(f"- JDK root: `{jdk}`")
     lines.append("")
 
-    rank = 1
-    for score, dep, impacted in prioritized:
-        if dep.ga not in LOW_LEVEL_PLAN:
-            continue
-        plan = LOW_LEVEL_PLAN[dep.ga]
-        lines.append(f"### #{rank} `{dep.coord}` | prioridade={score}")
-        lines.append(f"- Módulo autoral alvo: `{plan['module']}`")
-        lines.append(f"- Entrega low-level: {plan['deliverable']}")
-        lines.append(f"- Arquivos impactados agora: {len(impacted)}")
-        for file in impacted[:6]:
-            lines.append(f"  - `{file.as_posix()}`")
-        if len(impacted) > 6:
-            lines.append(f"  - `... +{len(impacted) - 6} arquivos`")
-        lines.append("- Passos de migração determinística:")
-        for step in plan["steps"]:
-            lines.append(f"  - {step}")
-        lines.append("")
-        rank += 1
-
-    lines.append("## Hotspots por dependência")
-    lines.append("")
-    for dep in deps:
-        files = matches[dep.coord]
-        lines.append(f"### `{dep.coord}` ({dep.config})")
-        note = REFACTOR_NOTES.get(dep.ga, "Avaliar remoção gradual com módulo autoral equivalente, priorizando caminhos críticos de CPU/memória.")
-        lines.append(f"- Oportunidade de refatoração: {note}")
-        if files:
-            lines.append(f"- Arquivos impactados ({len(files)}):")
-            for f in files[:25]:
-                lines.append(f"  - `{f.as_posix()}`")
-            if len(files) > 25:
-                lines.append(f"  - `... +{len(files) - 25} arquivos`")
-        else:
-            lines.append("- Arquivos impactados: nenhum import direto encontrado no código-fonte atual.")
-        lines.append("")
+    emit_section(lines, "Arquivos externos - Android SDK", sdk_files)
+    emit_section(lines, "Arquivos externos - Android NDK", ndk_files)
+    emit_section(lines, "Arquivos externos - JDK", jdk_files)
+    emit_section(lines, "Arquivos externos - Gradle Wrapper/Caches", gradle_files)
+    emit_section(lines, "Artefatos externos de dependências (implementation)", dep_artifacts)
 
     REPORT.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     print(f"Report written: {REPORT}")
