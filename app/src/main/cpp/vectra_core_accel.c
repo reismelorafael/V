@@ -23,6 +23,15 @@ extern uint32_t rmr_casm_bridge_marker(void);
 #endif
 #endif
 
+
+/*
+ * Hot-path candidates mapeados para aceleração por ABI (sem alterar contrato JNI):
+ * - nativeCopyBytes -> RmR_UnifiedKernel_Copy (movimentação de memória em buffers críticos).
+ * - nativeXorChecksum -> RmR_UnifiedKernel_XorChecksum (redução XOR intensiva em bytes).
+ * - nativeCrc32cCompat (LowLevelBridge) -> backend CRC32C por feature bits.
+ * - nativeChecksum32/nativeReduceXor (LowLevelBridge) -> backend por ABI + SIMD.
+ */
+
 // Bridge JNI oficializa retorno via RMR_KERNEL_OK e família RMR_KERNEL_ERR_*.
 // RMR_UK_* fica restrito à base/compat (ou pontos explicitamente documentados).
 

@@ -2,8 +2,9 @@
 #include <stdint.h>
 
 #include "rmr_hw_detect.h"
+#include "hardware_profile_bridge_internal.h"
 
-static const char* vectra_effective_abi(void) {
+const char* vectra_hw_effective_abi(void) {
 #if defined(__aarch64__)
     return "arm64-v8a";
 #elif defined(__arm__)
@@ -42,19 +43,10 @@ static uint32_t vectra_simd_mask(void) {
 JNIEXPORT jintArray JNICALL
 Java_com_vectras_vm_core_HardwareProfileBridge_nativeCollectSnapshot(JNIEnv* env, jclass clazz) {
     (void)clazz;
-    RmR_HW_Info info;
-    RmR_HW_Detect(&info);
-
+    uint32_t values_u32[9];
+    vectra_hw_collect_snapshot(values_u32);
     jint values[9];
-    values[0] = (jint)info.arch;
-    values[1] = (jint)info.arch_hex;
-    values[2] = (jint)info.ptr_bits;
-    values[3] = (jint)info.is_little_endian;
-    values[4] = (jint)info.has_cycle_counter;
-    values[5] = (jint)info.has_asm_probe;
-    values[6] = (jint)info.feature_bits_0;
-    values[7] = (jint)info.feature_bits_1;
-    values[8] = (jint)vectra_simd_mask();
+    for (int i = 0; i < 9; ++i) values[i] = (jint)values_u32[i];
 
     jintArray out = (*env)->NewIntArray(env, 9);
     if (!out) return NULL;
@@ -65,5 +57,20 @@ Java_com_vectras_vm_core_HardwareProfileBridge_nativeCollectSnapshot(JNIEnv* env
 JNIEXPORT jstring JNICALL
 Java_com_vectras_vm_core_HardwareProfileBridge_nativeEffectiveAbi(JNIEnv* env, jclass clazz) {
     (void)clazz;
-    return (*env)->NewStringUTF(env, vectra_effective_abi());
+    return (*env)->NewStringUTF(env, vectra_hw_effective_abi());
+}
+
+void vectra_hw_collect_snapshot(uint32_t out_values[9]) {
+    RmR_HW_Info info;
+    RmR_HW_Detect(&info);
+
+    out_values[0] = info.arch;
+    out_values[1] = info.arch_hex;
+    out_values[2] = info.ptr_bits;
+    out_values[3] = info.is_little_endian;
+    out_values[4] = info.has_cycle_counter;
+    out_values[5] = info.has_asm_probe;
+    out_values[6] = info.feature_bits_0;
+    out_values[7] = info.feature_bits_1;
+    out_values[8] = vectra_simd_mask();
 }
