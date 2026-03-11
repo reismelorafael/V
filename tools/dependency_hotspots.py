@@ -35,6 +35,26 @@ PACKAGE_HINTS = {
     "androidx.test": ["androidx.test"],
 }
 
+DEPENDENCY_CONCEPTS = {
+    "androidx": "Jetpack/AndroidX: bibliotecas oficiais de alto nível para UI, ciclo de vida, storage e compatibilidade Android.",
+    "com.google.android.material": "Material Components: toolkit de UI do Android para componentes visuais padronizados.",
+    "com.google.code.gson": "Serialização JSON em runtime (parse/mapeamento de objetos), frequentemente sensível a alocação/GC.",
+    "com.squareup.okhttp3": "Stack HTTP cliente (rede, pooling e conexões), impacta latência, throughput e uso de memória.",
+    "org.apache.commons": "Utilitários Java de propósito geral (aqui: compressão/arquivamento), com impacto de I/O e buffers.",
+    "com.github.bumptech.glide": "Pipeline de imagem (decode/cache/transform), tipicamente um hotspot de heap e GC em listas.",
+    "junit": "Framework de testes unitários (não embarca em runtime de produção).",
+    "org.robolectric": "Ambiente de teste Android em JVM local (somente testes).",
+    "org.mockito": "Mocking para testes unitários/instrumentados (somente testes).",
+    "androidx.test": "Infra de testes Android (runner, core, espresso, ext).",
+}
+
+RUNTIME_CLASS = {
+    "implementation": "produção",
+    "annotationProcessor": "build-time",
+    "testImplementation": "teste-local",
+    "androidTestImplementation": "teste-instrumentado",
+}
+
 REFACTOR_NOTES = {
     "com.google.code.gson:gson": "Reduzir alocações evitando parse completo para objetos grandes; priorizar streaming com JsonReader em caminhos críticos.",
     "com.squareup.okhttp3:okhttp": "Reutilizar singleton de OkHttpClient e pools, evitando novos clients por request para diminuir GC e overhead de conexão.",
@@ -77,7 +97,6 @@ def collect_imports() -> dict[Path, list[str]]:
 
 def find_matches(coord: str, imports_by_file: dict[Path, list[str]]) -> list[Path]:
     group, artifact, *_ = (coord.split(":") + [""])[:3]
-    key = f"{group}:{artifact}"
     hints = PACKAGE_HINTS.get(group, [])
     if not hints:
         hints = [group]
@@ -102,7 +121,28 @@ def main() -> None:
     lines.append("## Dependências externas detectadas")
     lines.append("")
     for cfg, coord in deps:
-        lines.append(f"- `{cfg}` → `{coord}`")
+        lines.append(f"- `{cfg}` ({RUNTIME_CLASS.get(cfg, 'desconhecido')}) → `{coord}`")
+
+    lines.append("")
+    lines.append("## Conceitos (AndroidX, JDK, SDK e tipos)")
+    lines.append("")
+    lines.append("- **AndroidX (Jetpack)**: conjunto de bibliotecas Android mantidas pelo Google, distribuídas via Maven (não fazem parte do Java SE puro).")
+    lines.append("- **Android SDK**: APIs da plataforma Android (`android.*`) fornecidas pelo sistema e pelo compile SDK; não aparecem como coordenadas Maven em `dependencies {}`.")
+    lines.append("- **JDK/JVM**: toolchain de compilação/execução Java/Kotlin no build e testes locais; também não aparece como dependência de app em `build.gradle`.")
+    lines.append("- **Tipos de dependência Gradle**: `implementation` (runtime de produção), `annotationProcessor` (build-time), `testImplementation` (teste local), `androidTestImplementation` (teste instrumentado).")
+    lines.append("- **Foco de otimização**: para reduzir GC/overhead, priorizar primeiro bibliotecas de `implementation` em caminhos quentes de UI, I/O, rede e parse.")
+
+    lines.append("")
+    lines.append("## Classificação conceitual por dependência")
+    lines.append("")
+    for cfg, coord in deps:
+        group = coord.split(":", 1)[0]
+        concept = "Dependência externa de suporte; validar necessidade em runtime e possibilidade de módulo autoral equivalente."
+        for prefix, text in DEPENDENCY_CONCEPTS.items():
+            if group.startswith(prefix):
+                concept = text
+                break
+        lines.append(f"- `{coord}`: {concept}")
 
     lines.append("")
     lines.append("## Hotspots por dependência")
