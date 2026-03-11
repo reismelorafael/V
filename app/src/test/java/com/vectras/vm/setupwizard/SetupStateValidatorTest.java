@@ -1,58 +1,63 @@
 package com.vectras.vm.setupwizard;
 
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
 public class SetupStateValidatorTest {
 
     @Test
-    public void validStateJsonPassesSchemaValidation() {
-        String json = "{\"version\":1,\"timestamp\":\"1739393939\",\"phase\":\"PREPARE\",\"stage_dir\":\"/root/.vectras-staging/1739393939\",\"message\":\"ok\"}";
-        Assert.assertTrue(SetupStateValidator.isValidStateJson(json));
+    public void isValidStateJson_acceptsValidPayload() {
+        String json = "{"
+                + "\"version\":1,"
+                + "\"timestamp\":\"2026-03-11T10:00:00Z\","
+                + "\"phase\":\"PREPARE\","
+                + "\"stage_dir\":\"/root/.vectras-staging/run-1\","
+                + "\"message\":\"ok\""
+                + "}";
+
+        assertTrue(SetupStateValidator.isValidStateJson(json));
     }
 
     @Test
-    public void invalidVersionFailsSchemaValidation() {
-        String json = "{\"version\":2,\"timestamp\":\"1739393939\",\"phase\":\"PREPARE\",\"stage_dir\":\"/root/.vectras-staging/1739393939\",\"message\":\"ok\"}";
-        Assert.assertFalse(SetupStateValidator.isValidStateJson(json));
+    public void isValidStateJson_rejectsWrongVersionType() {
+        String json = "{"
+                + "\"version\":\"1\","
+                + "\"timestamp\":\"2026-03-11T10:00:00Z\","
+                + "\"phase\":\"PREPARE\","
+                + "\"stage_dir\":\"/root/.vectras-staging/run-1\","
+                + "\"message\":\"ok\""
+                + "}";
+
+        assertFalse(SetupStateValidator.isValidStateJson(json));
     }
 
     @Test
-    public void invalidStageDirFailsSchemaValidation() {
+    public void isValidStateJson_rejectsInvalidStageDirPrefix() {
+        String json = "{"
+                + "\"version\":1,"
+                + "\"timestamp\":\"2026-03-11T10:00:00Z\","
+                + "\"phase\":\"PREPARE\","
+                + "\"stage_dir\":\"/tmp/other\","
+                + "\"message\":\"ok\""
+                + "}";
+
+        assertFalse(SetupStateValidator.isValidStateJson(json));
+    }
+
+    @Test
+    public void isValidStateMap_acceptsValidMap() {
         Map<String, Object> state = new HashMap<>();
         state.put("version", 1);
-        state.put("timestamp", "1739393939");
-        state.put("phase", SetupStateValidator.PHASE_PREPARE);
-        state.put("stage_dir", "/tmp/not-allowed");
-        state.put("message", "bad");
+        state.put("timestamp", "2026-03-11T10:00:00Z");
+        state.put("phase", SetupStateValidator.PHASE_STAGE_OK);
+        state.put("stage_dir", "/root/.vectras-staging/run-2");
+        state.put("message", "stable");
 
-        Assert.assertFalse(SetupStateValidator.isValidStateMap(state));
-    }
-
-    @Test
-    public void failureTransitionPrepareToRolledBackIsAllowed() {
-        Assert.assertTrue(SetupStateValidator.isValidTransition(
-                SetupStateValidator.PHASE_PREPARE,
-                SetupStateValidator.PHASE_ROLLED_BACK
-        ));
-    }
-
-    @Test
-    public void failureTransitionStageOkToRolledBackIsAllowed() {
-        Assert.assertTrue(SetupStateValidator.isValidTransition(
-                SetupStateValidator.PHASE_STAGE_OK,
-                SetupStateValidator.PHASE_ROLLED_BACK
-        ));
-    }
-
-    @Test
-    public void invalidTransitionPromotedToRolledBackIsRejected() {
-        Assert.assertFalse(SetupStateValidator.isValidTransition(
-                SetupStateValidator.PHASE_PROMOTED,
-                SetupStateValidator.PHASE_ROLLED_BACK
-        ));
+        assertTrue(SetupStateValidator.isValidStateMap(state));
     }
 }

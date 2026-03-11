@@ -1,9 +1,7 @@
 package com.vectras.vm.setupwizard;
 
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
+import org.json.JSONObject;
 
-import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
@@ -32,9 +30,29 @@ public final class SetupStateValidator {
         }
 
         try {
-            Type mapType = new TypeToken<Map<String, Object>>() { }.getType();
-            Map<String, Object> state = new Gson().fromJson(json, mapType);
-            return isValidStateMap(state);
+            JSONObject state = new JSONObject(json);
+
+            Object version = state.opt("version");
+            if (!(version instanceof Number) || ((Number) version).intValue() != 1) {
+                return false;
+            }
+
+            String timestamp = state.optString("timestamp", "");
+            if (timestamp.trim().isEmpty()) {
+                return false;
+            }
+
+            String phase = state.optString("phase", "");
+            if (!SUPPORTED_PHASES.contains(phase)) {
+                return false;
+            }
+
+            String stageDir = state.optString("stage_dir", "");
+            if (!stageDir.startsWith("/root/.vectras-staging/")) {
+                return false;
+            }
+
+            return state.opt("message") instanceof String;
         } catch (Exception ignored) {
             return false;
         }
