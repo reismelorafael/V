@@ -23,3 +23,13 @@ bash tools/apk/build_release_signed_local.sh
   - `gradle_assemble_release.log`
   - `apksigner_verify.log`
   - `apk_metadata.txt`
+
+
+### Variáveis canônicas de assinatura (release)
+
+- `VECTRAS_RELEASE_STORE_FILE`
+- `VECTRAS_RELEASE_STORE_PASSWORD`
+- `VECTRAS_RELEASE_KEY_ALIAS`
+- `VECTRAS_RELEASE_KEY_PASSWORD`
+
+Esses nomes são os canônicos da cadeia de build e mapeiam diretamente para as propriedades Gradle `android.injected.signing.*`.

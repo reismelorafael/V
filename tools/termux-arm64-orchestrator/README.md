@@ -10,7 +10,7 @@ Este módulo é para **build local no terminal**, sem depender de GitHub Actions
 
 - Bootstrap automático de componentes Android necessários quando faltam no ambiente de terminal.
 - Build release `arm64-v8a` com foco em flags de performance e redução de falhas por memória.
-- Assinatura obrigatória por segredo/variável de ambiente (`VECTRAS_RELEASE_STORE_FILE` ou `android.injected.signing.store.file`), sem versionar keystore no Git.
+- Assinatura obrigatória por segredo/variáveis de ambiente canônicas (`VECTRAS_RELEASE_STORE_FILE`, `VECTRAS_RELEASE_STORE_PASSWORD`, `VECTRAS_RELEASE_KEY_ALIAS`, `VECTRAS_RELEASE_KEY_PASSWORD`) e injeção Gradle via `android.injected.signing.*`, sem versionar keystore no Git.
 - Helpers C low-level autorais para detecção ARM64/NEON e alocação de spill em storage.
 - Gate mínimo de conformidade legal/documental antes da compilação.
 

@@ -123,10 +123,22 @@ verify_artifact(){
   [[ -f "$APK_PATH" ]] || fail "APK não encontrado: $APK_PATH"
 
   local apksigner_bin
+  local verify_rc=0
   apksigner_bin="$(resolve_apksigner)"
 
   log "Verificando assinatura com $apksigner_bin"
+  set +e
   "$apksigner_bin" verify --verbose --print-certs "$APK_PATH" 2>&1 | tee "$VERIFY_LOG"
+  verify_rc=${PIPESTATUS[0]}
+  set -e
+
+  if [[ $verify_rc -ne 0 ]]; then
+    fail "apksigner verify falhou com exit code $verify_rc. Verifique $VERIFY_LOG"
+  fi
+
+  if ! rg -n "Verified" "$VERIFY_LOG" >/dev/null; then
+    log "[WARN] apksigner retornou sucesso, mas texto esperado ('Verified') não foi encontrado no log"
+  fi
 
   log "Coletando metadados"
   {
