@@ -75,6 +75,12 @@ add_library(vectra_core_accel SHARED
     vectra_core_accel.c
     lowlevel_bridge.c
     hardware_profile_bridge.c
+    vectra_lowlevel_backend_fallback.c
+    vectra_lowlevel_backend_arm64.c
+    vectra_lowlevel_backend_armv7.c
+    vectra_lowlevel_backend_x86_64.c
+    vectra_lowlevel_backend_x86.c
+    vectra_lowlevel_backend_riscv64.c
     ${VECTRA_ENGINE_CORE_SOURCES}
     ${VECTRA_LOWLEVEL_SOURCES}
     ${VECTRA_CASM_SOURCES})
