@@ -2,23 +2,146 @@ name: android-build-manual
 
 on:
   workflow_dispatch:
+    inputs:
+      execution_mode:
+        description: 'Nível de validação e build (11 modos)'
+        required: true
+        type: choice
+        default: moderado
+        options:
+          - fast
+          - quick-check
+          - smoke
+          - diagnose
+          - integration
+          - moderado
+          - hardening
+          - strict
+          - profundo
+          - release-candidate
+          - ultra-minucioso
+      selected_tasks:
+        description: 'Lista opcional de tarefas Gradle separadas por vírgula (sobrescreve parcialmente o modo)'
+        required: false
+        type: string
+      build_debug:
+        description: 'Gerar APK debug'
+        required: false
+        type: boolean
+        default: true
+      build_release:
+        description: 'Gerar APK release (pode ser unsigned)'
+        required: false
+        type: boolean
+        default: true
+      sign_release:
+        description: 'Assinar release com segredos do CI (quando disponível)'
+        required: false
+        type: boolean
+        default: false
+      compile_api:
+        description: 'compileSdk/targetSdk'
+        required: false
+        type: string
+        default: '35'
+      tools_version:
+        description: 'Android Build Tools'
+        required: false
+        type: string
+        default: '35.0.0'
+      ndk_version:
+        description: 'NDK'
+        required: false
+        type: string
+        default: '27.2.12479018'
+      cmake_version:
+        description: 'CMake do SDK'
+        required: false
+        type: string
+        default: '3.22.1'
+      java_version:
+        description: 'Java para Gradle'
+        required: false
+        type: string
+        default: '17'
+  workflow_call:
+    inputs:
+      execution_mode:
+        required: false
+        type: string
+        default: moderado
+      selected_tasks:
+        required: false
+        type: string
+      build_debug:
+        required: false
+        type: boolean
+        default: true
+      build_release:
+        required: false
+        type: boolean
+        default: true
+      sign_release:
+        required: false
+        type: boolean
+        default: false
+      compile_api:
+        required: false
+        type: string
+        default: '35'
+      tools_version:
+        required: false
+        type: string
+        default: '35.0.0'
+      ndk_version:
+        required: false
+        type: string
+        default: '27.2.12479018'
+      cmake_version:
+        required: false
+        type: string
+        default: '3.22.1'
+      java_version:
+        required: false
+        type: string
+        default: '17'
+    secrets:
+      VECTRAS_RELEASE_KEYSTORE_B64:
+        required: false
+      VECTRAS_RELEASE_STORE_PASSWORD:
+        required: false
+      VECTRAS_RELEASE_KEY_ALIAS:
+        required: false
+      VECTRAS_RELEASE_KEY_PASSWORD:
+        required: false
 
 permissions:
   contents: read
 
 jobs:
-  android-debug:
+  android-pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 70
+    env:
+      EXECUTION_MODE: ${{ inputs.execution_mode || github.event.inputs.execution_mode || 'moderado' }}
+      SELECTED_TASKS: ${{ inputs.selected_tasks || github.event.inputs.selected_tasks || '' }}
+      BUILD_DEBUG: ${{ inputs.build_debug || github.event.inputs.build_debug || true }}
+      BUILD_RELEASE: ${{ inputs.build_release || github.event.inputs.build_release || true }}
+      SIGN_RELEASE: ${{ inputs.sign_release || github.event.inputs.sign_release || false }}
+      COMPILE_API: ${{ inputs.compile_api || github.event.inputs.compile_api || '35' }}
+      TOOLS_VERSION: ${{ inputs.tools_version || github.event.inputs.tools_version || '35.0.0' }}
+      NDK_VERSION: ${{ inputs.ndk_version || github.event.inputs.ndk_version || '27.2.12479018' }}
+      CMAKE_VERSION: ${{ inputs.cmake_version || github.event.inputs.cmake_version || '3.22.1' }}
+      JAVA_VERSION: ${{ inputs.java_version || github.event.inputs.java_version || '17' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
 
       - name: Set up Android SDK
@@ -27,7 +150,12 @@ jobs:
       - name: Install Android packages
         run: |
           yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "cmake;3.22.1" "ndk;27.2.12479018"
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${COMPILE_API}" \
+            "build-tools;${TOOLS_VERSION}" \
+            "cmake;${CMAKE_VERSION}" \
+            "ndk;${NDK_VERSION}"
 
       - name: Validate Android and native toolchain dependencies
         run: |
@@ -41,24 +169,163 @@ jobs:
             echo "OK: $tool -> $(command -v "$tool")"
           done
 
-      - name: Verify Gradle baseline
+      - name: Resolve execution profile
+        id: profile
         run: |
+          set -euo pipefail
+          MODE="${EXECUTION_MODE}"
+          case "${MODE}" in
+            fast)
+              TASKS="verifyGradleRuntimeJvm :app:assembleDebug"
+              ;;
+            quick-check)
+              TASKS="verifyGradleRuntimeJvm verifyTargetApiBaseline :app:assembleDebug"
+              ;;
+            smoke)
+              TASKS="verifyGradleRuntimeJvm verifyMinApiAbiCompatibility lintDebug :app:assembleDebug"
+              ;;
+            diagnose)
+              TASKS="verifyGradleRuntimeJvm verifyTargetApiBaseline verifyMinApiAbiCompatibility checkNativeAllMatrix"
+              ;;
+            integration)
+              TASKS="verifyGradleRuntimeJvm verifyTargetApiBaseline lintDebug testDebugUnitTest :app:assembleDebug"
+              ;;
+            moderado)
+              TASKS="verifyGradleRuntimeJvm verifyTargetApiBaseline verifyMinApiAbiCompatibility verifyArm64ToolchainCompatibility verifyBootstrapAssets lintDebug :app:assembleDebug"
+              ;;
+            hardening)
+              TASKS="verifyGradleRuntimeJvm verifyTargetApiBaseline verifyMinApiAbiCompatibility verifyArm64ToolchainCompatibility verifyBootstrapAssets verifyRepoFileDependencies lintDebug testDebugUnitTest :app:assembleDebug"
+              ;;
+            strict)
+              TASKS="verifyGradleRuntimeJvm verifyTargetApiBaseline verifyMinApiAbiCompatibility verifyArm64ToolchainCompatibility verifyBootstrapAssets verifyRepoFileDependencies checkNativeAllMatrix lintDebug testDebugUnitTest :app:assembleDebug"
+              ;;
+            profundo)
+              TASKS="verifyGradleRuntimeJvm verifyTargetApiBaseline verifyMinApiAbiCompatibility verifyArm64ToolchainCompatibility verifyBootstrapAssets verifyRepoFileDependencies checkNativeAllMatrix lintDebug testDebugUnitTest connectedDebugAndroidTest :app:assembleDebug"
+              ;;
+            release-candidate)
+              TASKS="verifyGradleRuntimeJvm verifyTargetApiBaseline verifyMinApiAbiCompatibility verifyArm64ToolchainCompatibility verifyBootstrapAssets verifyRepoFileDependencies lintDebug testDebugUnitTest :app:assembleDebug :app:assembleRelease"
+              ;;
+            ultra-minucioso)
+              TASKS="verifyGradleRuntimeJvm verifyTargetApiBaseline verifyMinApiAbiCompatibility verifyArm64ToolchainCompatibility verifyBootstrapAssets verifyRepoFileDependencies checkNativeAllMatrix lintDebug testDebugUnitTest connectedDebugAndroidTest :app:assembleDebug :app:assembleRelease"
+              ;;
+            *)
+              echo "Modo inválido: ${MODE}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ -n "${SELECTED_TASKS// }" ]]; then
+            EXTRA_TASKS="$(echo "${SELECTED_TASKS}" | tr ',' ' ')"
+            TASKS="${TASKS} ${EXTRA_TASKS}"
+          fi
+
+          echo "tasks=${TASKS}" >> "$GITHUB_OUTPUT"
+          echo "profile=${MODE}" >> "$GITHUB_OUTPUT"
+
+      - name: Build local.properties
+        run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+
+      - name: Decode release keystore
+        if: env.SIGN_RELEASE == 'true'
+        env:
+          VECTRAS_RELEASE_KEYSTORE_B64: ${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${VECTRAS_RELEASE_KEYSTORE_B64:-}" ]]; then
+            echo "Assinatura solicitada, mas segredo do keystore não foi fornecido." >&2
+            exit 1
+          fi
+          echo "$VECTRAS_RELEASE_KEYSTORE_B64" | base64 -d > vectras-release.jks
+
+      - name: Run selected Gradle tasks
+        env:
+          VECTRAS_RELEASE_STORE_PASSWORD: ${{ secrets.VECTRAS_RELEASE_STORE_PASSWORD }}
+          VECTRAS_RELEASE_KEY_ALIAS: ${{ secrets.VECTRAS_RELEASE_KEY_ALIAS }}
+          VECTRAS_RELEASE_KEY_PASSWORD: ${{ secrets.VECTRAS_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon verifyGradleRuntimeJvm verifyTargetApiBaseline verifyMinApiAbiCompatibility verifyArm64ToolchainCompatibility verifyBootstrapAssets verifyRepoFileDependencies
 
-      - name: Lint + Assemble app debug
-        run: ./gradlew --no-daemon lintDebug :app:assembleDebug -PcheckVariant=debug --stacktrace
+          GRADLE_COMMON=(
+            --no-daemon
+            --stacktrace
+            -Pcompile.api="${COMPILE_API}"
+            -Ptarget.api="${COMPILE_API}"
+            -Ptools.version="${TOOLS_VERSION}"
+            -Pcmake.version="${CMAKE_VERSION}"
+            -Pndk.version="${NDK_VERSION}"
+            -Pjava.language.version="${JAVA_VERSION}"
+          )
 
-      - name: Run native matrix (reduced)
-        run: ./gradlew --no-daemon checkNativeAllMatrix -PbuildStrict=false --stacktrace
+          if [[ "${BUILD_RELEASE}" != "true" ]]; then
+            FILTERED_TASKS=""
+            for t in ${{ steps.profile.outputs.tasks }}; do
+              if [[ "$t" != ":app:assembleRelease" ]]; then
+                FILTERED_TASKS+="$t "
+              fi
+            done
+          else
+            FILTERED_TASKS="${{ steps.profile.outputs.tasks }}"
+          fi
 
-      - name: Upload APK and Gradle reports
+          if [[ "${BUILD_DEBUG}" != "true" ]]; then
+            FINAL_TASKS=""
+            for t in ${FILTERED_TASKS}; do
+              if [[ "$t" != ":app:assembleDebug" ]]; then
+                FINAL_TASKS+="$t "
+              fi
+            done
+          else
+            FINAL_TASKS="${FILTERED_TASKS}"
+          fi
+
+          if [[ "${SIGN_RELEASE}" == "true" ]]; then
+            GRADLE_COMMON+=(
+              -Pandroid.injected.signing.store.file="${PWD}/vectras-release.jks"
+              -Pandroid.injected.signing.store.password="${VECTRAS_RELEASE_STORE_PASSWORD}"
+              -Pandroid.injected.signing.key.alias="${VECTRAS_RELEASE_KEY_ALIAS}"
+              -Pandroid.injected.signing.key.password="${VECTRAS_RELEASE_KEY_PASSWORD}"
+            )
+          else
+            echo "Release unsigned habilitado (sem assinatura)."
+          fi
+
+          echo "Modo selecionado: ${{ steps.profile.outputs.profile }}"
+          echo "Tarefas finais: ${FINAL_TASKS}"
+          ./gradlew "${GRADLE_COMMON[@]}" ${FINAL_TASKS}
+
+      - name: Generate holistic debug diagnostics
+        if: always()
+        run: |
+          set +e
+          mkdir -p diagnostics
+          {
+            echo "# Android manual workflow diagnostics"
+            echo "mode=${{ steps.profile.outputs.profile }}"
+            echo "tasks=${{ steps.profile.outputs.tasks }}"
+            echo "build_debug=${BUILD_DEBUG}"
+            echo "build_release=${BUILD_RELEASE}"
+            echo "sign_release=${SIGN_RELEASE}"
+            echo "compile_api=${COMPILE_API}"
+            echo "tools_version=${TOOLS_VERSION}"
+            echo "ndk_version=${NDK_VERSION}"
+            echo "cmake_version=${CMAKE_VERSION}"
+            echo "java_version=${JAVA_VERSION}"
+          } > diagnostics/pipeline-summary.txt
+
+          java -version > diagnostics/java-version.txt 2>&1 || true
+          ./gradlew --version > diagnostics/gradle-version.txt 2>&1 || true
+          sdkmanager --list > diagnostics/sdk-list.txt 2>&1 || true
+          find app/build -maxdepth 5 -type f > diagnostics/app-build-files.txt 2>/dev/null || true
+
+      - name: Upload APK, reports and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-manual-artifacts
+          name: android-manual-artifacts-${{ steps.profile.outputs.profile }}
           path: |
             app/build/outputs/apk/**/*.apk
             **/build/reports/**
             **/build/test-results/**
+            diagnostics/**
           if-no-files-found: warn
