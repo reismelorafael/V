@@ -12,6 +12,12 @@ Mapa arquivo-a-arquivo em três linhas por item: papel, ligação e comando de i
 - **Liga com**: ver [`reports/README.md`](README.md) e [`docs/THREE_LAYER_ANALYSIS.md`](../docs/THREE_LAYER_ANALYSIS.md) para contexto de camadas.
 - **Inspeção**: `file "reports/COMPARISON_REPORT.md"` e, quando texto, `sed -n "1,80p" "reports/COMPARISON_REPORT.md"`.
 
+
+## `reports/EXTERNAL_FORKS_BUILD_INPUTS.md`
+- **Papel**: inventário técnico do que é externo ao repositório no build/runtime e roadmap de redução de overhead.
+- **Liga com**: ver [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md), [`build.gradle`](../build.gradle) e [`app/build.gradle`](../app/build.gradle).
+- **Inspeção**: `file "reports/EXTERNAL_FORKS_BUILD_INPUTS.md"` e, quando texto, `sed -n "1,220p" "reports/EXTERNAL_FORKS_BUILD_INPUTS.md"`.
+
 ## `reports/MD_INDEX_Vectras-VM-Android.md`
 - **Papel**: documentação textual e/ou especificação técnica.
 - **Liga com**: ver [`reports/README.md`](README.md) e [`docs/THREE_LAYER_ANALYSIS.md`](../docs/THREE_LAYER_ANALYSIS.md) para contexto de camadas.

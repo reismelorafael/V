@@ -13,6 +13,8 @@ ANDROID_BUILD_TOOLS="${ANDROID_BUILD_TOOLS:-35.0.0}"
 ANDROID_NDK_VERSION="${ANDROID_NDK_VERSION:-27.2.12479018}"
 ANDROID_CMAKE_VERSION="${ANDROID_CMAKE_VERSION:-3.22.1}"
 CMDLINE_TOOLS_VERSION="${CMDLINE_TOOLS_VERSION:-13114758}"
+TOOLCHAIN_PACK_DIR="${TOOLCHAIN_PACK_DIR:-$ROOT_DIR/.toolchain-packs}"
+ALLOW_NETWORK_TOOLCHAIN="${ALLOW_NETWORK_TOOLCHAIN:-1}"
 
 export ANDROID_HOME ANDROID_SDK_ROOT
 
@@ -21,6 +23,7 @@ warn() { echo "$LOG_PREFIX WARN: $*"; }
 
 REPORT_FILE="$ROOT_DIR/.build-spill/bootstrap-report.txt"
 CMDLINE_TOOLS_LAST_SHA256=""
+CMDLINE_TOOLS_SOURCE=""
 
 report_init() {
   mkdir -p "$(dirname "$REPORT_FILE")"
@@ -33,6 +36,8 @@ ANDROID_BUILD_TOOLS=$ANDROID_BUILD_TOOLS
 ANDROID_NDK_VERSION=$ANDROID_NDK_VERSION
 ANDROID_CMAKE_VERSION=$ANDROID_CMAKE_VERSION
 CMDLINE_TOOLS_VERSION=$CMDLINE_TOOLS_VERSION
+TOOLCHAIN_PACK_DIR=$TOOLCHAIN_PACK_DIR
+ALLOW_NETWORK_TOOLCHAIN=$ALLOW_NETWORK_TOOLCHAIN
 EOT
 }
 
@@ -86,39 +91,63 @@ ensure_cmdline_tools() {
   if [[ -x "$latest_dir/bin/sdkmanager" ]]; then
     log "cmdline-tools já presentes em $latest_dir"
     CMDLINE_TOOLS_LAST_SHA256="already-installed"
+    CMDLINE_TOOLS_SOURCE="already-installed"
     report_step "ensure_cmdline_tools" "ok" "already-present path=$latest_dir"
     return 0
   fi
 
   local url
   local expected_sha256
+  local local_pack
+  local local_pack_sha
   url="https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip"
+  local_pack="$TOOLCHAIN_PACK_DIR/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip"
   if ! expected_sha256="$(cmdline_tools_expected_sha256)"; then
     report_step "ensure_cmdline_tools" "fail" "missing-checksum version=$CMDLINE_TOOLS_VERSION"
     echo "checksum esperado não cadastrado para CMDLINE_TOOLS_VERSION=$CMDLINE_TOOLS_VERSION" >&2
     return 1
   fi
 
-  tmp_zip="$(mktemp "$tools_dir/.cmdline-tools-${CMDLINE_TOOLS_VERSION}-XXXXXX.zip")"
   tmp_unpack="$(mktemp -d "$tools_dir/.cmdline-tools-unpack-XXXXXX")"
-  trap 'rm -f "$tmp_zip"; rm -rf "$tmp_unpack"' RETURN
+  trap '[[ -n "${tmp_zip:-}" && "$tmp_zip" == "$tools_dir"/* ]] && rm -f "$tmp_zip"; rm -rf "$tmp_unpack"' RETURN
 
-  log "baixando cmdline-tools: $url"
-  local attempt
-  local max_attempts=5
-  for attempt in $(seq 1 "$max_attempts"); do
-    if curl -fsSL --connect-timeout 20 --max-time 300 -o "$tmp_zip" "$url"; then
-      break
-    fi
-    if [[ "$attempt" -eq "$max_attempts" ]]; then
-      report_step "ensure_cmdline_tools" "fail" "download-failed attempts=$max_attempts url=$url"
-      echo "falha ao baixar cmdline-tools após $max_attempts tentativas" >&2
+  if [[ -f "$local_pack" ]]; then
+    local_pack_sha="$(sha256sum "$local_pack" | awk '{print $1}')"
+    if [[ "$local_pack_sha" != "$expected_sha256" ]]; then
+      report_step "ensure_cmdline_tools" "fail" "local-pack-checksum-mismatch expected=$expected_sha256 actual=$local_pack_sha"
+      echo "checksum inválido para cmdline-tools local pack" >&2
       return 1
     fi
-    local backoff=$((2 ** attempt))
-    warn "falha no download (tentativa $attempt/$max_attempts). retry em ${backoff}s"
-    sleep "$backoff"
-  done
+    tmp_zip="$local_pack"
+    CMDLINE_TOOLS_SOURCE="local-pack"
+    CMDLINE_TOOLS_LAST_SHA256="$local_pack_sha"
+    log "usando cmdline-tools pack local: $local_pack"
+  else
+    if [[ "$ALLOW_NETWORK_TOOLCHAIN" != "1" ]]; then
+      report_step "ensure_cmdline_tools" "fail" "local-pack-missing network-disabled path=$local_pack"
+      echo "cmdline-tools local pack ausente e ALLOW_NETWORK_TOOLCHAIN=0" >&2
+      return 1
+    fi
+    tmp_zip="$(mktemp "$tools_dir/.cmdline-tools-${CMDLINE_TOOLS_VERSION}-XXXXXX.zip")"
+
+    log "baixando cmdline-tools: $url"
+  local attempt
+  local max_attempts=5
+    for attempt in $(seq 1 "$max_attempts"); do
+      if curl -fsSL --connect-timeout 20 --max-time 300 -o "$tmp_zip" "$url"; then
+        break
+      fi
+      if [[ "$attempt" -eq "$max_attempts" ]]; then
+        report_step "ensure_cmdline_tools" "fail" "download-failed attempts=$max_attempts url=$url"
+        echo "falha ao baixar cmdline-tools após $max_attempts tentativas" >&2
+        return 1
+      fi
+      local backoff=$((2 ** attempt))
+      warn "falha no download (tentativa $attempt/$max_attempts). retry em ${backoff}s"
+      sleep "$backoff"
+    done
+    CMDLINE_TOOLS_SOURCE="network"
+  fi
 
   local actual_sha256
   actual_sha256="$(sha256sum "$tmp_zip" | awk '{print $1}')"
@@ -144,10 +173,12 @@ ensure_cmdline_tools() {
   mv "$tmp_unpack/cmdline-tools" "$latest_dir"
 
   trap - RETURN
-  rm -f "$tmp_zip"
+  if [[ -n "${tmp_zip:-}" && "$tmp_zip" == "$tools_dir"/* ]]; then
+    rm -f "$tmp_zip"
+  fi
   rm -rf "$tmp_unpack"
 
-  report_step "ensure_cmdline_tools" "ok" "installed version=$CMDLINE_TOOLS_VERSION sha256=$actual_sha256 backup=$previous_dir"
+  report_step "ensure_cmdline_tools" "ok" "installed version=$CMDLINE_TOOLS_VERSION source=$CMDLINE_TOOLS_SOURCE sha256=$actual_sha256 backup=$previous_dir"
 
   log "cmdline-tools instalados"
 }
@@ -223,4 +254,4 @@ fi
 
 write_local_properties
 print_summary
-report_step "bootstrap" "ok" "complete cmdline_tools_sha256=$CMDLINE_TOOLS_LAST_SHA256"
+report_step "bootstrap" "ok" "complete cmdline_tools_source=$CMDLINE_TOOLS_SOURCE cmdline_tools_sha256=$CMDLINE_TOOLS_LAST_SHA256"

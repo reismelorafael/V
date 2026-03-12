@@ -1,0 +1,13 @@
+{
+  "schema": "vectras-termux-forks/v1",
+  "destination": ".third_party_forks",
+  "forks": [
+    {
+      "name": "sample-android-emulator-fork",
+      "repo": "owner/repo",
+      "ref": "main",
+      "path": "sample-android-emulator-fork",
+      "required": false
+    }
+  ]
+}

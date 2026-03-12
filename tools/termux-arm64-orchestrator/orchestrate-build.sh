@@ -9,13 +9,33 @@ BUILD_SPILL_DIR="${BUILD_SPILL_DIR:-$ROOT_DIR/.build-spill}"
 ENABLE_SPILL="${ENABLE_SPILL:-1}"
 CI_DRY_RUN="${CI_DRY_RUN:-0}"
 BOOTSTRAP_ANDROID="${BOOTSTRAP_ANDROID:-1}"
+ENABLE_FORK_SYNC="${ENABLE_FORK_SYNC:-1}"
 ANDROID_API_LEVEL="${ANDROID_API_LEVEL:-35}"
 VECTRAS_RELEASE_STORE_FILE="${VECTRAS_RELEASE_STORE_FILE:-}"
 VECTRAS_RELEASE_KEY_ALIAS="${VECTRAS_RELEASE_KEY_ALIAS:-}"
 VECTRAS_RELEASE_STORE_PASSWORD="${VECTRAS_RELEASE_STORE_PASSWORD:-}"
 VECTRAS_RELEASE_KEY_PASSWORD="${VECTRAS_RELEASE_KEY_PASSWORD:-}"
+
+if [[ -z "$VECTRAS_RELEASE_STORE_FILE" && -n "${VECTRAS_KEYSTORE:-}" ]]; then
+  VECTRAS_RELEASE_STORE_FILE="$VECTRAS_KEYSTORE"
+fi
+if [[ -z "$VECTRAS_RELEASE_KEY_ALIAS" && -n "${VECTRAS_KEY_ALIAS:-}" ]]; then
+  VECTRAS_RELEASE_KEY_ALIAS="$VECTRAS_KEY_ALIAS"
+fi
+if [[ -z "$VECTRAS_RELEASE_STORE_PASSWORD" && -n "${VECTRAS_STORE_PASSWORD:-}" ]]; then
+  VECTRAS_RELEASE_STORE_PASSWORD="$VECTRAS_STORE_PASSWORD"
+fi
+if [[ -z "$VECTRAS_RELEASE_KEY_PASSWORD" && -n "${VECTRAS_KEY_PASSWORD:-}" ]]; then
+  VECTRAS_RELEASE_KEY_PASSWORD="$VECTRAS_KEY_PASSWORD"
+fi
+
+export VECTRAS_RELEASE_STORE_FILE VECTRAS_RELEASE_KEY_ALIAS VECTRAS_RELEASE_STORE_PASSWORD VECTRAS_RELEASE_KEY_PASSWORD
+
 APK_PATH="${APK_PATH:-$ROOT_DIR/app/build/outputs/apk/release/app-release.apk}"
 GRADLE_WRAPPER="$ROOT_DIR/tools/gradle_with_jdk21.sh"
+TOOLCHAIN_CORE_DIR="$ROOT_DIR/tools/termux-arm64-orchestrator/toolchain-core"
+HOST_ENV_FILE="$BUILD_SPILL_DIR/host.env"
+TOOLCHAIN_ENV_FILE="$BUILD_SPILL_DIR/toolchain.env"
 
 SPILL_ALLOC_MB="${SPILL_ALLOC_MB:-256}"
 
@@ -86,20 +106,52 @@ require_cmd() {
   fi
 }
 
-detect_arch() {
-  local arch
-  arch="$(uname -m || true)"
-  log "host arch: ${arch:-unknown}"
 
-  if [[ "$arch" != "aarch64" && "$arch" != "arm64" ]]; then
+run_toolchain_core_probe() {
+  local host_report="$BUILD_SPILL_DIR/toolchain-host.txt"
+  if [[ -x "$TOOLCHAIN_CORE_DIR/detect-host.sh" ]]; then
+    "$TOOLCHAIN_CORE_DIR/detect-host.sh" | tee "$host_report"
+  else
+    warn "toolchain-core detect-host.sh ausente"
+  fi
+}
+
+detect_arch() {
+  bash "$TOOLCHAIN_CORE_DIR/detect-host.sh" > "$HOST_ENV_FILE"
+  while IFS='=' read -r key value; do
+    [[ -z "$key" ]] && continue
+    export "$key=$value"
+  done < "$HOST_ENV_FILE"
+
+  log "host arch: ${HOST_ARCH:-unknown}"
+
+  if [[ "${HOST_IS_ARM64:-0}" != "1" ]]; then
     warn "host não-arm64; build seguirá com target arm64-v8a"
   fi
 
-  if [[ -f /proc/cpuinfo ]] && rg -i "neon|asimd" /proc/cpuinfo >/dev/null; then
+  if [[ "${HOST_HAS_NEON:-0}" == "1" || "${HOST_HAS_ASIMD:-0}" == "1" ]]; then
     log "detected NEON/ASIMD support"
   else
     warn "detecção runtime de NEON indisponível; aplicando flags de compile-time"
   fi
+}
+
+resolve_toolchain() {
+  ROOT_DIR="$ROOT_DIR" \
+  ANDROID_API_LEVEL="$ANDROID_API_LEVEL" \
+  ANDROID_BUILD_TOOLS="${ANDROID_BUILD_TOOLS:-35.0.0}" \
+  ANDROID_NDK_VERSION="${ANDROID_NDK_VERSION:-27.2.12479018}" \
+  ANDROID_CMAKE_VERSION="${ANDROID_CMAKE_VERSION:-3.22.1}" \
+  JAVA_HOME="${JAVA_HOME:-}" \
+  ANDROID_HOME="${ANDROID_HOME:-}" \
+  ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-}" \
+  bash "$TOOLCHAIN_CORE_DIR/resolve-toolchain.sh" > "$TOOLCHAIN_ENV_FILE"
+
+  eval "$(bash "$TOOLCHAIN_CORE_DIR/activate-env.sh" "$TOOLCHAIN_ENV_FILE")"
+}
+
+verify_toolchain() {
+  bash "$TOOLCHAIN_CORE_DIR/verify-toolchain.sh" "$TOOLCHAIN_ENV_FILE"
 }
 
 configure_memory_spill() {
@@ -126,6 +178,20 @@ configure_toolchain_flags() {
   log "flags de toolchain configuradas"
 }
 
+sync_required_forks() {
+  if [[ "$ENABLE_FORK_SYNC" != "1" ]]; then
+    log "fork sync desabilitado por ENABLE_FORK_SYNC=$ENABLE_FORK_SYNC"
+    return
+  fi
+
+  if [[ -x tools/termux-arm64-orchestrator/forks-sync.sh ]]; then
+    log "sincronizando forks externos necessários"
+    bash tools/termux-arm64-orchestrator/forks-sync.sh
+  else
+    warn "forks-sync.sh ausente"
+  fi
+}
+
 bootstrap_android_env() {
   if [[ "$BOOTSTRAP_ANDROID" != "1" ]]; then
     log "bootstrap Android desabilitado por BOOTSTRAP_ANDROID=$BOOTSTRAP_ANDROID"
@@ -134,6 +200,12 @@ bootstrap_android_env() {
 
   log "iniciando bootstrap Android SDK/NDK local"
   bash tools/termux-arm64-orchestrator/bootstrap-termux-android15.sh
+
+  if [[ -x "$TOOLCHAIN_CORE_DIR/verify-toolchain.sh" ]]; then
+    "$TOOLCHAIN_CORE_DIR/verify-toolchain.sh"
+  else
+    warn "toolchain-core verify-toolchain.sh ausente"
+  fi
 }
 
 verify_signing() {
@@ -212,14 +284,23 @@ require_cmd bash
 require_cmd rg
 require_cmd uname
 require_cmd "$GRADLE_WRAPPER"
+require_cmd "$TOOLCHAIN_CORE_DIR/detect-host.sh"
+require_cmd "$TOOLCHAIN_CORE_DIR/resolve-toolchain.sh"
+require_cmd "$TOOLCHAIN_CORE_DIR/activate-env.sh"
+require_cmd "$TOOLCHAIN_CORE_DIR/verify-toolchain.sh"
 
 log "running legal compliance gate"
 bash tools/termux-arm64-orchestrator/legal-compliance-check.sh
 
+run_toolchain_core_probe
 detect_arch
+resolve_toolchain
 configure_memory_spill
 configure_toolchain_flags
 configure_signing_env
 run_native_helpers
+sync_required_forks
 bootstrap_android_env
+resolve_toolchain
+verify_toolchain
 run_build

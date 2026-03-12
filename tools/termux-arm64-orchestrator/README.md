@@ -20,11 +20,13 @@ Este módulo é para **build local no terminal**, sem depender de GitHub Actions
 - `c/arm64_neon_probe.c`: detector de HWCAP/NEON/ASIMD/SVE em ARM64.
 - `c/storage_spill_allocator.c`: cria arquivo de spill (`spill.bin`) para suporte de memória por storage.
 - `bootstrap-termux-android15.sh`: instala/prepara cmdline-tools + SDK + NDK + CMake local (`.android-sdk`) e gera `local.properties`.
+- `toolchain-core/`: submódulo com contratos explícitos para detectar host, resolver toolchain, ativar env e validar pré-requisitos.
 - `orchestrate-build.sh`: orquestrador principal (detecção, spill, bootstrap, build e verificação de assinatura).
 - `legal-compliance-check.sh`: valida pré-requisitos legais, manifesto de toolchain (BOM) e metadados de release + contrato de assinatura por variável.
 - `TOOLCHAIN_LICENSES.md`: inventário de licença/origem de JDK/SDK/NDK/CMake usados no fluxo local.
 - `toolchain-manifests/toolchain-bom.json`: BOM de toolchain com versão + origem + hash + licença para gate de conformidade.
 - `run-local-termux-build.sh`: entrypoint único para execução local no terminal.
+- `TOOLCHAIN_CORE.md`: documentação da API de integração do submódulo `toolchain-core`.
 
 ## Execução local (recomendada)
 
@@ -50,9 +52,12 @@ bash tools/termux-arm64-orchestrator/orchestrate-build.sh
 - `ANDROID_CMAKE_VERSION` (default `3.22.1`)
 - `BUILD_SPILL_DIR` (default `.build-spill`)
 - `VECTRAS_RELEASE_STORE_FILE` (obrigatória para release; fallback local privado opcional em `.secrets/vectras-release.jks`, fora do Git)
-- `VECTRAS_RELEASE_STORE_PASSWORD` (default `856856`)
-- `VECTRAS_RELEASE_KEY_ALIAS` (default `vectras`)
-- `VECTRAS_RELEASE_KEY_PASSWORD` (default `856856`)
-- Legadas temporárias (com warning): `VECTRAS_KEYSTORE`, `VECTRAS_STORE_PASSWORD`, `VECTRAS_KEY_ALIAS`, `VECTRAS_KEY_PASSWORD`
+- `VECTRAS_RELEASE_KEY_ALIAS` (obrigatória para release; compatível com legado `VECTRAS_KEY_ALIAS`)
+- `VECTRAS_RELEASE_STORE_PASSWORD` (obrigatória para release; compatível com legado `VECTRAS_STORE_PASSWORD`)
+- `VECTRAS_RELEASE_KEY_PASSWORD` (obrigatória para release; compatível com legado `VECTRAS_KEY_PASSWORD`)
+- `TOOLCHAIN_PACK_DIR` (default `.toolchain-packs`)
+- `ALLOW_NETWORK_TOOLCHAIN=0|1` (quando `0`, exige pack local de cmdline-tools)
+- `ENABLE_FORK_SYNC=0|1` (sincroniza forks externos declarados antes do bootstrap)
+- `ALLOW_NETWORK_FORKS=0|1` (quando `0`, não baixa forks; forks obrigatórios ausentes geram erro)
 - `BOOTSTRAP_ANDROID=0|1`
 - `CI_DRY_RUN=0|1`
