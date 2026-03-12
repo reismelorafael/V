@@ -11,6 +11,7 @@ CC_BIN="${CC:-cc}"
 mkdir -p "$OUT_DIR"
 
 "$CC_BIN" -O3 -std=c11 -Wall -Wextra -Werror -o "$OUT_DIR/arm64_neon_probe" "$SRC_DIR/arm64_neon_probe.c"
+"$CC_BIN" -O3 -std=c11 -Wall -Wextra -Werror -o "$OUT_DIR/host_probe" "$SRC_DIR/host_probe.c"
 "$CC_BIN" -O3 -std=c11 -Wall -Wextra -Werror -o "$OUT_DIR/storage_spill_allocator" "$SRC_DIR/storage_spill_allocator.c"
 
 echo "native_helpers:ok"
