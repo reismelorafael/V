@@ -1,0 +1,92 @@
+name: Termux Orchestrator Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run compliance + orchestration without real Gradle release build"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+      enable_fork_sync:
+        description: "Enable external fork sync step"
+        required: true
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+  push:
+    paths:
+      - "tools/termux-arm64-orchestrator/**"
+      - ".github/workflows/termux-orchestrator.yml"
+
+jobs:
+  orchestrator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ENABLE_FORK_SYNC: ${{ github.event.inputs.enable_fork_sync == 'true' && '1' || '0' }}
+      BOOTSTRAP_ANDROID: "1"
+      ENABLE_SPILL: "1"
+      ALLOW_NETWORK_TOOLCHAIN: "1"
+      ALLOW_NETWORK_FORKS: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Prepare release signing env for dry-run
+        if: ${{ github.event.inputs.dry_run != 'false' }}
+        run: |
+          set -euo pipefail
+          mkdir -p .secrets
+          : > .secrets/ci-dry-run.jks
+          echo "VECTRAS_RELEASE_STORE_FILE=$PWD/.secrets/ci-dry-run.jks" >> "$GITHUB_ENV"
+          echo "VECTRAS_RELEASE_STORE_PASSWORD=ci-dry-run" >> "$GITHUB_ENV"
+          echo "VECTRAS_RELEASE_KEY_ALIAS=ci-dry-run" >> "$GITHUB_ENV"
+          echo "VECTRAS_RELEASE_KEY_PASSWORD=ci-dry-run" >> "$GITHUB_ENV"
+          echo "CI_DRY_RUN=1" >> "$GITHUB_ENV"
+
+      - name: Prepare release signing env for real release build
+        if: ${{ github.event.inputs.dry_run == 'false' }}
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.VECTRAS_RELEASE_KEYSTORE_B64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.VECTRAS_RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.VECTRAS_RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.VECTRAS_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for var in RELEASE_KEYSTORE_B64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [[ -z "${!var:-}" ]]; then
+              echo "missing required secret: $var" >&2
+              exit 1
+            fi
+          done
+
+          mkdir -p .secrets
+          echo "$RELEASE_KEYSTORE_B64" | base64 -d > .secrets/release.jks
+
+          echo "VECTRAS_RELEASE_STORE_FILE=$PWD/.secrets/release.jks" >> "$GITHUB_ENV"
+          echo "VECTRAS_RELEASE_STORE_PASSWORD=$RELEASE_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "VECTRAS_RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "VECTRAS_RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "CI_DRY_RUN=0" >> "$GITHUB_ENV"
+
+      - name: Run termux orchestrator
+        run: |
+          set -euo pipefail
+          bash tools/termux-arm64-orchestrator/run-local-termux-build.sh
+
+      - name: Upload release APK
+        if: ${{ github.event.inputs.dry_run == 'false' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-orchestrator-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

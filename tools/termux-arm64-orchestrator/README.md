@@ -65,5 +65,21 @@ bash tools/termux-arm64-orchestrator/orchestrate-build.sh
 - `ALLOW_NETWORK_TOOLCHAIN=0|1` (quando `0`, exige pack local de cmdline-tools)
 - `ENABLE_FORK_SYNC=0|1` (default `0`; sincroniza forks externos declarados antes do bootstrap)
 - `ALLOW_NETWORK_FORKS=0|1` (quando `0`, não baixa forks; forks obrigatórios ausentes geram erro)
+- `RELEASE_SIGNING_REQUIRED=0|1` (default `1`; quando `0`, pula somente validação de credenciais de signing no compliance gate)
 - `BOOTSTRAP_ANDROID=0|1`
 - `CI_DRY_RUN=0|1`
+
+## GitHub (sem computador local)
+
+Há workflow dedicado em `.github/workflows/termux-orchestrator.yml` para executar este fluxo no GitHub Actions via `workflow_dispatch`:
+
+- `dry_run=true` (default): roda compliance + orquestração sem build release real.
+- `dry_run=false`: executa build release e publica APK como artifact.
+
+Secrets necessários para `dry_run=false`:
+
+- `VECTRAS_RELEASE_KEYSTORE_B64`
+- `VECTRAS_RELEASE_STORE_PASSWORD`
+- `VECTRAS_RELEASE_KEY_ALIAS`
+- `VECTRAS_RELEASE_KEY_PASSWORD`
+

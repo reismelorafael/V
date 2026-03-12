@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
+RELEASE_SIGNING_REQUIRED="${RELEASE_SIGNING_REQUIRED:-1}"
+
 # Compatibilidade com variáveis legadas de assinatura
 if [[ -z "${VECTRAS_RELEASE_STORE_FILE:-}" && -n "${VECTRAS_KEYSTORE:-}" ]]; then
   export VECTRAS_RELEASE_STORE_FILE="$VECTRAS_KEYSTORE"
@@ -58,33 +60,37 @@ if ! rg -n "targetSdk\s*=\s*.*targetApi" app/build.gradle >/dev/null; then
   exit 1
 fi
 
-required_signing_vars=(
-  "VECTRAS_RELEASE_STORE_FILE"
-  "VECTRAS_RELEASE_STORE_PASSWORD"
-  "VECTRAS_RELEASE_KEY_ALIAS"
-  "VECTRAS_RELEASE_KEY_PASSWORD"
-)
+if [[ "$RELEASE_SIGNING_REQUIRED" == "1" ]]; then
+  required_signing_vars=(
+    "VECTRAS_RELEASE_STORE_FILE"
+    "VECTRAS_RELEASE_STORE_PASSWORD"
+    "VECTRAS_RELEASE_KEY_ALIAS"
+    "VECTRAS_RELEASE_KEY_PASSWORD"
+  )
 
-for var_name in "${required_signing_vars[@]}"; do
-  if [[ -z "${!var_name:-}" ]]; then
-    echo "[compliance] missing required release signing variable: ${var_name}" >&2
+  for var_name in "${required_signing_vars[@]}"; do
+    if [[ -z "${!var_name:-}" ]]; then
+      echo "[compliance] missing required release signing variable: ${var_name}" >&2
+      exit 1
+    fi
+  done
+
+  if [[ "${VECTRAS_RELEASE_STORE_FILE:0:1}" != "/" ]]; then
+    echo "[compliance] invalid VECTRAS_RELEASE_STORE_FILE: expected absolute path" >&2
     exit 1
   fi
-done
 
-if [[ "${VECTRAS_RELEASE_STORE_FILE:0:1}" != "/" ]]; then
-  echo "[compliance] invalid VECTRAS_RELEASE_STORE_FILE: expected absolute path" >&2
-  exit 1
-fi
+  if [[ ! -f "$VECTRAS_RELEASE_STORE_FILE" ]]; then
+    echo "[compliance] invalid VECTRAS_RELEASE_STORE_FILE: file not found" >&2
+    exit 1
+  fi
 
-if [[ ! -f "$VECTRAS_RELEASE_STORE_FILE" ]]; then
-  echo "[compliance] invalid VECTRAS_RELEASE_STORE_FILE: file not found" >&2
-  exit 1
-fi
-
-if [[ -z "${VECTRAS_RELEASE_KEY_ALIAS//[[:space:]]/}" ]]; then
-  echo "[compliance] invalid VECTRAS_RELEASE_KEY_ALIAS: alias must be non-empty" >&2
-  exit 1
+  if [[ -z "${VECTRAS_RELEASE_KEY_ALIAS//[[:space:]]/}" ]]; then
+    echo "[compliance] invalid VECTRAS_RELEASE_KEY_ALIAS: alias must be non-empty" >&2
+    exit 1
+  fi
+else
+  echo "[compliance] release signing gate skipped by RELEASE_SIGNING_REQUIRED=$RELEASE_SIGNING_REQUIRED"
 fi
 
 if ! rg -n '"ndk;\$\{ANDROID_NDK_VERSION\}"|"ndk;\$ANDROID_NDK_VERSION"' tools/termux-arm64-orchestrator/bootstrap-termux-android15.sh >/dev/null; then

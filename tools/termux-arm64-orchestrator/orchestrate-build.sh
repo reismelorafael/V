@@ -318,6 +318,20 @@ sync_required_forks() {
   fi
 }
 
+sync_required_forks() {
+  if [[ "$ENABLE_FORK_SYNC" != "1" ]]; then
+    log "fork sync desabilitado por ENABLE_FORK_SYNC=$ENABLE_FORK_SYNC"
+    return
+  fi
+
+  if [[ -x tools/termux-arm64-orchestrator/forks-sync.sh ]]; then
+    log "sincronizando forks externos necessários"
+    bash tools/termux-arm64-orchestrator/forks-sync.sh
+  else
+    warn "forks-sync.sh ausente"
+  fi
+}
+
 bootstrap_android_env() {
   if [[ "$BOOTSTRAP_ANDROID" != "1" ]]; then
     log "bootstrap Android desabilitado por BOOTSTRAP_ANDROID=$BOOTSTRAP_ANDROID"
@@ -416,10 +430,7 @@ require_cmd "$TOOLCHAIN_CORE_DIR/activate-env.sh"
 require_cmd "$TOOLCHAIN_CORE_DIR/verify-toolchain.sh"
 
 log "running legal compliance gate"
-bash tools/termux-arm64-orchestrator/legal-compliance-check.sh
-
-log "running legal compliance gate"
-bash tools/termux-arm64-orchestrator/legal-compliance-check.sh
+RELEASE_SIGNING_REQUIRED=1 bash tools/termux-arm64-orchestrator/legal-compliance-check.sh
 
 run_toolchain_core_probe
 detect_arch
