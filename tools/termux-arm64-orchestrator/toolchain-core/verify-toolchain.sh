@@ -1,32 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-RESOLVED_ENV="$(${ROOT_DIR}/tools/termux-arm64-orchestrator/toolchain-core/resolve-toolchain.sh)"
-while IFS='=' read -r key value; do
-  export "$key=$value"
-done <<< "$RESOLVED_ENV"
-
-missing=0
-if [[ ! -d "$ANDROID_SDK_ROOT" ]]; then
-  echo "[toolchain-verify] missing ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT" >&2
-  missing=1
-fi
-if [[ ! -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]]; then
-  echo "[toolchain-verify] missing sdkmanager in cmdline-tools/latest" >&2
-  missing=1
-fi
-if [[ ! -d "$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" ]]; then
-  echo "[toolchain-verify] missing NDK version: $ANDROID_NDK_VERSION" >&2
-  missing=1
-fi
-if [[ ! -d "$ANDROID_SDK_ROOT/cmake/$ANDROID_CMAKE_VERSION" ]]; then
-  echo "[toolchain-verify] missing CMake version: $ANDROID_CMAKE_VERSION" >&2
-  missing=1
-fi
-
-if [[ "$missing" != "0" ]]; then
+ENV_FILE="${1:-}"
+if [[ -z "$ENV_FILE" || ! -f "$ENV_FILE" ]]; then
+  echo "usage: $0 <toolchain-env-file>" >&2
   exit 1
 fi
 
-echo "[toolchain-verify] sdk/ndk/cmake layout ok"
+while IFS='=' read -r key value; do
+  [[ -z "$key" ]] && continue
+  [[ "$key" =~ ^# ]] && continue
+  export "$key=$value"
+done < "$ENV_FILE"
+
+fail() {
+  echo "[toolchain-core] $*" >&2
+  exit 1
+}
+
+[[ -n "${JAVA_HOME:-}" ]] || fail "JAVA_HOME vazio"
+[[ -x "$JAVA_HOME/bin/java" ]] || fail "java não encontrado em $JAVA_HOME/bin/java"
+
+java_major="$($JAVA_HOME/bin/java -version 2>&1 | awk -F '[\".]' '/version/ {print $2; exit}')"
+[[ -n "$java_major" ]] || fail "não foi possível detectar versão do Java"
+(( java_major >= 17 )) || fail "Java >= 17 requerido; detectado: $java_major"
+
+[[ -d "${ANDROID_SDK_ROOT:-}" ]] || fail "ANDROID_SDK_ROOT inexistente: ${ANDROID_SDK_ROOT:-<vazio>}"
+[[ -x "${ANDROID_SDKMANAGER_BIN:-}" ]] || fail "sdkmanager ausente: ${ANDROID_SDKMANAGER_BIN:-<vazio>}"
+[[ -d "${ANDROID_BUILD_TOOLS_DIR:-}" ]] || fail "build-tools ausente: ${ANDROID_BUILD_TOOLS_DIR:-<vazio>}"
+[[ -d "${ANDROID_PLATFORM_DIR:-}" ]] || fail "platform ausente: ${ANDROID_PLATFORM_DIR:-<vazio>}"
+[[ -d "${ANDROID_NDK_ROOT:-}" ]] || fail "NDK ausente: ${ANDROID_NDK_ROOT:-<vazio>}"
+[[ -d "${ANDROID_CMAKE_ROOT:-}" ]] || fail "CMake ausente: ${ANDROID_CMAKE_ROOT:-<vazio>}"
+
+ndk_clang="${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+[[ -x "$ndk_clang" ]] || fail "clang do NDK ausente: $ndk_clang"
+[[ -x "${ANDROID_CMAKE_ROOT}/bin/cmake" ]] || fail "binário cmake ausente em ${ANDROID_CMAKE_ROOT}/bin/cmake"
+
+echo "[toolchain-core] toolchain verificada com sucesso"

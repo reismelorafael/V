@@ -1,24 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ARCH="$(uname -m || true)"
-OS="$(uname -s || true)"
-KERNEL="$(uname -r || true)"
-PAGE_SIZE="$(getconf PAGESIZE 2>/dev/null || true)"
+arch="$(uname -m 2>/dev/null || echo unknown)"
+os="$(uname -s 2>/dev/null || echo unknown)"
+cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
 
-CPUINFO_PATH="/proc/cpuinfo"
-HAS_NEON=0
-HAS_ASIMD=0
-if [[ -f "$CPUINFO_PATH" ]]; then
-  if rg -i "neon" "$CPUINFO_PATH" >/dev/null 2>&1; then HAS_NEON=1; fi
-  if rg -i "asimd" "$CPUINFO_PATH" >/dev/null 2>&1; then HAS_ASIMD=1; fi
+is_arm64=0
+case "$arch" in
+  aarch64|arm64) is_arm64=1 ;;
+esac
+
+has_neon=0
+has_asimd=0
+if [[ -r /proc/cpuinfo ]]; then
+  if rg -qi 'neon' /proc/cpuinfo; then
+    has_neon=1
+  fi
+  if rg -qi 'asimd' /proc/cpuinfo; then
+    has_asimd=1
+  fi
 fi
 
 cat <<EOT
-ARCH=${ARCH:-unknown}
-OS=${OS:-unknown}
-KERNEL=${KERNEL:-unknown}
-PAGE_SIZE=${PAGE_SIZE:-unknown}
-HAS_NEON=$HAS_NEON
-HAS_ASIMD=$HAS_ASIMD
+HOST_ARCH=$arch
+HOST_OS=$os
+HOST_CPU_COUNT=$cpu_count
+HOST_IS_ARM64=$is_arm64
+HOST_HAS_NEON=$has_neon
+HOST_HAS_ASIMD=$has_asimd
 EOT
