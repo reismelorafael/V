@@ -5,10 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 LOG_PREFIX="[termux-local-build]"
-PRIVATE_LOCAL_KEYSTORE_FALLBACK="$ROOT_DIR/.secrets/vectras-release.jks"
-RELEASE_STORE_FILE="${VECTRAS_RELEASE_STORE_FILE:-}"
-
 log(){ echo "$LOG_PREFIX $*"; }
+
+source "$ROOT_DIR/tools/termux-arm64-orchestrator/resolve-release-keystore.sh"
 
 if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
   echo "$LOG_PREFIX este entrypoint é exclusivo para build local em terminal (não GitHub Actions)." >&2

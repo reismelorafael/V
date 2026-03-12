@@ -126,5 +126,6 @@ if ! rg -n '"schema"\s*:\s*"vectras-termux-forks/v1"|"forks"\s*:' tools/termux-a
 fi
 
 echo "[compliance] legal checks passed"
+echo "[compliance] toolchain manifest checks passed"
 echo "[compliance] signing checks passed"
 echo "[compliance] release metadata checks passed"
