@@ -135,12 +135,12 @@ env:
   JAVA_VERSION: '17'
   COMPILE_API: '35'
   TARGET_API: '35'
-  RELEASE_MIN_TARGET_API: '34'
+  RELEASE_MIN_TARGET_API: '35'
   TOOLS_VERSION: '35.0.0'
   CMAKE_VERSION: '3.22.1'
   NDK_VERSION: '27.2.12479018'
   GRADLE_ARGS: >-
-    -PCOMPILE_API=35 -PTARGET_API=35 -PRELEASE_MIN_TARGET_API=34
+    -PCOMPILE_API=35 -PTARGET_API=35 -PRELEASE_MIN_TARGET_API=35
     -PTOOLS_VERSION=35.0.0 -PJAVA_LANGUAGE_VERSION=17
     -PCMAKE_VERSION=3.22.1 -PNDK_VERSION=27.2.12479018
 
@@ -480,7 +480,7 @@ jobs:
     env:
       COMPILE_API: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.compile_api || vars.COMPILE_API || '35' }}
       TARGET_API: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.compile_api || vars.TARGET_API || '35' }}
-      RELEASE_MIN_TARGET_API: ${{ vars.RELEASE_MIN_TARGET_API || '34' }}
+      RELEASE_MIN_TARGET_API: ${{ vars.RELEASE_MIN_TARGET_API || '35' }}
       TOOLS_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tools_version || vars.TOOLS_VERSION || '35.0.0' }}
       NDK_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ndk_version || vars.NDK_VERSION || '27.2.12479018' }}
       CMAKE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.cmake_version || vars.CMAKE_VERSION || '3.22.1' }}

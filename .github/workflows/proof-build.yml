@@ -26,12 +26,12 @@ jobs:
             make \
             pkg-config \
             python3 \
-            graphviz
+            graphviz ripgrep
 
       - name: Validate native toolchain dependencies
         run: |
           set -euo pipefail
-          required_tools=(cc gcc as ld ar nm make cmake ninja python3 dot)
+          required_tools=(cc gcc as ld ar nm make cmake ninja python3 dot rg)
           for tool in "${required_tools[@]}"; do
             if ! command -v "$tool" >/dev/null 2>&1; then
               echo "Missing required tool: $tool" >&2

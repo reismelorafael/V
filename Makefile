@@ -7,7 +7,7 @@ CPPFLAGS ?= -Iengine/rmr/include -DRMR_JNI_BUILD=$(RMR_JNI_BUILD) -DRMR_BUILD_HO
 CFLAGS ?= -O3 -std=c11 -Wall -Wextra -pedantic
 LDFLAGS ?=
 
-include engine/rmr/sources.mk
+include engine/rmr/sources_rmr_core.mk
 
 UNAME_S := $(shell uname -s 2>/dev/null || echo Unknown)
 SHARED_EXT := so
@@ -16,6 +16,12 @@ ifeq ($(OS),Windows_NT)
 else ifeq ($(UNAME_S),Darwin)
   SHARED_EXT := dylib
 endif
+
+ENGINE_CORE_SRCS := $(RMR_SOURCE_GROUP_CORE) $(RMR_SOURCE_GROUP_HOST_ONLY)
+ENGINE_POLICY_SRCS := $(RMR_SOURCE_GROUP_OPTIONAL_POLICY)
+ENGINE_ASM_X86_64_SRCS := $(RMR_SOURCE_GROUP_ASM_X86_64)
+ENGINE_ASM_ARM64_SRCS := $(RMR_SOURCE_GROUP_ASM_ARM64)
+ENGINE_ASM_RISCV64_SRCS := $(RMR_SOURCE_GROUP_ASM_RISCV64)
 
 ENGINE_SRCS := $(ENGINE_CORE_SRCS)
 ifeq ($(RMR_ENABLE_POLICY_MODULE),1)
@@ -26,7 +32,7 @@ ENGINE_OBJS := $(patsubst %.c,build/%.o,$(ENGINE_SRCS))
 CASM_ASM_SRCS :=
 ifeq ($(UNAME_S),Linux)
 ifeq ($(shell uname -m 2>/dev/null),x86_64)
-  CASM_ASM_SRCS += $(ENGINE_ASM_X86_64_LOWLEVEL_SRCS) $(ENGINE_ASM_X86_64_CASM_SRCS)
+  CASM_ASM_SRCS += $(ENGINE_ASM_X86_64_SRCS)
 else ifeq ($(shell uname -m 2>/dev/null),riscv64)
   CASM_ASM_SRCS += $(ENGINE_ASM_RISCV64_SRCS)
 endif

@@ -56,12 +56,12 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential cmake make ninja-build pkg-config graphviz python3 ccache clang
+          sudo apt-get install -y --no-install-recommends build-essential cmake make ninja-build pkg-config graphviz python3 ccache clang ripgrep
 
       - name: Validate native toolchain dependencies
         run: |
           set -euo pipefail
-          required_tools=(cc gcc as ld ar nm make cmake ninja python3 dot)
+          required_tools=(cc gcc as ld ar nm make cmake ninja python3 dot rg)
           for tool in "${required_tools[@]}"; do
             if ! command -v "$tool" >/dev/null 2>&1; then
               echo "Missing required tool: $tool" >&2
@@ -173,7 +173,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential cmake make ninja-build pkg-config python3 graphviz
+          sudo apt-get install -y --no-install-recommends build-essential cmake make ninja-build pkg-config python3 graphviz ripgrep
 
       - name: Build engine (Make)
         run: make clean && make -j"$(nproc)"
@@ -241,7 +241,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build clang
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build clang ripgrep
       - name: ASAN+UBSAN smoke build
         run: |
           cmake -S . -B build-sanitizers -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
